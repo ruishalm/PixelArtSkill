@@ -1138,18 +1138,18 @@ html_template = r"""<!DOCTYPE html>
       const isWalking = cat.isWalking && (!isDraggingItem || selectedItem !== cat);
       const t = cat.walkCycle || 0;
 
-      // Movimentos procedurais das patinhas a 60 FPS
+      // Movimentos procedurais das patinhas a 60 FPS (patinha avança no ar e empurra no chão)
       const liftFL = isWalking ? Math.max(0, Math.sin(t) * 3.5) : 0;
-      const strideFL = isWalking ? Math.cos(t) * 2.5 : 0;
+      const strideFL = isWalking ? -Math.cos(t) * 2.5 : 0;
 
       const liftBR = isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.5) : 0;
-      const strideBR = isWalking ? Math.cos(t + 0.3) * 2.5 : 0;
+      const strideBR = isWalking ? -Math.cos(t + 0.3) * 2.5 : 0;
 
       const liftFR = isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.5) : 0;
-      const strideFR = isWalking ? Math.cos(t + Math.PI) * 2.5 : 0;
+      const strideFR = isWalking ? -Math.cos(t + Math.PI) * 2.5 : 0;
 
       const liftBL = isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.5) : 0;
-      const strideBL = isWalking ? Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
+      const strideBL = isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
 
       const bodyBob = isWalking ? Math.abs(Math.sin(t * 2)) * 0.8 : Math.sin((cat.idleTimer || 0) * 2.2) * 0.4;
       const bodyRoll = isWalking ? Math.sin(t) * 0.04 : 0;

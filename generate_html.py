@@ -225,16 +225,16 @@ template = """<!DOCTYPE html>
 
       const t = walkCycle;
       const liftFL = isWalking ? Math.max(0, Math.sin(t) * 3.5) : 0;
-      const strideFL = isWalking ? Math.cos(t) * 2.5 : 0;
+      const strideFL = isWalking ? -Math.cos(t) * 2.5 : 0;
 
       const liftBR = isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.5) : 0;
-      const strideBR = isWalking ? Math.cos(t + 0.3) * 2.5 : 0;
+      const strideBR = isWalking ? -Math.cos(t + 0.3) * 2.5 : 0;
 
       const liftFR = isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.5) : 0;
-      const strideFR = isWalking ? Math.cos(t + Math.PI) * 2.5 : 0;
+      const strideFR = isWalking ? -Math.cos(t + Math.PI) * 2.5 : 0;
 
       const liftBL = isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.5) : 0;
-      const strideBL = isWalking ? Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
+      const strideBL = isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
 
       const bodyBob = isWalking ? Math.abs(Math.sin(t * 2)) * 0.8 : Math.sin(idleTimer * 2.2) * 0.4;
       const bodyRoll = isWalking ? Math.sin(t) * 0.04 : 0;
