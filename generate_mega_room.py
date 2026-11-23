@@ -577,6 +577,7 @@ html_template = r"""<!DOCTYPE html>
       { id: 'plant',         name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
 
       // Móveis Principais (category: 'furniture')
+      { id: 'door',          name: 'Porta de Madeira',     icon: '🚪', category: 'furniture', isWallItem: true, wall: 'east', x: ROOM_R, y: 60, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false },
       { id: 'desk',          name: 'Mesa de Estudo',       icon: '🪵', category: 'furniture', model: deskModel,      x: 55,  y: -65, liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 46, isDesk: true, visible: true },
       { id: 'shelf',         name: 'Prateleira de Madeira',icon: '🪵', category: 'furniture', isWallItem: true, wall: 'west', x: -ROOM_R, y: -10, liftZ: 58, length: 68, radius: 24, visible: true },
       { id: 'bed',           name: 'Caminha Nuvem',        icon: '☁️', category: 'furniture', model: bedModel,       x: -75, y: -70, liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 25, visible: true },
@@ -979,6 +980,143 @@ html_template = r"""<!DOCTYPE html>
     // --- ITENS DE PAREDE E PRATELEIRA MODULARES ---
 
     // 1. Tábua da Prateleira Limpa (Alargada para 1 Tile = 18px! SEM Sobreposição!)
+    // Som aconchegante da porta (abrir / fechar)
+    function playDoorSound(isOpen) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = isOpen ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(isOpen ? 110 : 170, now);
+        osc.frequency.exponentialRampToValueAtTime(isOpen ? 210 : 85, now + 0.16);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.18, now + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      } catch (e) {}
+    }
+
+    // --- PORTA DE MADEIRA NOBRE NA PAREDE LESTE ---
+    function drawDoor(item) {
+      const wallX = item.x;
+      const cy = item.y;
+      const hw = (item.width || 28) / 2;
+      const H = item.height || 76;
+      const liftZ = item.liftZ || 0;
+      const isOpen = item.isOpen || false;
+      const openAngle = isOpen ? -0.42 : 0; // Entreaberta em perspectiva 3D acolhedora!
+
+      // 1. Soleira da Porta no chão (Z=0)
+      const pS1 = project(wallX, cy - hw - 2, liftZ);
+      const pS2 = project(wallX - 3, cy - hw - 2, liftZ);
+      const pS3 = project(wallX - 3, cy + hw + 2, liftZ);
+      const pS4 = project(wallX, cy + hw + 2, liftZ);
+      lowCtx.fillStyle = '#4A2E1B';
+      lowCtx.beginPath();
+      lowCtx.moveTo(pS1.x, pS1.y); lowCtx.lineTo(pS2.x, pS2.y);
+      lowCtx.lineTo(pS3.x, pS3.y); lowCtx.lineTo(pS4.x, pS4.y);
+      lowCtx.closePath(); lowCtx.fill();
+
+      // 2. Portal / Batente de Madeira na parede (x = wallX)
+      const pT1 = project(wallX, cy - hw - 2, liftZ + H + 3);
+      const pT2 = project(wallX, cy + hw + 2, liftZ + H + 3);
+      const pB1 = project(wallX, cy - hw - 2, liftZ);
+      const pB2 = project(wallX, cy + hw + 2, liftZ);
+
+      lowCtx.fillStyle = '#5A341A';
+      lowCtx.beginPath();
+      lowCtx.moveTo(pB1.x, pB1.y); lowCtx.lineTo(pB2.x, pB2.y);
+      lowCtx.lineTo(pT2.x, pT2.y); lowCtx.lineTo(pT1.x, pT1.y);
+      lowCtx.closePath(); lowCtx.fill();
+
+      // 3. Vão Interior Escuro e Iluminação Suave se aberta
+      if (isOpen) {
+        const pIn1 = project(wallX, cy - hw, liftZ);
+        const pIn2 = project(wallX, cy + hw, liftZ);
+        const pIn3 = project(wallX, cy + hw, liftZ + H);
+        const pIn4 = project(wallX, cy - hw, liftZ + H);
+        lowCtx.fillStyle = '#1A1412';
+        lowCtx.beginPath();
+        lowCtx.moveTo(pIn1.x, pIn1.y); lowCtx.lineTo(pIn2.x, pIn2.y);
+        lowCtx.lineTo(pIn3.x, pIn3.y); lowCtx.lineTo(pIn4.x, pIn4.y);
+        lowCtx.closePath(); lowCtx.fill();
+
+        // Luz dourada aconchegante vindo do corredor
+        const pLight = project(wallX, cy, liftZ + H * 0.5);
+        const grad = lowCtx.createRadialGradient(pLight.x, pLight.y, 2, pLight.x, pLight.y, 40);
+        grad.addColorStop(0, 'rgba(255, 230, 160, 0.40)');
+        grad.addColorStop(1, 'rgba(255, 230, 160, 0)');
+        lowCtx.fillStyle = grad;
+        lowCtx.fillRect(pIn1.x - 22, pIn3.y, 44, Math.abs(pIn1.y - pIn3.y) + 10);
+      }
+
+      // 4. Folha da Porta com perspectiva de abertura
+      const hingeY = cy + hw;
+      const doorW = hw * 2;
+      const cosO = Math.cos(openAngle);
+      const sinO = Math.sin(openAngle);
+
+      const tipX = wallX - sinO * doorW;
+      const tipY = (cy - hw) + (1 - cosO) * doorW;
+
+      const d1 = project(wallX, hingeY, liftZ);
+      const d2 = project(tipX, tipY, liftZ);
+      const d3 = project(tipX, tipY, liftZ + H);
+      const d4 = project(wallX, hingeY, liftZ + H);
+
+      lowCtx.fillStyle = '#8B542F';
+      lowCtx.beginPath();
+      lowCtx.moveTo(d1.x, d1.y); lowCtx.lineTo(d2.x, d2.y);
+      lowCtx.lineTo(d3.x, d3.y); lowCtx.lineTo(d4.x, d4.y);
+      lowCtx.closePath(); lowCtx.fill();
+      lowCtx.strokeStyle = '#4A2A14';
+      lowCtx.lineWidth = 1;
+      lowCtx.stroke();
+
+      // Painéis entalhados em relevo
+      function drawDoorPanel(zBot, zTop) {
+        const panHinge = project(wallX, hingeY - 3, liftZ + zBot);
+        const panTip = project(tipX, tipY + 3, liftZ + zBot);
+        const panTipTop = project(tipX, tipY + 3, liftZ + zTop);
+        const panHingeTop = project(wallX, hingeY - 3, liftZ + zTop);
+
+        lowCtx.fillStyle = '#784320';
+        lowCtx.beginPath();
+        lowCtx.moveTo(panHinge.x, panHinge.y); lowCtx.lineTo(panTip.x, panTip.y);
+        lowCtx.lineTo(panTipTop.x, panTipTop.y); lowCtx.lineTo(panHingeTop.x, panHingeTop.y);
+        lowCtx.closePath(); lowCtx.fill();
+
+        lowCtx.strokeStyle = '#522A0F';
+        lowCtx.lineWidth = 0.8;
+        lowCtx.stroke();
+      }
+
+      drawDoorPanel(6, 32);
+      drawDoorPanel(40, 68);
+
+      // 5. Maçaneta Dourada de Latão
+      const knobZ = liftZ + 36;
+      const knobP = project(tipX + 1, tipY + 4, knobZ);
+
+      lowCtx.fillStyle = '#3B2219';
+      lowCtx.fillRect(knobP.x - 1, knobP.y - 4, 3, 8);
+
+      lowCtx.fillStyle = '#F4B846';
+      lowCtx.beginPath();
+      lowCtx.arc(knobP.x, knobP.y, 3, 0, Math.PI * 2);
+      lowCtx.fill();
+
+      lowCtx.fillStyle = '#FFD166';
+      lowCtx.beginPath();
+      lowCtx.arc(knobP.x - 1, knobP.y - 1, 1, 0, Math.PI * 2);
+      lowCtx.fill();
+    }
+
     function drawShelfItem(shelf) {
       const xWall = -ROOM_R;
       const sy = shelf.y;
@@ -1695,6 +1833,8 @@ html_template = r"""<!DOCTYPE html>
         drawSingleFrame(item, 'cat');
       } else if (item.id === 'frame_plant') {
         drawSingleFrame(item, 'plant');
+      } else if (item.id === 'door') {
+        drawDoor(item);
       }
 
       // Marcador e caixa de seleção no Modo Decoração
@@ -2156,6 +2296,19 @@ html_template = r"""<!DOCTYPE html>
         if (moved < 6) {
           const { sx, sy } = getCanvasCoords(e);
           const worldPos = unproject(sx, sy);
+          const door = items.find(it => it.id === 'door' && it.visible !== false);
+          if (door) {
+            const isEastWallVis = (1 * Math.sin(turn) <= 0.05);
+            if (isEastWallVis) {
+              const pDoor = project(door.x, door.y, 38);
+              const dScreen = Math.hypot(sx - pDoor.x, sy - pDoor.y);
+              if (dScreen < 30) {
+                door.isOpen = !door.isOpen;
+                playDoorSound(door.isOpen);
+                return;
+              }
+            }
+          }
           const cat = items.find(it => it.id === 'cat');
           if (cat) {
             const dCat = Math.hypot(worldPos.x - cat.x, worldPos.y - cat.y);
