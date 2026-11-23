@@ -22,26 +22,30 @@
       align-items: center;
       justify-content: center;
     }
+    :root {
+      --paw-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cellipse cx='14' cy='16' rx='9' ry='8' fill='rgba(0,0,0,0.18)'/%3E%3Cpath d='M7 14 C7 8, 21 8, 21 14 C21 21, 7 21, 7 14 Z' fill='%23FDFBF7' stroke='%233B2A20' stroke-width='1.5'/%3E%3Cpath d='M14 9 C18 9, 20 12, 19 16 C16 16, 14 12, 14 9 Z' fill='%23DE864A'/%3E%3Cpath d='M11 16 C11 14, 17 14, 17 16 C17 18.5, 11 18.5, 11 16 Z' fill='%23F497A4'/%3E%3Ccircle cx='8.5' cy='11.5' r='1.8' fill='%23F497A4'/%3E%3Ccircle cx='12' cy='8.5' r='2' fill='%23F497A4'/%3E%3Ccircle cx='16' cy='8.5' r='2' fill='%23F497A4'/%3E%3Ccircle cx='19.5' cy='11.5' r='1.8' fill='%23F497A4'/%3E%3C/svg%3E") 14 14, grab;
+      --paw-grab: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cellipse cx='14' cy='15' rx='8' ry='7' fill='rgba(0,0,0,0.22)'/%3E%3Ccircle cx='14' cy='14' r='7.5' fill='%23FDFBF7' stroke='%233B2A20' stroke-width='1.5'/%3E%3Cpath d='M14 8 C18 8, 20 11, 18 14 C15 14, 14 11, 14 8 Z' fill='%23DE864A'/%3E%3Ccircle cx='10' cy='12' r='1.8' fill='%23F497A4'/%3E%3Ccircle cx='14' cy='11' r='2' fill='%23F497A4'/%3E%3Ccircle cx='18' cy='12' r='1.8' fill='%23F497A4'/%3E%3Ccircle cx='14' cy='16' r='2.5' fill='%23F497A4'/%3E%3C/svg%3E") 14 14, grabbing;
+    }
     #viewport {
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       box-shadow: 0 30px 70px rgba(74, 46, 27, 0.22);
       border-radius: 28px;
       background: #F8F3EB;
-      cursor: grab;
+      cursor: var(--paw-open);
       touch-action: none;
     }
     #viewport:active {
-      cursor: grabbing;
+      cursor: var(--paw-grab);
     }
     #viewport.decor-mode {
-      cursor: default;
+      cursor: var(--paw-open);
     }
     #viewport.decor-hover {
-      cursor: grab;
+      cursor: var(--paw-open);
     }
     #viewport.decor-dragging {
-      cursor: grabbing;
+      cursor: var(--paw-grab);
     }
     .hud {
       position: absolute;
@@ -466,6 +470,15 @@
       { id: 'bed',        name: 'Caminha Nuvem',       icon: '☁️', model: bedModel,       x: -75, y: -70, liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 25, visible: true },
       { id: 'plant',      name: 'Planta Monstera',     icon: '🌿', model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
       { id: 'tree',       name: 'Torre de Gato',       icon: '🐾', model: treeModel,      x: -80, y: 50,  liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 24, visible: true }
+    ];
+
+    // Slots inteligentes no tampo da mesa (Snap-to-Slot estilo The Sims / Animal Crossing)
+    const DESK_SLOTS = [
+      { id: 'left',   name: 'Tablet de Desenho', offX: -23, offY: 3 },
+      { id: 'center', name: 'Note no Suporte',   offX: 0,   offY: -9 },
+      { id: 'front',  name: 'Centro Frontal',    offX: 0,   offY: 6 },
+      { id: 'cup',    name: 'Caneca de Café',    offX: 23,  offY: -9 },
+      { id: 'books',  name: 'Livros da Mesa',    offX: 25,  offY: 7 }
     ];
 
     // Projeção Isométrica Global do Quarto (World -> Screen)
@@ -1209,6 +1222,26 @@
         // SE O ITEM FOR A MESA, DESENHA IMEDIATAMENTE TODOS OS ITENS APOIADOS NELA!
         // ISSO GARANTE QUE O TAMPO DA MESA NUNCA COBRA O NOTEBOOK, TABLET OU CAFÉ!
         if (item.id === 'desk') {
+          // Indicadores sutis de Snap-to-Slot no tampo da mesa no Modo Decoração
+          if (isDecorMode && (isDraggingItem || hoveredItem)) {
+            const cosD = Math.cos(item.selfAngle);
+            const sinD = Math.sin(item.selfAngle);
+            for (const slot of DESK_SLOTS) {
+              const sx = item.x + slot.offX * cosD - slot.offY * sinD;
+              const sy = item.y + slot.offX * sinD + slot.offY * cosD;
+              const sp = project(sx, sy, 21.2);
+              lowCtx.save();
+              lowCtx.translate(sp.x, sp.y);
+              lowCtx.scale(1, squash * 0.5);
+              lowCtx.beginPath();
+              lowCtx.arc(0, 0, 6, 0, Math.PI * 2);
+              lowCtx.strokeStyle = 'rgba(216, 125, 74, 0.65)';
+              lowCtx.lineWidth = 1.2;
+              lowCtx.stroke();
+              lowCtx.restore();
+            }
+          }
+
           const deskProps = activeItems.filter(it => it.onDesk);
           deskProps.sort((a, b) => a.depth - b.depth);
           for (const prop of deskProps) {
@@ -1412,8 +1445,22 @@
         hoveredItem = findItemAt(worldPos, { sx, sy });
         if (hoveredItem) {
           canvas.classList.add('decor-hover');
+          if (hoveredItem.isDesk) {
+            bannerInfo.innerHTML = `<span>🐾 <b>Móvel:</b> 🪵 Mesa de Estudo — arraste pelos pés para mover tudo!</span>`;
+          } else if (hoveredItem.onDesk) {
+            bannerInfo.innerHTML = `<span>🐾 <b>Acessório:</b> ${hoveredItem.icon || ''} ${hoveredItem.name} — clique para reposicionar no tampo!</span>`;
+          } else if (hoveredItem.isWallItem) {
+            bannerInfo.innerHTML = `<span>🐾 <b>Parede:</b> ${hoveredItem.icon || ''} ${hoveredItem.name} — arraste para subir, descer ou deslizar!</span>`;
+          } else {
+            bannerInfo.innerHTML = `<span>🐾 <b>Item:</b> ${hoveredItem.icon || ''} ${hoveredItem.name} — arraste pelo quarto!</span>`;
+          }
         } else {
           canvas.classList.remove('decor-hover');
+          if (selectedItem) {
+            bannerInfo.innerHTML = `<span>🛠️ <b>Selecionado:</b> ${selectedItem.icon || ''} ${selectedItem.name} (Girar com Tecla R)</span>`;
+          } else {
+            bannerInfo.innerHTML = `<span>🛠️ <b>Modo Decoração:</b> Arraste móveis, prateleira, quadros, relógio ou o gatinho!</span>`;
+          }
         }
       }
 
@@ -1428,7 +1475,9 @@
           selectedItem.liftZ = Math.max(35, Math.min(92, newZ));
 
           const sinA = Math.sin(turn);
-          const dir = (selectedItem.wall === 'west') ? (sinA < 0 ? -1 : 1) : (sinA < 0 ? 1 : -1);
+          // O movimento horizontal na tela dxScreen = -sinA * dy, portanto dir = (sinA > 0 ? -1 : 1)
+          // Isso garante que puxar o mouse para a direita SEMPRE mova o item para a direita na tela!
+          const dir = (sinA > 0 ? -1 : 1);
           const newY = Math.round(itemStartPos.y + dsx * dir * 0.8);
           const limit = ROOM_R - 30;
           selectedItem.y = Math.max(-limit, Math.min(limit, newY));
@@ -1452,11 +1501,33 @@
         newX = Math.round(newX / 4) * 4;
         newY = Math.round(newY / 4) * 4;
 
-        const limit = ROOM_R - 26;
-        selectedItem.x = Math.max(-limit, Math.min(limit, newX));
-        selectedItem.y = Math.max(-limit, Math.min(limit, newY));
-
         const desk = items.find(it => it.id === 'desk');
+
+        // Cálculo de limites de colisão com a parede (SEM vazar nem atravessar!)
+        let halfW = 20;
+        let halfH = 20;
+        if (selectedItem.id === 'desk') {
+          const isRot = (selectedItem.selfAngle === Math.PI / 2 || selectedItem.selfAngle === Math.PI * 1.5);
+          halfW = isRot ? 18 : 33;
+          halfH = isRot ? 33 : 18;
+        } else if (selectedItem.radius) {
+          halfW = Math.round(selectedItem.radius * 0.85);
+          halfH = Math.round(selectedItem.radius * 0.85);
+        }
+
+        const limitX = ROOM_R - halfW - 2;
+        const limitY = ROOM_R - halfH - 2;
+
+        // Snap magnético alinhando com o rodapé das paredes
+        if (selectedItem.id === 'desk') {
+          if (newY < -limitY + 10) newY = -limitY;
+          if (newY > limitY - 10) newY = limitY;
+          if (newX < -limitX + 10) newX = -limitX;
+          if (newX > limitX - 10) newX = limitX;
+        }
+
+        selectedItem.x = Math.max(-limitX, Math.min(limitX, newX));
+        selectedItem.y = Math.max(-limitY, Math.min(limitY, newY));
 
         // Se estiver arrastando a mesa inteira, move todos os itens da mesa juntos!
         if (selectedItem.id === 'desk') {
@@ -1473,8 +1544,28 @@
           if (onDeskArea) {
             selectedItem.onDesk = true;
             selectedItem.liftZ = 21;
-            selectedItem.offX = selectedItem.x - desk.x;
-            selectedItem.offY = selectedItem.y - desk.y;
+            let relX = selectedItem.x - desk.x;
+            let relY = selectedItem.y - desk.y;
+
+            // Snap magnético aos slots do tampo (The Sims / Animal Crossing)
+            let closestSlot = null;
+            let minDist = 12;
+            for (const slot of DESK_SLOTS) {
+              const d = Math.hypot(relX - slot.offX, relY - slot.offY);
+              if (d < minDist) {
+                minDist = d;
+                closestSlot = slot;
+              }
+            }
+            if (closestSlot) {
+              relX = closestSlot.offX;
+              relY = closestSlot.offY;
+            }
+
+            selectedItem.offX = relX;
+            selectedItem.offY = relY;
+            selectedItem.x = desk.x + relX;
+            selectedItem.y = desk.y + relY;
           } else {
             selectedItem.onDesk = false;
             selectedItem.liftZ = 0;
@@ -1556,11 +1647,27 @@
         const isVis = item.visible !== false;
         card.innerHTML = `
           <span class="asset-name">${item.icon || '📦'} ${item.name}</span>
-          <button class="btn-toggle ${isVis ? 'on' : 'off'}">
-            ${isVis ? '✓ Ativo' : '+ Adicionar'}
-          </button>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn-focus" title="Focar e Selecionar" style="border:none; background:#EDE4D6; color:#3B2A20; border-radius:8px; padding:3px 7px; font-size:12px; cursor:pointer; font-weight:600;">🎯</button>
+            <button class="btn-toggle ${isVis ? 'on' : 'off'}">
+              ${isVis ? '✓ Ativo' : '+ Adicionar'}
+            </button>
+          </div>
         `;
-        card.querySelector('button').addEventListener('click', () => {
+        card.querySelector('.btn-focus').addEventListener('click', () => {
+          item.visible = true;
+          if (!isDecorMode) {
+            isDecorMode = true;
+            btnDecorMode.classList.add('active');
+            bannerInfo.style.display = 'flex';
+            canvas.classList.add('decor-mode');
+          }
+          selectedItem = item;
+          btnRotateMob.style.display = item.isWallItem ? 'none' : 'inline-flex';
+          bannerInfo.innerHTML = `<span>🎯 <b>Item Focado:</b> ${item.icon || ''} ${item.name} selecionado!</span>`;
+          renderAssetList();
+        });
+        card.querySelector('.btn-toggle').addEventListener('click', () => {
           item.visible = !isVis;
           renderAssetList();
         });
