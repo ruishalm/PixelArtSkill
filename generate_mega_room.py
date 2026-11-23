@@ -691,10 +691,10 @@ html_template = r"""<!DOCTYPE html>
 
     // --- 2. PAREDES 3D INTELIGENTES COM BACK-FACE CULLING ---
     const WALLS = [
-      { id: 'north', a: { x: -ROOM_R, y: -ROOM_R }, b: { x: ROOM_R, y: -ROOM_R }, normal: { x: 0, y: 1 }, decor: 'window' },
-      { id: 'west',  a: { x: -ROOM_R, y: ROOM_R },  b: { x: -ROOM_R, y: -ROOM_R }, normal: { x: 1, y: 0 }, decor: null },
-      { id: 'south', a: { x: ROOM_R, y: ROOM_R },   b: { x: -ROOM_R, y: ROOM_R },  normal: { x: 0, y: -1 }, decor: 'pegboard' },
-      { id: 'east',  a: { x: ROOM_R, y: -ROOM_R },  b: { x: ROOM_R, y: ROOM_R },   normal: { x: -1, y: 0 }, decor: null },
+      { id: 'north', a: { x: -ROOM_R, y: -ROOM_R }, b: { x: ROOM_R, y: -ROOM_R }, normal: { x: 0, y: -1 }, decor: 'window' },
+      { id: 'west',  a: { x: -ROOM_R, y: ROOM_R },  b: { x: -ROOM_R, y: -ROOM_R }, normal: { x: -1, y: 0 }, decor: null },
+      { id: 'south', a: { x: ROOM_R, y: ROOM_R },   b: { x: -ROOM_R, y: ROOM_R },  normal: { x: 0, y: 1 },  decor: 'pegboard' },
+      { id: 'east',  a: { x: ROOM_R, y: -ROOM_R },  b: { x: ROOM_R, y: ROOM_R },   normal: { x: 1, y: 0 },  decor: null },
     ];
 
     function drawWalls() {
@@ -1111,7 +1111,7 @@ html_template = r"""<!DOCTYPE html>
         lowCtx.translate(shadowP.x, shadowP.y);
         lowCtx.scale(1, squash * 0.45);
         lowCtx.beginPath();
-        const baseRadius = (item.isCat ? 15 : (item.onDesk ? 10 : (item.isDesk ? 28 : 20))) * (item.scale ? item.scale / 1.3 : 1);
+        const baseRadius = (item.isCat ? 15 : (item.onDesk ? 10 : (item.isDesk ? 32 : 20))) * (item.scale ? item.scale / 1.3 : 1);
         const shadowRadius = baseRadius * (1 + item.dragLift * 0.05);
         lowCtx.arc(0, 0, shadowRadius, 0, Math.PI * 2);
         lowCtx.fillStyle = isSel ? 'rgba(216, 125, 74, 0.40)' : 'rgba(74, 46, 27, 0.22)';
@@ -1123,6 +1123,30 @@ html_template = r"""<!DOCTYPE html>
           lowCtx.stroke();
         }
         lowCtx.restore();
+
+        // Indicadores nos 4 pés da mesa quando selecionada ou em hover no Modo Decoração
+        if (item.isDesk && (isSel || isHov) && isDecorMode) {
+          const cosD = Math.cos(item.selfAngle);
+          const sinD = Math.sin(item.selfAngle);
+          const legOffsets = [
+            [-24, -10], [24, -10],
+            [-24,  10], [24,  10]
+          ];
+          for (const [ox, oy] of legOffsets) {
+            const lx = item.x + ox * cosD - oy * sinD;
+            const ly = item.y + ox * sinD + oy * cosD;
+            const pLeg = project(lx, ly, 0);
+            lowCtx.save();
+            lowCtx.translate(pLeg.x, pLeg.y);
+            lowCtx.scale(1, squash * 0.5);
+            lowCtx.beginPath();
+            lowCtx.arc(0, 0, 7, 0, Math.PI * 2);
+            lowCtx.strokeStyle = isSel ? '#D87D4A' : 'rgba(216, 125, 74, 0.8)';
+            lowCtx.lineWidth = isSel ? 2 : 1;
+            lowCtx.stroke();
+            lowCtx.restore();
+          }
+        }
       }
 
       // Desenho do objeto correspondente
@@ -1178,7 +1202,7 @@ html_template = r"""<!DOCTYPE html>
       });
 
       // 1. Itens da Parede Oeste (só renderiza se a parede oeste for parede de trás)
-      const isWestWallVisible = (sinA <= 0.05);
+      const isWestWallVisible = (-1 * sinA <= 0.05);
       if (isWestWallVisible) {
         const westWallItems = activeItems.filter(it => it.isWallItem && it.wall === 'west');
         westWallItems.sort((a, b) => a.depth - b.depth);
@@ -1188,7 +1212,7 @@ html_template = r"""<!DOCTYPE html>
       }
 
       // 2. Itens da Parede Leste (só renderiza se a parede leste for parede de trás)
-      const isEastWallVisible = (sinA >= -0.05);
+      const isEastWallVisible = (1 * sinA <= 0.05);
       if (isEastWallVisible) {
         const eastWallItems = activeItems.filter(it => it.isWallItem && it.wall === 'east');
         eastWallItems.sort((a, b) => a.depth - b.depth);
@@ -1275,35 +1299,87 @@ html_template = r"""<!DOCTYPE html>
 
     function findItemAt(worldPos, screenPos) {
       const sinA = Math.sin(turn);
-      const isWestWallVisible = (sinA <= 0.05);
-      const isEastWallVisible = (sinA >= -0.05);
+      const isWestWallVisible = (-1 * sinA <= 0.05);
+      const isEastWallVisible = (1 * sinA <= 0.05);
 
       const activeItems = items.filter(it => it.visible !== false);
-      const sorted = [...activeItems].sort((a, b) => b.depth - a.depth);
 
-      for (const item of sorted) {
-        if (item.isWallItem) {
-          if (item.wall === 'west' && !isWestWallVisible) continue;
-          if (item.wall === 'east' && !isEastWallVisible) continue;
+      // FASE 1: Prioridade Máxima para itens em cima da mesa (onDesk)
+      // Se o usuário clicar no notebook, tablet, livros da mesa ou caneca, SEMPRE pega o acessório!
+      const deskProps = activeItems.filter(it => it.onDesk);
+      for (const item of deskProps) {
+        const p = project(item.x, item.y, item.liftZ + 6);
+        const dScreen = Math.hypot(screenPos.sx - p.x, screenPos.sy - p.y);
+        if (dScreen < (item.radius || 15)) {
+          return item;
         }
+      }
 
+      // FASE 2: Itens de parede (se a parede estiver visível)
+      const wallProps = activeItems.filter(it => it.isWallItem);
+      for (const item of wallProps) {
+        if (item.wall === 'west' && !isWestWallVisible) continue;
+        if (item.wall === 'east' && !isEastWallVisible) continue;
+        const p = project(item.x, item.y, item.liftZ);
+        const dScreen = Math.hypot(screenPos.sx - p.x, screenPos.sy - p.y);
+        if (dScreen < (item.radius || 20)) {
+          return item;
+        }
+      }
+
+      // FASE 3: O Gatinho e outros itens de chão menores
+      const floorMobiles = activeItems.filter(it => !it.isWallItem && !it.onDesk && !it.isDesk);
+      const sortedFloor = [...floorMobiles].sort((a, b) => b.depth - a.depth);
+      for (const item of sortedFloor) {
         const h = item.model ? item.model.count * (item.scale || 1.3) : 20;
         const pBot = project(item.x, item.y, item.liftZ);
         const pTop = project(item.x, item.y, item.liftZ + h);
         const midY = (pBot.y + pTop.y) / 2;
         const dScreen = Math.hypot(screenPos.sx - pBot.x, screenPos.sy - midY);
-
         if (dScreen < (item.radius || 20)) {
           return item;
         }
-
-        if (!item.isWallItem) {
-          const dWorld = Math.hypot(worldPos.x - item.x, worldPos.y - item.y);
-          if (dWorld < (item.radius || 20)) {
-            return item;
-          }
+        const dWorld = Math.hypot(worldPos.x - item.x, worldPos.y - item.y);
+        if (dWorld < (item.radius || 20)) {
+          return item;
         }
       }
+
+      // FASE 4: Móvel Grande (A Mesa de Estudo)
+      // "Pegar pelo Pé": detecta clique nos 4 pés da mesa no chão ou na base do piso!
+      const desk = activeItems.find(it => it.id === 'desk');
+      if (desk) {
+        // Checa distância aos 4 pés no chão
+        const cosD = Math.cos(desk.selfAngle);
+        const sinD = Math.sin(desk.selfAngle);
+        const legOffsets = [
+          [-24, -10], [24, -10],
+          [-24,  10], [24,  10]
+        ];
+        for (const [ox, oy] of legOffsets) {
+          const lx = desk.x + ox * cosD - oy * sinD;
+          const ly = desk.y + ox * sinD + oy * cosD;
+          const pLeg = project(lx, ly, 0);
+          const dLeg = Math.hypot(screenPos.sx - pLeg.x, screenPos.sy - pLeg.y);
+          if (dLeg < 16) {
+            return desk; // Pegou diretamente por um dos pés!
+          }
+        }
+
+        // Também permite pegar clicando no centro/sombra no chão
+        const pCenterFloor = project(desk.x, desk.y, 0);
+        const dFloor = Math.hypot(screenPos.sx - pCenterFloor.x, screenPos.sy - pCenterFloor.y);
+        if (dFloor < 30) {
+          return desk;
+        }
+
+        // Ou clicando no tampo livre onde não tem acessório
+        const dWorld = Math.hypot(worldPos.x - desk.x, worldPos.y - desk.y);
+        if (dWorld < desk.radius) {
+          return desk;
+        }
+      }
+
       return null;
     }
 
