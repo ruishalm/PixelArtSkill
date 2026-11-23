@@ -402,15 +402,18 @@ html_template = r"""<!DOCTYPE html>
     ];
     const deskModel = createSliceSheet(__DESK_SLICES__, deskPal, 64, 34);
 
-    // 3. NOTEBOOK NO SUPORTE ERGONÔMICO (12 slices, 24x20)
+    // 3. NOTEBOOK NO SUPORTE ERGONÔMICO (17 slices, 24x20)
     const laptopPal = [
       'rgba(0,0,0,0)',
-      '#94A3B8', // 1: suporte metálico prata
-      '#1E293B', // 2: chassi laptop grafite
-      '#0F172A', // 3: teclado preto
-      '#475569', // 4: trackpad
-      '#38BDF8', // 5: tela ciano acesa
-      '#FAF7F2'  // 6: janelas/código na tela
+      '#94A3B8', // 1: suporte metálico prata & logo traseiro
+      '#1E293B', // 2: chassi laptop grafite (tampa e base)
+      '#0F172A', // 3: bezel moldura preta e teclado
+      '#475569', // 4: trackpad e barra de título
+      '#181825', // 5: fundo escuro da IDE (Catppuccin / VS Code)
+      '#38BDF8', // 6: sintaxe ciano brilhante
+      '#F59E0B', // 7: sintaxe âmbar / amarelo dourado
+      '#F43F5E', // 8: sintaxe rosa coral / botão fechar
+      '#10B981'  // 9: sintaxe verde esmeralda / comentários
     ];
     const laptopModel = createSliceSheet(__LAPTOP_SLICES__, laptopPal, 24, 20);
 
