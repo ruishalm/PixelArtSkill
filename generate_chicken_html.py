@@ -1,0 +1,492 @@
+"""
+Gera o visualizador independente da Galinha 3D (chicken-3d.html)
+Zero dependências externas, puro HTML5 Canvas 2D + Sprite Stacking + Web Audio API.
+"""
+import json
+
+with open('chicken_slices.json', 'r', encoding='utf-8') as f:
+    chicken_data = json.load(f)
+
+chicken_json_str = json.dumps(chicken_data)
+
+html_content = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Galinha Cocoricó 3D 🐔 — Sprite Stacking Pixel Art</title>
+  <style>
+    * {{
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }}
+    body {{
+      background: radial-gradient(circle at 50% 40%, #FFFDF9 0%, #F5EDE0 100%);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #3B2A20;
+      overflow: hidden;
+    }}
+    .app-container {{
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }}
+    .canvas-card {{
+      position: relative;
+      background: #FDFBF7;
+      border: 3px solid #E8D9C5;
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(59, 42, 32, 0.12), 0 4px 12px rgba(0,0,0,0.04);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }}
+    canvas {{
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border-radius: 18px;
+      background: radial-gradient(circle at 50% 50%, #FAF8F5 0%, #EFE8DE 100%);
+      cursor: grab;
+      touch-action: none;
+    }}
+    canvas:active {{
+      cursor: grabbing;
+    }}
+    .header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 4px 8px 14px;
+    }}
+    .title-group {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
+    .title-group h1 {{
+      font-size: 20px;
+      font-weight: 800;
+      color: #3B2A20;
+      letter-spacing: -0.3px;
+    }}
+    .tag {{
+      background: #FEF3C7;
+      color: #D97706;
+      border: 1px solid #FDE68A;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+    }}
+    .nav-btn {{
+      background: #EDE4D6;
+      border: 1px solid #D9C8B4;
+      color: #5C4333;
+      padding: 6px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }}
+    .nav-btn:hover {{
+      background: #E2D5C3;
+      transform: translateY(-1px);
+    }}
+    .controls {{
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      max-width: 580px;
+    }}
+    .btn {{
+      background: #FFFFFF;
+      border: 2px solid #E4D5C3;
+      color: #4A3525;
+      padding: 8px 16px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      transition: all 0.15s ease;
+    }}
+    .btn:hover {{
+      background: #FDF8F2;
+      border-color: #D4A373;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    }}
+    .btn:active {{
+      transform: translateY(0);
+    }}
+    .btn.active {{
+      background: #D97706;
+      color: #FFFFFF;
+      border-color: #B45309;
+      box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);
+    }}
+    .btn-sound {{
+      background: #FEE2E2;
+      border-color: #FCA5A5;
+      color: #DC2626;
+    }}
+    .btn-sound:hover {{
+      background: #FEE2E2;
+      border-color: #EF4444;
+    }}
+    .slider-row {{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #7A5C45;
+    }}
+    .slider-row input[type="range"] {{
+      accent-color: #D97706;
+      cursor: pointer;
+    }}
+    .hint {{
+      margin-top: 10px;
+      font-size: 11px;
+      color: #9C8270;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }}
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="canvas-card">
+      <div class="header">
+        <div class="title-group">
+          <h1>🐔 Galinha Cocoricó 3D</h1>
+          <span class="tag">Sprite Stacking (16 Slices)</span>
+        </div>
+        <a href="index.html" class="nav-btn">🏠 Voltar ao Quarto</a>
+      </div>
+
+      <canvas id="viewCanvas" width="480" height="420"></canvas>
+
+      <div class="controls">
+        <button id="btnWalk" class="btn active">🚶 Andando</button>
+        <button id="btnPeck" class="btn">🌾 Ciscando</button>
+        <button id="btnFlap" class="btn">🪽 Bater Asas</button>
+        <button id="btnLoaf" class="btn">🥚 Chocando</button>
+        <button id="btnAutoSpin" class="btn active">🔄 Girar</button>
+        <button id="btnSound" class="btn btn-sound">🔊 Có-có-ró-có!</button>
+      </div>
+
+      <div class="slider-row">
+        <span>🔍 Zoom:</span>
+        <input type="range" id="zoomSlider" min="1.0" max="3.5" step="0.1" value="2.2">
+        <span>📐 Inclinação:</span>
+        <input type="range" id="tiltSlider" min="0.4" max="0.9" step="0.05" value="0.65">
+      </div>
+
+      <div class="hint">
+        <span>🖱️ Arraste para orbitar 360° • 📜 Scroll para zoom • Clique na galinha para cocoricó!</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CHICKEN_DATA = {chicken_json_str};
+
+    const canvas = document.getElementById('viewCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    // Buffer interno de baixa resolução para pixel art perfeita
+    const lowCanvas = document.createElement('canvas');
+    lowCanvas.width = 240;
+    lowCanvas.height = 210;
+    const lowCtx = lowCanvas.getContext('2d');
+    lowCtx.imageSmoothingEnabled = false;
+
+    // Constrói os sprites pré-renderizados de cada fatia
+    const sliceCanvases = CHICKEN_DATA.slices.map((sliceGrid) => {{
+      const sc = document.createElement('canvas');
+      sc.width = CHICKEN_DATA.width;
+      sc.height = CHICKEN_DATA.height;
+      const sctx = sc.getContext('2d');
+      sctx.imageSmoothingEnabled = false;
+      const idata = sctx.createImageData(CHICKEN_DATA.width, CHICKEN_DATA.height);
+      const data = idata.data;
+
+      function hexToRgba(hex) {{
+        if (hex.startsWith('rgba')) return [0,0,0,0];
+        const num = parseInt(hex.slice(1), 16);
+        return [(num >> 16) & 255, (num >> 8) & 255, num & 255, 255];
+      }}
+
+      for (let y = 0; y < CHICKEN_DATA.height; y++) {{
+        for (let x = 0; x < CHICKEN_DATA.width; x++) {{
+          const cIdx = sliceGrid[y][x];
+          if (cIdx > 0) {{
+            const rgba = hexToRgba(CHICKEN_DATA.palette[cIdx]);
+            const pIdx = (y * CHICKEN_DATA.width + x) * 4;
+            data[pIdx]     = rgba[0];
+            data[pIdx + 1] = rgba[1];
+            data[pIdx + 2] = rgba[2];
+            data[pIdx + 3] = rgba[3];
+          }}
+        }}
+      }}
+      sctx.putImageData(idata, 0, 0);
+      return sc;
+    }});
+
+    // Estados da Galinha
+    let currentAnim = 'walk';
+    let animTime = 0;
+    let turn = 0.8;
+    let autoSpin = true;
+    let scale = 2.2;
+    let squash = 0.65;
+
+    // Web Audio API para Cluck / Cocoricó
+    let audioCtx = null;
+    function playCluckSound(pitchMult = 1.0) {{
+      try {{
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+
+        const baseF = 380 * pitchMult;
+        osc.frequency.setValueAtTime(baseF, now);
+        osc.frequency.exponentialRampToValueAtTime(baseF * 1.6, now + 0.05);
+        osc.frequency.exponentialRampToValueAtTime(baseF * 0.7, now + 0.16);
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1400, now);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.22, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.19);
+      }} catch(e) {{}}
+    }}
+
+    function playPeckSound() {{
+      try {{
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(240, now);
+        osc.frequency.exponentialRampToValueAtTime(70, now + 0.04);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      }} catch(e) {{}}
+    }}
+
+    function render() {{
+      animTime += 0.08;
+      if (autoSpin) turn += 0.012;
+
+      lowCtx.clearRect(0, 0, lowCanvas.width, lowCanvas.height);
+
+      const cx = lowCanvas.width / 2;
+      const cy = lowCanvas.height / 2 + 38;
+
+      let bodyBobZ = 0;
+      let headBobX = 0;
+      let pitchTilt = 0;
+      let rollWobble = 0;
+
+      if (currentAnim === 'walk') {{
+        bodyBobZ = Math.abs(Math.sin(animTime * 2.0)) * 2.2;
+        headBobX = Math.sin(animTime * 2.0) * 2.5;
+        rollWobble = Math.cos(animTime * 1.0) * 0.06;
+      }} else if (currentAnim === 'peck') {{
+        const peckCycle = (Math.sin(animTime * 2.5) + 1) / 2;
+        pitchTilt = peckCycle * 0.45;
+        headBobX = peckCycle * 5.0;
+        bodyBobZ = -peckCycle * 2.5;
+        if (peckCycle > 0.94 && Math.random() < 0.18) {{
+          playPeckSound();
+        }}
+      }} else if (currentAnim === 'flap') {{
+        bodyBobZ = Math.max(0, Math.sin(animTime * 2.8)) * 8.0;
+        headBobX = Math.sin(animTime * 4.0) * 1.5;
+      }} else if (currentAnim === 'loaf') {{
+        bodyBobZ = -4.0;
+      }}
+
+      // Sombra projetada no chão
+      lowCtx.save();
+      lowCtx.translate(cx, cy + 4);
+      lowCtx.scale(1, squash * 0.5);
+      lowCtx.beginPath();
+      const shadowR = Math.max(10, 26 - bodyBobZ * 0.6) * (scale / 2.2);
+      lowCtx.arc(0, 0, shadowR, 0, Math.PI * 2);
+      lowCtx.fillStyle = 'rgba(74, 46, 27, 0.22)';
+      lowCtx.fill();
+      lowCtx.restore();
+
+      // Renderização do Sprite Stacking (Camadas Z=0 a Z=15)
+      const numSlices = sliceCanvases.length;
+      const startSlice = (currentAnim === 'loaf') ? 4 : 0;
+      const zStep = 1.35 * scale;
+
+      for (let i = startSlice; i < numSlices; i++) {{
+        const sliceCanvas = sliceCanvases[i];
+        const z = i + bodyBobZ;
+
+        let sliceOffX = 0;
+        let sliceOffY = 0;
+        if (i >= 9) {{
+          sliceOffX = headBobX;
+        }}
+
+        const extraPitch = (i >= 8) ? pitchTilt * 6 : 0;
+
+        const screenX = cx + (sliceOffX * Math.cos(turn) - sliceOffY * Math.sin(turn)) * scale;
+        const screenY = cy - (z * zStep) * squash + extraPitch;
+
+        lowCtx.save();
+        lowCtx.translate(screenX, screenY);
+        lowCtx.scale(1, squash);
+        lowCtx.rotate(turn + rollWobble);
+
+        const sw = CHICKEN_DATA.width * scale;
+        const sh = CHICKEN_DATA.height * scale;
+        lowCtx.drawImage(sliceCanvas, -sw / 2, -sh / 2, sw, sh);
+        lowCtx.restore();
+      }}
+
+      // Grãozinhos de milho
+      if (currentAnim === 'peck') {{
+        const seedDist = 32 * (scale / 2.2);
+        const seedX = cx + seedDist * Math.cos(turn);
+        const seedY = cy + seedDist * Math.sin(turn) * squash;
+        lowCtx.fillStyle = '#F59E0B';
+        lowCtx.fillRect(seedX - 2, seedY - 1, 3, 2);
+        lowCtx.fillRect(seedX + 5, seedY + 2, 2, 2);
+      }}
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(lowCanvas, 0, 0, canvas.width, canvas.height);
+
+      requestAnimationFrame(render);
+    }}
+
+    let isDragging = false;
+    let lastMouseX = 0;
+
+    canvas.addEventListener('pointerdown', (e) => {{
+      isDragging = true;
+      lastMouseX = e.clientX;
+      autoSpin = false;
+      document.getElementById('btnAutoSpin').classList.remove('active');
+      playCluckSound(0.9 + Math.random() * 0.3);
+    }});
+
+    window.addEventListener('pointermove', (e) => {{
+      if (isDragging) {{
+        const dx = e.clientX - lastMouseX;
+        lastMouseX = e.clientX;
+        turn += dx * 0.02;
+      }}
+    }});
+
+    window.addEventListener('pointerup', () => {{
+      isDragging = false;
+    }});
+
+    canvas.addEventListener('wheel', (e) => {{
+      e.preventDefault();
+      scale = Math.max(1.0, Math.min(3.5, scale - e.deltaY * 0.002));
+      document.getElementById('zoomSlider').value = scale;
+    }});
+
+    const animBtns = {{
+      walk: document.getElementById('btnWalk'),
+      peck: document.getElementById('btnPeck'),
+      flap: document.getElementById('btnFlap'),
+      loaf: document.getElementById('btnLoaf')
+    }};
+
+    function setAnim(name) {{
+      currentAnim = name;
+      Object.keys(animBtns).forEach(k => animBtns[k].classList.toggle('active', k === name));
+      if (name === 'flap') playCluckSound(1.25);
+      else if (name === 'peck') playPeckSound();
+      else if (name === 'walk') playCluckSound(1.0);
+    }}
+
+    animBtns.walk.addEventListener('click', () => setAnim('walk'));
+    animBtns.peck.addEventListener('click', () => setAnim('peck'));
+    animBtns.flap.addEventListener('click', () => setAnim('flap'));
+    animBtns.loaf.addEventListener('click', () => setAnim('loaf'));
+
+    const btnAutoSpin = document.getElementById('btnAutoSpin');
+    btnAutoSpin.addEventListener('click', () => {{
+      autoSpin = !autoSpin;
+      btnAutoSpin.classList.toggle('active', autoSpin);
+    }});
+
+    document.getElementById('btnSound').addEventListener('click', () => {{
+      playCluckSound(0.85 + Math.random() * 0.35);
+    }});
+
+    document.getElementById('zoomSlider').addEventListener('input', (e) => {{
+      scale = parseFloat(e.target.value);
+    }});
+
+    document.getElementById('tiltSlider').addEventListener('input', (e) => {{
+      squash = parseFloat(e.target.value);
+    }});
+
+    render();
+  </script>
+</body>
+</html>
+"""
+
+with open('chicken-3d.html', 'w', encoding='utf-8') as f:
+    f.write(html_content)
+
+print('chicken-3d.html re-gerado com sucesso!')
