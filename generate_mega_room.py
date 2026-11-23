@@ -23,6 +23,10 @@ cat_body_slices[4][8][17] = '4'
 
 cat_body_slices = [[''.join(r) for r in s] for s in cat_body_slices]
 
+with open('C:/github/PixelArt/cat_belly_slices.json', 'r', encoding='utf-8') as f:
+    cat_belly_slices_raw = json.load(f)
+cat_belly_slices_json = json.dumps(cat_belly_slices_raw)
+
 with open('C:/github/PixelArt/hats_pack.json', 'r', encoding='utf-8') as f:
     hats_pack = json.load(f)
 
@@ -270,6 +274,35 @@ html_template = r"""<!DOCTYPE html>
     .btn-pill:hover { background: #DDD0BF; }
     .btn-pill-alt { background: #FDE8E8; color: #9B1C1C; }
     .btn-pill-alt:hover { background: #F8D4D4; }
+    .drawer-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      background: #EDE6DA;
+      padding: 4px;
+      border-radius: 14px;
+    }
+    .drawer-tab {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 7px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #6B4E3D;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .drawer-tab:hover {
+      color: #3B2A20;
+    }
+    .drawer-tab.active {
+      background: #FFFFFF;
+      color: #D87D4A;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
     .asset-list {
       display: flex;
       flex-direction: column;
@@ -332,7 +365,12 @@ html_template = r"""<!DOCTYPE html>
       <h3>📦 Catálogo de Assets</h3>
       <button id="btnCloseDrawer" class="btn-close">✕</button>
     </div>
-    <div class="drawer-actions">
+    <div class="drawer-tabs">
+      <button class="drawer-tab active" data-cat="furniture">🛋️ Móveis</button>
+      <button class="drawer-tab" data-cat="decor">🧸 Quarto</button>
+      <button class="drawer-tab" data-cat="hats">🎩 Chapéus</button>
+    </div>
+    <div id="drawerActions" class="drawer-actions">
       <button id="btnShowAll" class="btn-pill">Mostrar Todos</button>
       <button id="btnHideAll" class="btn-pill btn-pill-alt">Limpar Sala</button>
     </div>
@@ -441,6 +479,7 @@ html_template = r"""<!DOCTYPE html>
     const catPal = ['rgba(0,0,0,0)', '#FDFBF7', '#DE864A', '#3B2219', '#F2A2AB', '#FFFFFF', '#B85820', '#E5E0D8'];
     const catBodyModel = createSliceSheet(__CAT_BODY_SLICES__, catPal, 32, 32);
     const catPawModel = createSliceSheet(__CAT_PAW_SLICES__, catPal, 4, 4);
+    const catBellyModel = createSliceSheet(__CAT_BELLY_SLICES__, catPal, 32, 32);
 
     // CHAPÉUZINHOS PURRMODORO
     const HATS = {
@@ -522,32 +561,26 @@ html_template = r"""<!DOCTYPE html>
     // --- LISTA MODULAR DE MÓVEIS E ACESSÓRIOS INDEPENDENTES ---
     const items = [
       // O Gatinho Articulado (com IA Autônoma, Posturas e Chapéus)
-      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', model: catBodyModel,   x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true, state: 'idle', stateTimer: 180, isWalking: false, walkCycle: 0, idleTimer: 0, hat: 'none', posture: 'sit', forcedPosture: null, speech: null, bellyTimer: 0 },
+      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', category: 'decor',     model: catBodyModel,   x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true, state: 'idle', stateTimer: 180, isWalking: false, walkCycle: 0, idleTimer: 0, hat: 'none', posture: 'sit', forcedPosture: null, speech: null, bellyTimer: 0 },
 
-      // Acessórios Universais (Podem ficar na MESA, na PRATELEIRA ou no CHÃO livremente!)
-      { id: 'laptop',        name: 'Note no Suporte',      icon: '💻', model: laptopModel,    x: 55,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 18, isProp: true, surface: 'desk', offX: 0, offY: -9, visible: true },
-      { id: 'tablet',        name: 'Tablet de Desenho',    icon: '🎨', model: tabletModel,    x: 32,  y: -62, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 16, isProp: true, surface: 'desk', offX: -23, offY: 3, visible: true },
-      { id: 'desk_books',    name: 'Livros Empilhados',    icon: '📚', model: deskBooksModel, x: 80,  y: -58, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 14, isProp: true, surface: 'desk', offX: 25, offY: 7, visible: true },
-      { id: 'mug',           name: 'Caneca de Café',       icon: '☕', model: mugModel,       x: 78,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 10, isProp: true, surface: 'desk', offX: 23, offY: -9, visible: true },
-      { id: 'shelf_books',   name: 'Livros em Pé',         icon: '📖', x: -ROOM_R + 9, y: -28, liftZ: 61.5, radius: 15, isProp: true, surface: 'shelf', offY: -18, visible: true },
-      { id: 'shelf_plant',   name: 'Vasinho de Suculenta', icon: '🪴', x: -ROOM_R + 9, y: -10, liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 0,   visible: true },
-      { id: 'shelf_crystal', name: 'Cristal de Quartzo',   icon: '💎', x: -ROOM_R + 9, y: 8,   liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 18,  visible: true },
+      // Acessórios de Quarto & Mesa (category: 'decor')
+      { id: 'laptop',        name: 'Note no Suporte',      icon: '💻', category: 'decor',     model: laptopModel,    x: 55,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 18, isProp: true, surface: 'desk', offX: 0, offY: -9, visible: true },
+      { id: 'tablet',        name: 'Tablet de Desenho',    icon: '🎨', category: 'decor',     model: tabletModel,    x: 32,  y: -62, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 16, isProp: true, surface: 'desk', offX: -23, offY: 3, visible: true },
+      { id: 'desk_books',    name: 'Livros Empilhados',    icon: '📚', category: 'decor',     model: deskBooksModel, x: 80,  y: -58, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 14, isProp: true, surface: 'desk', offX: 25, offY: 7, visible: true },
+      { id: 'mug',           name: 'Caneca de Café',       icon: '☕', category: 'decor',     model: mugModel,       x: 78,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 10, isProp: true, surface: 'desk', offX: 23, offY: -9, visible: true },
+      { id: 'shelf_books',   name: 'Livros em Pé',         icon: '📖', category: 'decor',     x: -ROOM_R + 9, y: -28, liftZ: 61.5, radius: 15, isProp: true, surface: 'shelf', offY: -18, visible: true },
+      { id: 'shelf_plant',   name: 'Vasinho de Suculenta', icon: '🪴', category: 'decor',     x: -ROOM_R + 9, y: -10, liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 0,   visible: true },
+      { id: 'shelf_crystal', name: 'Cristal de Quartzo',   icon: '💎', category: 'decor',     x: -ROOM_R + 9, y: 8,   liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 18,  visible: true },
+      { id: 'clock',         name: 'Relógio de Parede',    icon: '⏰', category: 'decor',     isWallItem: true, wall: 'west', x: -ROOM_R, y: 0, liftZ: 85, radius: 16, visible: true },
+      { id: 'frame_cat',     name: 'Quadro Gatinho',       icon: '🖼️', category: 'decor',     isWallItem: true, wall: 'east', x: ROOM_R, y: -20, liftZ: 62, radius: 20, visible: true },
+      { id: 'frame_plant',   name: 'Quadro Botânico',      icon: '🌿', category: 'decor',     isWallItem: true, wall: 'east', x: ROOM_R, y: 28,  liftZ: 54, radius: 18, visible: true },
+      { id: 'plant',         name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
 
-      // Prateleira de Madeira na Parede Oeste (Alargada para 1 Tile = 18px!)
-      { id: 'shelf',         name: 'Prateleira de Madeira',icon: '🪵', isWallItem: true, wall: 'west', x: -ROOM_R, y: -10, liftZ: 58, length: 68, radius: 24, visible: true },
-
-      // Relógio 3D na Parede Oeste
-      { id: 'clock',         name: 'Relógio de Parede',    icon: '⏰', isWallItem: true, wall: 'west', x: -ROOM_R, y: 0, liftZ: 85, radius: 16, visible: true },
-
-      // Quadros 3D na Parede Leste (x = ROOM_R)
-      { id: 'frame_cat',     name: 'Quadro Gatinho',       icon: '🖼️', isWallItem: true, wall: 'east', x: ROOM_R, y: -20, liftZ: 62, radius: 20, visible: true },
-      { id: 'frame_plant',   name: 'Quadro Botânico',      icon: '🌿', isWallItem: true, wall: 'east', x: ROOM_R, y: 28,  liftZ: 54, radius: 18, visible: true },
-
-      // Móveis do Quarto
-      { id: 'desk',          name: 'Mesa de Estudo',       icon: '🪵', model: deskModel,      x: 55,  y: -65, liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 46, isDesk: true, visible: true },
-      { id: 'bed',           name: 'Caminha Nuvem',        icon: '☁️', model: bedModel,       x: -75, y: -70, liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 25, visible: true },
-      { id: 'plant',         name: 'Planta Monstera',      icon: '🌿', model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
-      { id: 'tree',          name: 'Torre de Gato',        icon: '🐾', model: treeModel,      x: -80, y: 50,  liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 24, visible: true }
+      // Móveis Principais (category: 'furniture')
+      { id: 'desk',          name: 'Mesa de Estudo',       icon: '🪵', category: 'furniture', model: deskModel,      x: 55,  y: -65, liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 46, isDesk: true, visible: true },
+      { id: 'shelf',         name: 'Prateleira de Madeira',icon: '🪵', category: 'furniture', isWallItem: true, wall: 'west', x: -ROOM_R, y: -10, liftZ: 58, length: 68, radius: 24, visible: true },
+      { id: 'bed',           name: 'Caminha Nuvem',        icon: '☁️', category: 'furniture', model: bedModel,       x: -75, y: -70, liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 25, visible: true },
+      { id: 'tree',          name: 'Torre de Gato',        icon: '🐾', category: 'furniture', model: treeModel,      x: -80, y: 50,  liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 24, visible: true }
     ];
 
     // Slots inteligentes no tampo da mesa (Snap-to-Slot estilo The Sims / Animal Crossing)
@@ -1344,23 +1377,25 @@ html_template = r"""<!DOCTYPE html>
       }
 
       if (posture === 'belly') {
-        // === MOSTRAR A BARRIGUINHA (BELLY ROLL) ===
-        const bellyWiggle = Math.sin((cat.idleTimer || 0) * 4) * 0.08;
-        drawStackInverted(catBodyModel, cat.x, cat.y, baseLiftZ + 1.5, cat.selfAngle + bellyWiggle, cat.scale);
+        // === MOSTRAR A BARRIGUINHA (BELLY ROLL) COM CABECINHA DOBRADA OLHANDO PRA BARRIGA ===
+        // O corpo apoia suavemente na espinha (chão Z=0) e a cabeça curva para frente sem encostar orelhas no chão!
+        const bellyWiggle = Math.sin((cat.idleTimer || 0) * 4) * 0.05;
+        drawStackObject(catBellyModel, cat.x, cat.y, baseLiftZ + 0.5, cat.selfAngle + bellyWiggle, cat.scale);
 
-        // 4 patinhas abanando no ar!
+        // 4 patinhas fofas abanando no ar acima da barriguinha!
         const pawTime = (cat.idleTimer || 0) * 5;
         const pBL = Math.sin(pawTime) * 1.5;
         const pBR = Math.sin(pawTime + 1.2) * 1.5;
         const pFL = Math.sin(pawTime + 2.4) * 1.5;
         const pFR = Math.sin(pawTime + 3.6) * 1.5;
 
-        renderPaw(-4.0, -6.0, 0, 0, 11 + pBL, 0.4);
-        renderPaw( 3.0, -6.0, 0, 0, 11 + pBR, -0.4);
-        renderPaw(-4.0,  3.0, 0, 0, 12 + pFL, 0.3);
-        renderPaw( 3.0,  3.0, 0, 0, 12 + pFR, -0.3);
+        renderPaw(-4.0, -4.0, 0, 0, 7.5 + pBL, 0.4);
+        renderPaw( 3.0, -4.0, 0, 0, 7.5 + pBR, -0.4);
+        renderPaw(-4.0,  2.5, 0, 0, 8.0 + pFL, 0.3);
+        renderPaw( 3.0,  2.5, 0, 0, 8.0 + pFR, -0.3);
 
-        renderHat(1.0, 2.0, 0.3);
+        // Chapéu na cabecinha dobrada (na testa/orelhas voltadas para trás)
+        renderHat(7.2, 3.5, 0.2);
 
       } else if (posture === 'loaf') {
         // === DEITAR / PÃOZINHO (LOAF) ===
@@ -2226,40 +2261,96 @@ html_template = r"""<!DOCTYPE html>
     const btnHideAll = document.getElementById('btnHideAll');
     const assetList = document.getElementById('assetList');
 
+    let currentDrawerTab = 'furniture';
+    const drawerActions = document.getElementById('drawerActions');
+
+    // Tab buttons wiring
+    document.querySelectorAll('.drawer-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.drawer-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentDrawerTab = tab.getAttribute('data-cat');
+        renderAssetList();
+      });
+    });
+
+    const hatOptions = [
+      { key: 'none',   name: 'Sem Chapéu',           icon: '❌', desc: 'Gatinho ao natural' },
+      { key: 'witch',  name: 'Chapéu de Bruxo',      icon: '🧙', desc: 'Cone místico roxo com fivela dourada' },
+      { key: 'crown',  name: 'Coroa Real',           icon: '👑', desc: 'Ouro nobre com pedras de rubi' },
+      { key: 'beret',  name: 'Boina Artista',        icon: '🧑‍🎨', desc: 'Lã carmesim estilosa de pintor' },
+      { key: 'flower', name: 'Flor de Sakura',       icon: '🌸', desc: 'Pétalas rosadas japonesas' },
+    ];
+
     function renderAssetList() {
       assetList.innerHTML = '';
-      items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'asset-card';
-        const isVis = item.visible !== false;
-        card.innerHTML = `
-          <span class="asset-name">${item.icon || '📦'} ${item.name}</span>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn-focus" title="Focar e Selecionar" style="border:none; background:#EDE4D6; color:#3B2A20; border-radius:8px; padding:3px 7px; font-size:12px; cursor:pointer; font-weight:600;">🎯</button>
-            <button class="btn-toggle ${isVis ? 'on' : 'off'}">
-              ${isVis ? '✓ Ativo' : '+ Adicionar'}
+      const cat = items.find(it => it.id === 'cat');
+
+      if (currentDrawerTab === 'hats') {
+        drawerActions.style.display = 'none';
+
+        hatOptions.forEach(h => {
+          const card = document.createElement('div');
+          card.className = 'asset-card';
+          const isEquipped = (cat && (cat.hat || 'none') === h.key);
+          card.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span class="asset-name">${h.icon} ${h.name}</span>
+              <span style="font-size:10px; color:#8C6A54;">${h.desc}</span>
+            </div>
+            <button class="btn-toggle ${isEquipped ? 'on' : 'off'}">
+              ${isEquipped ? '✓ Equipado' : 'Equipar'}
             </button>
-          </div>
-        `;
-        card.querySelector('.btn-focus').addEventListener('click', () => {
-          item.visible = true;
-          if (!isDecorMode) {
-            isDecorMode = true;
-            btnDecorMode.classList.add('active');
-            bannerInfo.style.display = 'flex';
-            canvas.classList.add('decor-mode');
-          }
-          selectedItem = item;
-          btnRotateMob.style.display = item.isWallItem ? 'none' : 'inline-flex';
-          bannerInfo.innerHTML = `<span>🎯 <b>Item Focado:</b> ${item.icon || ''} ${item.name} selecionado!</span>`;
-          renderAssetList();
+          `;
+          card.querySelector('.btn-toggle').addEventListener('click', () => {
+            if (cat) {
+              cat.hat = h.key;
+              currentHatIdx = hatKeys.indexOf(h.key);
+              btnHat.textContent = hatNames[h.key];
+              playMeowSound();
+              renderAssetList();
+            }
+          });
+          assetList.appendChild(card);
         });
-        card.querySelector('.btn-toggle').addEventListener('click', () => {
-          item.visible = !isVis;
-          renderAssetList();
+
+      } else {
+        drawerActions.style.display = 'flex';
+        const filtered = items.filter(it => it.category === currentDrawerTab);
+
+        filtered.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'asset-card';
+          const isVis = item.visible !== false;
+          card.innerHTML = `
+            <span class="asset-name">${item.icon || '📦'} ${item.name}</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="btn-focus" title="Focar e Selecionar" style="border:none; background:#EDE4D6; color:#3B2A20; border-radius:8px; padding:3px 7px; font-size:12px; cursor:pointer; font-weight:600;">🎯</button>
+              <button class="btn-toggle ${isVis ? 'on' : 'off'}">
+                ${isVis ? '✓ Ativo' : '+ Adicionar'}
+              </button>
+            </div>
+          `;
+          card.querySelector('.btn-focus').addEventListener('click', () => {
+            item.visible = true;
+            if (!isDecorMode) {
+              isDecorMode = true;
+              btnDecorMode.classList.add('active');
+              bannerInfo.style.display = 'flex';
+              canvas.classList.add('decor-mode');
+            }
+            selectedItem = item;
+            btnRotateMob.style.display = item.isWallItem ? 'none' : 'inline-flex';
+            bannerInfo.innerHTML = `<span>🎯 <b>Item Focado:</b> ${item.icon || ''} ${item.name} selecionado!</span>`;
+            renderAssetList();
+          });
+          card.querySelector('.btn-toggle').addEventListener('click', () => {
+            item.visible = !isVis;
+            renderAssetList();
+          });
+          assetList.appendChild(card);
         });
-        assetList.appendChild(card);
-      });
+      }
     }
 
     btnCatalog.addEventListener('click', () => {
@@ -2292,6 +2383,7 @@ html_template = r"""<!DOCTYPE html>
 
 html_final = html_template.replace('__CAT_BODY_SLICES__', cat_body_slices_json)\
                           .replace('__CAT_PAW_SLICES__', cat_paw_slices_json)\
+                          .replace('__CAT_BELLY_SLICES__', cat_belly_slices_json)\
                           .replace('__WITCH_HAT_SLICES__', witch_hat_slices)\
                           .replace('__CROWN_HAT_SLICES__', crown_hat_slices)\
                           .replace('__BERET_HAT_SLICES__', beret_hat_slices)\

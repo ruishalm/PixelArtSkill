@@ -38,6 +38,10 @@ cat_paw_slices = [
     ]
 ]
 
+with open('C:/github/PixelArt/cat_belly_slices.json', 'r', encoding='utf-8') as f:
+    belly_slices_raw = json.load(f)
+belly_slices_json = json.dumps(belly_slices_raw)
+
 with open('C:/github/PixelArt/hats_pack.json', 'r', encoding='utf-8') as f:
     hats_pack = json.load(f)
 
@@ -190,6 +194,7 @@ template = """<!DOCTYPE html>
     }
 
     const bodyModel = buildSliceSheet(BODY_DATA, 32, 32);
+    const bellyModel = buildSliceSheet(__BELLY_SLICES__, 32, 32);
     const pawModel = buildSliceSheet(PAW_DATA, 4, 4);
 
     const HATS = {
@@ -439,36 +444,37 @@ template = """<!DOCTYPE html>
       }
 
       if (activePosture === 'belly') {
-        // === BARRIGUINHA (BELLY ROLL - STACK INVERTIDO) ===
-        const bellyWiggle = Math.sin(idleTimer * 4) * 0.08;
+        // === BARRIGUINHA (BELLY ROLL) COM CABECINHA DOBRADA OLHANDO PRA BARRIGA ===
+        // Espinha repousa suavemente no chão (Z=0) e a cabecinha curva para frente!
+        const bellyWiggle = Math.sin(idleTimer * 4) * 0.05;
 
-        for (let layer = 0; layer < COUNT; layer++) {
-          const z = COUNT - 1 - layer;
+        for (let z = 0; z < bellyModel.count; z++) {
           stackCtx.save();
-          stackCtx.translate(cx, Math.round(cy - (layer * spacing + 1.5)));
+          stackCtx.translate(cx, Math.round(cy - (z * spacing + 0.5)));
           stackCtx.scale(1, squash);
           stackCtx.rotate(turn + bellyWiggle);
           stackCtx.drawImage(
-            bodyModel.sheet,
+            bellyModel.sheet,
             z * SLICE_W, 0, SLICE_W, SLICE_H,
             -originX, -originY, SLICE_W, SLICE_H
           );
           stackCtx.restore();
         }
 
-        // 4 patinhas abanando no ar!
+        // 4 patinhas fofas abanando no ar acima da barriguinha!
         const pawTime = idleTimer * 5;
         const pBL = Math.sin(pawTime) * 1.5;
         const pBR = Math.sin(pawTime + 1.2) * 1.5;
         const pFL = Math.sin(pawTime + 2.4) * 1.5;
         const pFR = Math.sin(pawTime + 3.6) * 1.5;
 
-        renderPaw(-4.0, -6.0, 0, 0, 11 + pBL, 0.4);
-        renderPaw( 3.0, -6.0, 0, 0, 11 + pBR, -0.4);
-        renderPaw(-4.0,  3.0, 0, 0, 12 + pFL, 0.3);
-        renderPaw( 3.0,  3.0, 0, 0, 12 + pFR, -0.3);
+        renderPaw(-4.0, -4.0, 0, 0, 7.5 + pBL, 0.4);
+        renderPaw( 3.0, -4.0, 0, 0, 7.5 + pBR, -0.4);
+        renderPaw(-4.0,  2.5, 0, 0, 8.0 + pFL, 0.3);
+        renderPaw( 3.0,  2.5, 0, 0, 8.0 + pFR, -0.3);
 
-        renderHat(1.0, 2.0, 0.3);
+        // Chapéu na cabecinha dobrada
+        renderHat(7.2, 3.5, 0.2);
 
       } else if (activePosture === 'loaf') {
         // === PÃOZINHO / DEITAR ===
@@ -707,6 +713,7 @@ template = """<!DOCTYPE html>
 
 output = template.replace('__BODY_SLICES__', json.dumps(cat_body_slices))\
                  .replace('__PAW_SLICES__', json.dumps(cat_paw_slices))\
+                 .replace('__BELLY_SLICES__', belly_slices_json)\
                  .replace('__WITCH_HAT_SLICES__', witch_hat_slices)\
                  .replace('__CROWN_HAT_SLICES__', crown_hat_slices)\
                  .replace('__BERET_HAT_SLICES__', beret_hat_slices)\
