@@ -362,11 +362,11 @@ html_content = f"""<!DOCTYPE html>
         const swingDist = 3.8;
 
         const lStep = Math.sin(walkCycle);
-        legLOffX = -lStep * swingDist;
+        legLOffX = lStep * swingDist;
         legLLiftZ = (lStep > 0) ? Math.sin(lStep * Math.PI) * 2.2 : 0;
 
         const rStep = -Math.sin(walkCycle);
-        legROffX = -rStep * swingDist;
+        legROffX = rStep * swingDist;
         legRLiftZ = (rStep > 0) ? Math.sin(rStep * Math.PI) * 2.2 : 0;
 
         // Corpo dá leve balanço e quique
