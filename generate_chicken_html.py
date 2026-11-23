@@ -1,6 +1,10 @@
 """
 Gera o visualizador independente da Galinha 3D (chicken-3d.html)
 Zero dependências externas, puro HTML5 Canvas 2D + Sprite Stacking + Web Audio API.
+Refinamentos:
+1. Andando: Perninhas se movem alternadas pra frente e pra trás e levantam o pezinho!
+2. Ciscando: Corpo e pés 100% PARADINHOS! Cabeça vai pra frente, pra baixo, sobe e volta!
+3. Chocando: Mantido perfeito!
 """
 import json
 
@@ -203,7 +207,7 @@ html_content = f"""<!DOCTYPE html>
 
       <div class="slider-row">
         <span>🔍 Zoom:</span>
-        <input type="range" id="zoomSlider" min="1.0" max="3.5" step="0.1" value="2.2">
+        <input type="range" id="zoomSlider" min="1.2" max="3.8" step="0.1" value="2.5">
         <span>📐 Inclinação:</span>
         <input type="range" id="tiltSlider" min="0.4" max="0.9" step="0.05" value="0.65">
       </div>
@@ -228,8 +232,8 @@ html_content = f"""<!DOCTYPE html>
     const lowCtx = lowCanvas.getContext('2d');
     lowCtx.imageSmoothingEnabled = false;
 
-    // Constrói os sprites pré-renderizados de cada fatia
-    const sliceCanvases = CHICKEN_DATA.slices.map((sliceGrid) => {{
+    // Constrói os sprites pré-renderizados: Patas separadas (Esq/Dir), Corpo e Cabeça
+    function createPartCanvas(sliceGrid, filterFn) {{
       const sc = document.createElement('canvas');
       sc.width = CHICKEN_DATA.width;
       sc.height = CHICKEN_DATA.height;
@@ -246,6 +250,7 @@ html_content = f"""<!DOCTYPE html>
 
       for (let y = 0; y < CHICKEN_DATA.height; y++) {{
         for (let x = 0; x < CHICKEN_DATA.width; x++) {{
+          if (filterFn && !filterFn(x, y)) continue;
           const cIdx = sliceGrid[y][x];
           if (cIdx > 0) {{
             const rgba = hexToRgba(CHICKEN_DATA.palette[cIdx]);
@@ -259,14 +264,28 @@ html_content = f"""<!DOCTYPE html>
       }}
       sctx.putImageData(idata, 0, 0);
       return sc;
-    }});
+    }}
+
+    // Slices 0 a 3: Patas separadas (Esq y < 12, Dir y >= 12)
+    const legLCanvases = [];
+    const legRCanvases = [];
+    for (let i = 0; i <= 3; i++) {{
+      legLCanvases.push(createPartCanvas(CHICKEN_DATA.slices[i], (x, y) => y < 12));
+      legRCanvases.push(createPartCanvas(CHICKEN_DATA.slices[i], (x, y) => y >= 12));
+    }}
+
+    // Slices 4 a 15: Corpo e Cabeça
+    const upperCanvases = [];
+    for (let i = 4; i < CHICKEN_DATA.slices.length; i++) {{
+      upperCanvases.push(createPartCanvas(CHICKEN_DATA.slices[i], null));
+    }}
 
     // Estados da Galinha
     let currentAnim = 'walk';
     let animTime = 0;
     let turn = 0.8;
     let autoSpin = true;
-    let scale = 2.2;
+    let scale = 2.5;
     let squash = 0.65;
 
     // Web Audio API para Cluck / Cocoricó
@@ -331,28 +350,75 @@ html_content = f"""<!DOCTYPE html>
       const cx = lowCanvas.width / 2;
       const cy = lowCanvas.height / 2 + 38;
 
-      let bodyBobZ = 0;
-      let headBobX = 0;
-      let pitchTilt = 0;
-      let rollWobble = 0;
+      // Variáveis de animação desacopladas por membro
+      let legLOffX = 0, legLLiftZ = 0;
+      let legROffX = 0, legRLiftZ = 0;
+      let bodyBobZ = 0, rollWobble = 0;
+      let headOffX = 0, headOffZ = 0;
 
       if (currentAnim === 'walk') {{
-        bodyBobZ = Math.abs(Math.sin(animTime * 2.0)) * 2.2;
-        headBobX = Math.sin(animTime * 2.0) * 2.5;
-        rollWobble = Math.cos(animTime * 1.0) * 0.06;
+        // 1. ANDANDO: Perninhas se movem alternadas e levantam do chão!
+        const walkCycle = animTime * 3.0;
+        const swingDist = 3.8;
+
+        const lStep = Math.sin(walkCycle);
+        legLOffX = -lStep * swingDist;
+        legLLiftZ = (lStep > 0) ? Math.sin(lStep * Math.PI) * 2.2 : 0;
+
+        const rStep = -Math.sin(walkCycle);
+        legROffX = -rStep * swingDist;
+        legRLiftZ = (rStep > 0) ? Math.sin(rStep * Math.PI) * 2.2 : 0;
+
+        // Corpo dá leve balanço e quique
+        bodyBobZ = Math.abs(Math.sin(walkCycle)) * 1.2;
+        rollWobble = Math.cos(walkCycle * 0.5) * 0.05;
+
+        // Cabeça dá bicadinhas rítmicas pra frente/trás acompanhando os passos
+        headOffX = Math.sin(walkCycle) * 2.0;
+        headOffZ = bodyBobZ;
       }} else if (currentAnim === 'peck') {{
-        const peckCycle = (Math.sin(animTime * 2.5) + 1) / 2;
-        pitchTilt = peckCycle * 0.45;
-        headBobX = peckCycle * 5.0;
-        bodyBobZ = -peckCycle * 2.5;
-        if (peckCycle > 0.94 && Math.random() < 0.18) {{
-          playPeckSound();
+        // 2. CISCANDO:
+        // REGRA DE OURO: Corpo e pés ficam 100% PARADINHOS!
+        legLOffX = 0; legLLiftZ = 0;
+        legROffX = 0; legRLiftZ = 0;
+        bodyBobZ = 0; rollWobble = 0;
+
+        // Ciclo exato da cabeça: vai pra frente, pra baixo, sobe e volta!
+        const cycle = (animTime * 2.2) % (Math.PI * 2);
+
+        if (cycle < Math.PI * 0.35) {{
+          // Fase 1: Cabeça vai pra frente
+          const p = cycle / (Math.PI * 0.35);
+          headOffX = Math.sin(p * Math.PI * 0.5) * 6.5;
+          headOffZ = -Math.sin(p * Math.PI * 0.5) * 1.5;
+        }} else if (cycle < Math.PI * 0.70) {{
+          // Fase 2: Cabeça mergulha pra baixo rente ao chão (Bicada no chão "toc-toc"!)
+          const p = (cycle - Math.PI * 0.35) / (Math.PI * 0.35);
+          headOffX = 6.5 - p * 0.5;
+          headOffZ = -1.5 - Math.sin(p * Math.PI * 0.5) * 8.2; // Chega a Z=-9.7 (no chão!)
+          if (p > 0.85 && Math.random() < 0.25) {{
+            playPeckSound();
+          }}
+        }} else if (cycle < Math.PI * 1.10) {{
+          // Fase 3: Cabeça sobe de volta
+          const p = (cycle - Math.PI * 0.70) / (Math.PI * 0.40);
+          headOffX = 6.0 * (1 - p * 0.3);
+          headOffZ = -9.7 * (1 - p); // Sobe de -9.7 até 0
+        }} else {{
+          // Fase 4: Cabeça volta pra posição inicial de repouso
+          const p = (cycle - Math.PI * 1.10) / (Math.PI * 0.90);
+          headOffX = 4.2 * (1 - Math.sin(p * Math.PI * 0.5));
+          headOffZ = 0;
         }}
       }} else if (currentAnim === 'flap') {{
+        // 3. BATER ASAS: pulinho animado
         bodyBobZ = Math.max(0, Math.sin(animTime * 2.8)) * 8.0;
-        headBobX = Math.sin(animTime * 4.0) * 1.5;
+        legLLiftZ = bodyBobZ;
+        legRLiftZ = bodyBobZ;
+        headOffX = Math.sin(animTime * 4.0) * 1.5;
       }} else if (currentAnim === 'loaf') {{
-        bodyBobZ = -4.0;
+        // 4. CHOCANDO (PERFEITO!): pés somem, corpo repousa achatado
+        bodyBobZ = -3.8;
       }}
 
       // Sombra projetada no chão
@@ -360,51 +426,78 @@ html_content = f"""<!DOCTYPE html>
       lowCtx.translate(cx, cy + 4);
       lowCtx.scale(1, squash * 0.5);
       lowCtx.beginPath();
-      const shadowR = Math.max(10, 26 - bodyBobZ * 0.6) * (scale / 2.2);
+      const shadowR = Math.max(10, 26 - bodyBobZ * 0.6) * (scale / 2.5);
       lowCtx.arc(0, 0, shadowR, 0, Math.PI * 2);
       lowCtx.fillStyle = 'rgba(74, 46, 27, 0.22)';
       lowCtx.fill();
       lowCtx.restore();
 
-      // Renderização do Sprite Stacking (Camadas Z=0 a Z=15)
-      const numSlices = sliceCanvases.length;
-      const startSlice = (currentAnim === 'loaf') ? 4 : 0;
       const zStep = 1.35 * scale;
+      const sw = CHICKEN_DATA.width * scale;
+      const sh = CHICKEN_DATA.height * scale;
 
-      for (let i = startSlice; i < numSlices; i++) {{
-        const sliceCanvas = sliceCanvases[i];
-        const z = i + bodyBobZ;
+      // 1. Renderiza Patas (Z=0 a 3) - apenas se não estiver chocando
+      if (currentAnim !== 'loaf') {{
+        for (let i = 0; i <= 3; i++) {{
+          // Pata Esquerda
+          const zL = i + legLLiftZ;
+          const sLx = cx + (legLOffX * Math.cos(turn)) * scale;
+          const sLy = cy - (zL * zStep) * squash;
+          lowCtx.save();
+          lowCtx.translate(sLx, sLy);
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(turn);
+          lowCtx.drawImage(legLCanvases[i], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.restore();
 
-        let sliceOffX = 0;
-        let sliceOffY = 0;
-        if (i >= 9) {{
-          sliceOffX = headBobX;
+          // Pata Direita
+          const zR = i + legRLiftZ;
+          const sRx = cx + (legROffX * Math.cos(turn)) * scale;
+          const sRy = cy - (zR * zStep) * squash;
+          lowCtx.save();
+          lowCtx.translate(sRx, sRy);
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(turn);
+          lowCtx.drawImage(legRCanvases[i], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.restore();
         }}
+      }}
 
-        const extraPitch = (i >= 8) ? pitchTilt * 6 : 0;
-
-        const screenX = cx + (sliceOffX * Math.cos(turn) - sliceOffY * Math.sin(turn)) * scale;
-        const screenY = cy - (z * zStep) * squash + extraPitch;
-
+      // 2. Renderiza Corpo e Asas (Z=4 a 9)
+      for (let i = 4; i <= 9; i++) {{
+        const z = i + bodyBobZ;
+        const sX = cx;
+        const sY = cy - (z * zStep) * squash;
         lowCtx.save();
-        lowCtx.translate(screenX, screenY);
+        lowCtx.translate(sX, sY);
         lowCtx.scale(1, squash);
         lowCtx.rotate(turn + rollWobble);
-
-        const sw = CHICKEN_DATA.width * scale;
-        const sh = CHICKEN_DATA.height * scale;
-        lowCtx.drawImage(sliceCanvas, -sw / 2, -sh / 2, sw, sh);
+        lowCtx.drawImage(upperCanvases[i - 4], -sw / 2, -sh / 2, sw, sh);
         lowCtx.restore();
       }}
 
-      // Grãozinhos de milho
+      // 3. Renderiza Pescoço, Cabeça, Bico e Crista (Z=10 a 15)
+      for (let i = 10; i < CHICKEN_DATA.slices.length; i++) {{
+        const headWeight = (i === 10) ? 0.65 : 1.0;
+        const z = i + bodyBobZ + headOffZ * headWeight;
+        const sX = cx + (headOffX * headWeight * Math.cos(turn)) * scale;
+        const sY = cy - (z * zStep) * squash;
+        lowCtx.save();
+        lowCtx.translate(sX, sY);
+        lowCtx.scale(1, squash);
+        lowCtx.rotate(turn + rollWobble);
+        lowCtx.drawImage(upperCanvases[i - 4], -sw / 2, -sh / 2, sw, sh);
+        lowCtx.restore();
+      }}
+
+      // Grãozinhos de milho no chão quando ciscando
       if (currentAnim === 'peck') {{
-        const seedDist = 32 * (scale / 2.2);
+        const seedDist = (CHICKEN_DATA.width / 2 + 4) * scale;
         const seedX = cx + seedDist * Math.cos(turn);
-        const seedY = cy + seedDist * Math.sin(turn) * squash;
+        const seedY = cy + seedDist * Math.sin(turn) * squash + 4;
         lowCtx.fillStyle = '#F59E0B';
         lowCtx.fillRect(seedX - 2, seedY - 1, 3, 2);
-        lowCtx.fillRect(seedX + 5, seedY + 2, 2, 2);
+        lowCtx.fillRect(seedX + 4, seedY + 2, 2, 2);
       }}
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -438,7 +531,7 @@ html_content = f"""<!DOCTYPE html>
 
     canvas.addEventListener('wheel', (e) => {{
       e.preventDefault();
-      scale = Math.max(1.0, Math.min(3.5, scale - e.deltaY * 0.002));
+      scale = Math.max(1.2, Math.min(3.8, scale - e.deltaY * 0.002));
       document.getElementById('zoomSlider').value = scale;
     }});
 
@@ -489,4 +582,4 @@ html_content = f"""<!DOCTYPE html>
 with open('chicken-3d.html', 'w', encoding='utf-8') as f:
     f.write(html_content)
 
-print('chicken-3d.html re-gerado com sucesso!')
+print('chicken-3d.html atualizado com perninhas e ciscada perfeitas!')

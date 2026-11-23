@@ -2328,11 +2328,25 @@
     let isDraggingView = false;
     let lastX = 0;
     let pointerDownPos = { x: 0, y: 0 };
+    let isPressedOnCorkboard = false;
 
     canvas.addEventListener('pointerdown', (e) => {
       const { sx, sy } = getCanvasCoords(e);
       const worldPos = unproject(sx, sy);
       pointerDownPos = { x: e.clientX, y: e.clientY };
+      isPressedOnCorkboard = false;
+
+      if (!isDecorMode) {
+        // Se clicar no Mural de Post-its, captura o clique sem iniciar rotação do quarto!
+        const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
+        if (corkboard) {
+          const pBoard = project(corkboard.x, corkboard.y, corkboard.liftZ);
+          if (Math.hypot(sx - pBoard.x, sy - pBoard.y) < 48) {
+            isPressedOnCorkboard = true;
+            return;
+          }
+        }
+      }
 
       if (isDecorMode) {
         const item = findItemAt(worldPos, { sx, sy });
@@ -2361,6 +2375,20 @@
     window.addEventListener('pointermove', (e) => {
       const { sx, sy } = getCanvasCoords(e);
       const worldPos = unproject(sx, sy);
+
+      if (!isDecorMode && !isDraggingView) {
+        const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
+        if (corkboard) {
+          const pBoard = project(corkboard.x, corkboard.y, corkboard.liftZ);
+          if (Math.hypot(sx - pBoard.x, sy - pBoard.y) < 48) {
+            canvas.style.cursor = 'pointer';
+            canvas.title = '📌 Clique para abrir o Mural de Post-its!';
+          } else {
+            canvas.style.cursor = '';
+            canvas.title = '';
+          }
+        }
+      }
 
       if (isDecorMode && !isDraggingItem && !isDraggingView) {
         hoveredItem = findItemAt(worldPos, { sx, sy });
@@ -2531,22 +2559,23 @@
     window.addEventListener('pointerup', (e) => {
       if (!isDecorMode && !isDraggingItem && pointerDownPos) {
         const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
-        if (moved < 6) {
-          const { sx, sy } = getCanvasCoords(e);
-          const worldPos = unproject(sx, sy);
-          // Clique no Mural de Post-its abre o Zoom / Modal de Lembretes!
-          const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
-          if (corkboard) {
-            const isEastWallVis = (1 * Math.sin(turn) <= 0.05);
-            if (isEastWallVis) {
-              const pBoard = project(corkboard.x, corkboard.y, corkboard.liftZ);
-              const dScreen = Math.hypot(sx - pBoard.x, sy - pBoard.y);
-              if (dScreen < 32) {
-                openCorkboardModal();
-                return;
-              }
-            }
+        const { sx, sy } = getCanvasCoords(e);
+        const worldPos = unproject(sx, sy);
+
+        // Clique no Mural de Post-its abre o Zoom / Modal de Lembretes!
+        const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
+        if (corkboard) {
+          const pBoard = project(corkboard.x, corkboard.y, corkboard.liftZ);
+          const dScreen = Math.hypot(sx - pBoard.x, sy - pBoard.y);
+          if (isPressedOnCorkboard || (moved < 25 && dScreen < 48)) {
+            isPressedOnCorkboard = false;
+            openCorkboardModal();
+            return;
           }
+        }
+        isPressedOnCorkboard = false;
+
+        if (moved < 18) {
 
           // Clique na Galinha Cocoricó faz ela cacarejar alegremente!
           const chk = items.find(it => it.id === 'chicken' && it.visible !== false);
