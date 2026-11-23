@@ -1,0 +1,8 @@
+.playwright-mcp/
+pixel-plays/
+pixelart-gaussiansplat/
+shapeshift-labs-ink-studio/
+temp_check.js
+*.log
+.DS_Store
+Thumbs.db
