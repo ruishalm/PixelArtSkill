@@ -9,30 +9,30 @@ def to_strings(slices):
         res.append([''.join(str(v) for v in row) for row in s])
     return res
 
-# 1. MESA DE ESTUDO ESPAÇOSA (50x30, 15 slices)
-desk_w, desk_h = 50, 30
+# 1. MESA DE ESTUDO AMPLA & ESPAÇOSA (64x34, 15 slices)
+desk_w, desk_h = 64, 34
 desk_slices = []
 for z in range(15):
     g = make_grid(desk_w, desk_h, 0)
-    if z < 10: # 4 Pernas de madeira escura
-        for lx, ly in [(4, 4), (42, 4), (4, 22), (42, 22)]:
-            for dy in range(4):
-                for dx in range(4):
+    if z < 10: # 4 Pernas de madeira maciça escura
+        for lx, ly in [(4, 4), (54, 4), (4, 24), (54, 24)]:
+            for dy in range(6):
+                for dx in range(6):
                     g[ly + dy][lx + dx] = 1 # perna escura
-    elif z < 12: # Travessas / barras de suporte sob o tampo
-        for ly in range(4, 26):
-            g[ly][4] = 1; g[ly][5] = 1
-            g[ly][44] = 1; g[ly][45] = 1
-        for lx in range(4, 46):
+    elif z < 12: # Estrutura e travessas reforçadas sob o tampo
+        for ly in range(4, 30):
+            g[ly][4] = 1; g[ly][5] = 1; g[ly][6] = 1
+            g[ly][57] = 1; g[ly][58] = 1; g[ly][59] = 1
+        for lx in range(4, 60):
             g[4][lx] = 1; g[5][lx] = 1
-            g[24][lx] = 1; g[25][lx] = 1
-    else: # Tampo amplo de carvalho maciço (z=12, 13, 14)
-        for y in range(2, 28):
-            for x in range(2, 48):
-                if x in (2, 47) or y in (2, 27):
-                    g[y][x] = 3 # Chanfro da borda
+            g[28][lx] = 1; g[29][lx] = 1
+    else: # Tampo amplo de carvalho aconchegante (z=12, 13, 14)
+        for y in range(2, 32):
+            for x in range(2, 62):
+                if x in (2, 61) or y in (2, 31):
+                    g[y][x] = 3 # Chanfro sutil da borda
                 else:
-                    g[y][x] = 2 # Carvalho aconchegante
+                    g[y][x] = 2 # Carvalho acolhedor
     desk_slices.append(g)
 
 # 2. NOTEBOOK ELEGANTE NO SUPORTE (24x20, 12 slices)
@@ -180,4 +180,4 @@ pack = {
 with open('C:/github/PixelArt/modular_desk_pack.json', 'w', encoding='utf-8') as f:
     json.dump(pack, f, indent=2)
 
-print("SUCCESS: modular_desk_pack.json rebuilt!")
+print("SUCCESS: modular_desk_pack.json rebuilt with 64x34 desk!")
