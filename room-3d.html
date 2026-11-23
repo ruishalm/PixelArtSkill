@@ -440,36 +440,32 @@
     // --- LISTA MODULAR DE MÓVEIS E ACESSÓRIOS INDEPENDENTES ---
     const items = [
       // O Gatinho
-      { id: 'cat',        name: 'Gatinho Mochi',       icon: '🐱', model: catModel,       x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true },
-      
-      // Mesa de Estudo Espaçosa Ampliada (64x34)
-      { id: 'desk',       name: 'Mesa de Estudo',      icon: '🪵', model: deskModel,      x: 55,  y: -65, liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 46, isDesk: true, visible: true },
-      
-      // Itens da Mesa (Fisicamente no tampo liftZ: 21, desenhados SEMPRE APÓS a mesa)
-      { id: 'laptop',     name: 'Note no Suporte',     icon: '💻', model: laptopModel,    x: 55,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 18, onDesk: true, offX: 0, offY: -9, visible: true },
-      { id: 'tablet',     name: 'Tablet de Desenho',   icon: '🎨', model: tabletModel,    x: 32,  y: -62, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 16, onDesk: true, offX: -23, offY: 3, visible: true },
-      { id: 'desk_books', name: 'Livros da Mesa',      icon: '📚', model: deskBooksModel, x: 80,  y: -58, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 14, onDesk: true, offX: 25, offY: 7, visible: true },
-      { id: 'mug',        name: 'Caneca de Café',      icon: '☕', model: mugModel,       x: 78,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 10, onDesk: true, offX: 23, offY: -9, visible: true },
-      
-      // Prateleira de Madeira na Parede Oeste (x = -ROOM_R) - APENAS A PRATELEIRA LIMPA!
-      { id: 'shelf',      name: 'Prateleira de Madeira', icon: '🪵', isWallItem: true, wall: 'west', x: -ROOM_R, y: -10, liftZ: 58, length: 64, radius: 24, visible: true },
+      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', model: catModel,       x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true },
 
-      // Itens Separados da Prateleira (onShelf: true)
-      { id: 'shelf_books',   name: 'Livros da Prateleira', icon: '📚', isWallItem: true, onShelf: true, wall: 'west', x: -ROOM_R, y: -28, liftZ: 61.5, offY: -18, offZ: 3.5, radius: 15, visible: true },
-      { id: 'shelf_plant',   name: 'Vasinho da Prateleira', icon: '🪴', isWallItem: true, onShelf: true, wall: 'west', x: -ROOM_R, y: -10, liftZ: 61.5, offY: 0, offZ: 3.5, radius: 12, visible: true },
-      { id: 'shelf_crystal', name: 'Cristal & Livros',     icon: '💎', isWallItem: true, onShelf: true, wall: 'west', x: -ROOM_R, y: 8,   liftZ: 61.5, offY: 18, offZ: 3.5, radius: 14, visible: true },
+      // Acessórios Universais (Podem ficar na MESA, na PRATELEIRA ou no CHÃO livremente!)
+      { id: 'laptop',        name: 'Note no Suporte',      icon: '💻', model: laptopModel,    x: 55,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 18, isProp: true, surface: 'desk', offX: 0, offY: -9, visible: true },
+      { id: 'tablet',        name: 'Tablet de Desenho',    icon: '🎨', model: tabletModel,    x: 32,  y: -62, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 16, isProp: true, surface: 'desk', offX: -23, offY: 3, visible: true },
+      { id: 'desk_books',    name: 'Livros Empilhados',    icon: '📚', model: deskBooksModel, x: 80,  y: -58, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 14, isProp: true, surface: 'desk', offX: 25, offY: 7, visible: true },
+      { id: 'mug',           name: 'Caneca de Café',       icon: '☕', model: mugModel,       x: 78,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 10, isProp: true, surface: 'desk', offX: 23, offY: -9, visible: true },
+      { id: 'shelf_books',   name: 'Livros em Pé',         icon: '📖', x: -ROOM_R + 9, y: -28, liftZ: 61.5, radius: 15, isProp: true, surface: 'shelf', offY: -18, visible: true },
+      { id: 'shelf_plant',   name: 'Vasinho de Suculenta', icon: '🪴', x: -ROOM_R + 9, y: -10, liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 0,   visible: true },
+      { id: 'shelf_crystal', name: 'Cristal de Quartzo',   icon: '💎', x: -ROOM_R + 9, y: 8,   liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 18,  visible: true },
 
-      // Relógio 3D na Parede Oeste (Separado da prateleira!)
-      { id: 'clock',      name: 'Relógio de Parede',   icon: '⏰', isWallItem: true, wall: 'west', x: -ROOM_R, y: 0, liftZ: 85, radius: 16, visible: true },
+      // Prateleira de Madeira na Parede Oeste (Alargada para 1 Tile = 18px!)
+      { id: 'shelf',         name: 'Prateleira de Madeira',icon: '🪵', isWallItem: true, wall: 'west', x: -ROOM_R, y: -10, liftZ: 58, length: 68, radius: 24, visible: true },
+
+      // Relógio 3D na Parede Oeste
+      { id: 'clock',         name: 'Relógio de Parede',    icon: '⏰', isWallItem: true, wall: 'west', x: -ROOM_R, y: 0, liftZ: 85, radius: 16, visible: true },
 
       // Quadros 3D na Parede Leste (x = ROOM_R)
-      { id: 'frame_cat',   name: 'Quadro Gatinho',     icon: '🖼️', isWallItem: true, wall: 'east', x: ROOM_R, y: -20, liftZ: 62, radius: 20, visible: true },
-      { id: 'frame_plant', name: 'Quadro Botânico',    icon: '🌿', isWallItem: true, wall: 'east', x: ROOM_R, y: 28,  liftZ: 54, radius: 18, visible: true },
+      { id: 'frame_cat',     name: 'Quadro Gatinho',       icon: '🖼️', isWallItem: true, wall: 'east', x: ROOM_R, y: -20, liftZ: 62, radius: 20, visible: true },
+      { id: 'frame_plant',   name: 'Quadro Botânico',      icon: '🌿', isWallItem: true, wall: 'east', x: ROOM_R, y: 28,  liftZ: 54, radius: 18, visible: true },
 
-      // Outros móveis de chão
-      { id: 'bed',        name: 'Caminha Nuvem',       icon: '☁️', model: bedModel,       x: -75, y: -70, liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 25, visible: true },
-      { id: 'plant',      name: 'Planta Monstera',     icon: '🌿', model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
-      { id: 'tree',       name: 'Torre de Gato',       icon: '🐾', model: treeModel,      x: -80, y: 50,  liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 24, visible: true }
+      // Móveis do Quarto
+      { id: 'desk',          name: 'Mesa de Estudo',       icon: '🪵', model: deskModel,      x: 55,  y: -65, liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 46, isDesk: true, visible: true },
+      { id: 'bed',           name: 'Caminha Nuvem',        icon: '☁️', model: bedModel,       x: -75, y: -70, liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 25, visible: true },
+      { id: 'plant',         name: 'Planta Monstera',      icon: '🌿', model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
+      { id: 'tree',          name: 'Torre de Gato',        icon: '🐾', model: treeModel,      x: -80, y: 50,  liftZ: 0,  selfAngle: 0,   scale: 1.4,  radius: 24, visible: true }
     ];
 
     // Slots inteligentes no tampo da mesa (Snap-to-Slot estilo The Sims / Animal Crossing)
@@ -839,74 +835,74 @@
 
     // --- ITENS DE PAREDE E PRATELEIRA MODULARES ---
 
-    // 1. Tábua da Prateleira Limpa com Suportes Perfeitos (SEM Sobreposição!)
+    // 1. Tábua da Prateleira Limpa (Alargada para 1 Tile = 18px! SEM Sobreposição!)
     function drawShelfItem(shelf) {
       const xWall = -ROOM_R;
       const sy = shelf.y;
       const sz = shelf.liftZ;
-      const halfLen = (shelf.length || 64) / 2;
+      const halfLen = (shelf.length || 68) / 2;
 
       // 1. Suportes / Mísulas desenhados PRIMEIRO (ficam estritamente ABAIXO da tábua!)
       const bOffsets = [-halfLen + 10, halfLen - 10];
       for (const bo of bOffsets) {
         const by = sy + bo;
-        draw3DBox(xWall, xWall + 9, by - 1.2, by + 1.2, sz - 10, sz - 0.2, {
+        draw3DBox(xWall, xWall + 13, by - 1.2, by + 1.2, sz - 11, sz - 0.2, {
           top: '#633A18', front: '#633A18', back: '#532F16', left: '#532F16', right: '#7E4E2C', bottom: '#3B2219', stroke: '#3B2219'
         });
       }
 
-      // 2. Tábua da prateleira desenhada DEPOIS (cobre 100% o topo dos suportes!)
-      draw3DBox(xWall, xWall + 13, sy - halfLen, sy + halfLen, sz, sz + 3.5, {
+      // 2. Tábua da prateleira desenhada DEPOIS (largura total de 1 Tile = 18px! Cobre 100% o topo dos suportes!)
+      draw3DBox(xWall, xWall + 18, sy - halfLen, sy + halfLen, sz, sz + 3.5, {
         top: '#A06842', front: '#804E2B', back: '#6B3E1E', left: '#6B3E1E', right: '#804E2B', bottom: '#5A341A', stroke: '#3B2219'
       });
     }
 
-    // 2. Livros em Pé da Prateleira
+    // 2. Livros em Pé (Acessório Universal 3D)
     function drawShelfBooks(item) {
-      const xWall = -ROOM_R;
+      const x = item.x;
       const y = item.y;
       const z = item.liftZ;
       // Livro 1 (Vermelho em pé)
-      draw3DBox(xWall + 2, xWall + 11, y - 6, y - 2, z, z + 17, {
+      draw3DBox(x - 5, x + 4, y - 6, y - 2, z, z + 17, {
         top: '#FAF7F2', front: '#C85A48', back: '#A03828', left: '#A03828', right: '#C85A48', bottom: '#802818', stroke: '#3B2219'
       });
       // Livro 2 (Azul em pé)
-      draw3DBox(xWall + 2, xWall + 10, y - 1, y + 3, z, z + 13, {
+      draw3DBox(x - 5, x + 3, y - 1, y + 3, z, z + 13, {
         top: '#FAF7F2', front: '#4A7CA8', back: '#325C80', left: '#325C80', right: '#4A7CA8', bottom: '#254460', stroke: '#3B2219'
       });
       // Apoio de metal moderno
-      draw3DBox(xWall + 1.5, xWall + 9.5, y + 4, y + 5.5, z, z + 9, {
+      draw3DBox(x - 5.5, x + 2.5, y + 4, y + 5.5, z, z + 9, {
         top: '#94A3B8', front: '#64748B', back: '#475569', left: '#475569', right: '#64748B', bottom: '#334155', stroke: '#1E293B'
       });
     }
 
-    // 3. Vasinho de Planta Suculenta Terracota 3D da Prateleira
+    // 3. Vasinho de Suculenta Terracota (Acessório Universal 3D)
     function drawShelfPlant(item) {
-      const xWall = -ROOM_R;
+      const x = item.x;
       const y = item.y;
       const z = item.liftZ;
-      draw3DBox(xWall + 3, xWall + 11, y - 4, y + 4, z, z + 8, {
+      draw3DBox(x - 4, x + 4, y - 4, y + 4, z, z + 8, {
         top: '#4A2E1B', front: '#C26A45', back: '#A04E2D', left: '#A04E2D', right: '#C26A45', bottom: '#3B2219', stroke: '#3B2219'
       });
-      draw3DBox(xWall + 5, xWall + 9, y - 3, y + 3, z + 8, z + 16, {
+      draw3DBox(x - 2, x + 2, y - 3, y + 3, z + 8, z + 16, {
         top: '#5BB055', front: '#4D8A48', back: '#386A34', left: '#386A34', right: '#4D8A48', bottom: '#244520', stroke: '#244520'
       });
-      draw3DBox(xWall + 5.5, xWall + 8.5, y - 5, y - 3, z + 10, z + 13, { top: '#5BB055', front: '#4D8A48', stroke: '#244520' });
-      draw3DBox(xWall + 5.5, xWall + 8.5, y + 3, y + 5, z + 10, z + 13, { top: '#5BB055', front: '#4D8A48', stroke: '#244520' });
+      draw3DBox(x - 1.5, x + 1.5, y - 5, y - 3, z + 10, z + 13, { top: '#5BB055', front: '#4D8A48', stroke: '#244520' });
+      draw3DBox(x - 1.5, x + 1.5, y + 3, y + 5, z + 10, z + 13, { top: '#5BB055', front: '#4D8A48', stroke: '#244520' });
     }
 
-    // 4. Livros Deitados com Cristal Rosa da Prateleira
+    // 4. Livros Deitados com Cristal Rosa (Acessório Universal 3D)
     function drawShelfCrystal(item) {
-      const xWall = -ROOM_R;
+      const x = item.x;
       const y = item.y;
       const z = item.liftZ;
-      draw3DBox(xWall + 2, xWall + 12, y - 5, y + 5, z, z + 3.5, {
+      draw3DBox(x - 5, x + 5, y - 5, y + 5, z, z + 3.5, {
         top: '#0D9488', front: '#0F766E', back: '#115E59', left: '#FAF7F2', right: '#FAF7F2', bottom: '#134E4A', stroke: '#042F2C'
       });
-      draw3DBox(xWall + 3, xWall + 11, y - 4, y + 4, z + 3.5, z + 7, {
+      draw3DBox(x - 4, x + 4, y - 4, y + 4, z + 3.5, z + 7, {
         top: '#7C3AED', front: '#6D28D9', back: '#5B21B6', left: '#FAF7F2', right: '#FAF7F2', bottom: '#4C1D95', stroke: '#2E1065'
       });
-      draw3DBox(xWall + 5, xWall + 9, y - 2, y + 2, z + 7, z + 13, {
+      draw3DBox(x - 2, x + 2, y - 2, y + 2, z + 7, z + 13, {
         top: '#F472B6', front: '#EC4899', back: '#DB2777', left: '#DB2777', right: '#EC4899', bottom: '#BE185D', stroke: '#831843'
       });
     }
@@ -1195,15 +1191,15 @@
       // 1. Itens da Parede Oeste (só renderiza se a parede oeste for parede de trás)
       const isWestWallVisible = (-1 * sinA <= 0.05);
       if (isWestWallVisible) {
-        // Exclui itens apoiados na prateleira (onShelf) para renderizá-los diretamente em cima da prateleira
-        const westWallMains = activeItems.filter(it => it.isWallItem && it.wall === 'west' && !it.onShelf);
+        // Exclui itens apoiados na prateleira para renderizá-los diretamente em cima dela
+        const westWallMains = activeItems.filter(it => it.isWallItem && it.wall === 'west' && it.surface !== 'shelf');
         westWallMains.sort((a, b) => a.depth - b.depth);
         for (const item of westWallMains) {
           renderItem(item);
 
-          // Ao renderizar a prateleira, desenha imediatamente todos os acessórios apoiados nela!
+          // Ao renderizar a prateleira, desenha IMEDIATAMENTE todos os acessórios apoiados nela!
           if (item.id === 'shelf') {
-            const shelfProps = activeItems.filter(it => it.onShelf);
+            const shelfProps = activeItems.filter(it => it.surface === 'shelf');
             shelfProps.sort((a, b) => a.depth - b.depth);
             for (const prop of shelfProps) {
               renderItem(prop);
@@ -1222,15 +1218,14 @@
         }
       }
 
-      // 3. Itens de chão (exclui itens de parede e itens que estão em cima da mesa)
-      const floorItems = activeItems.filter(it => !it.isWallItem && !it.onDesk);
+      // 3. Itens de chão (exclui itens de parede, itens na mesa e itens na prateleira)
+      const floorItems = activeItems.filter(it => !it.isWallItem && it.surface !== 'desk' && it.surface !== 'shelf');
       floorItems.sort((a, b) => a.depth - b.depth);
 
       for (const item of floorItems) {
         renderItem(item);
 
         // SE O ITEM FOR A MESA, DESENHA IMEDIATAMENTE TODOS OS ITENS APOIADOS NELA!
-        // ISSO GARANTE QUE O TAMPO DA MESA NUNCA COBRA O NOTEBOOK, TABLET OU CAFÉ!
         if (item.id === 'desk') {
           // Indicadores sutis de Snap-to-Slot no tampo da mesa no Modo Decoração
           if (isDecorMode && (isDraggingItem || hoveredItem)) {
@@ -1252,7 +1247,7 @@
             }
           }
 
-          const deskProps = activeItems.filter(it => it.onDesk);
+          const deskProps = activeItems.filter(it => it.surface === 'desk');
           deskProps.sort((a, b) => a.depth - b.depth);
           for (const prop of deskProps) {
             renderItem(prop);
@@ -1325,10 +1320,10 @@
 
       const activeItems = items.filter(it => it.visible !== false);
 
-      // FASE 1: Prioridade Máxima para itens em cima da mesa (onDesk)
-      // Se o usuário clicar no notebook, tablet, livros da mesa ou caneca, SEMPRE pega o acessório!
-      const deskProps = activeItems.filter(it => it.onDesk);
-      for (const item of deskProps) {
+      // FASE 1: Prioridade Máxima para acessórios universais (na mesa, na prateleira ou no chão)
+      // Se o usuário clicar em qualquer acessório, SEMPRE seleciona o acessório diretamente!
+      const props = activeItems.filter(it => it.isProp);
+      for (const item of props) {
         const p = project(item.x, item.y, item.liftZ + 6);
         const dScreen = Math.hypot(screenPos.sx - p.x, screenPos.sy - p.y);
         if (dScreen < (item.radius || 15)) {
@@ -1348,8 +1343,8 @@
         }
       }
 
-      // FASE 3: O Gatinho e outros itens de chão menores
-      const floorMobiles = activeItems.filter(it => !it.isWallItem && !it.onDesk && !it.isDesk);
+      // FASE 3: O Gatinho e outros itens de chão
+      const floorMobiles = activeItems.filter(it => !it.isWallItem && !it.isProp && !it.isDesk);
       const sortedFloor = [...floorMobiles].sort((a, b) => b.depth - a.depth);
       for (const item of sortedFloor) {
         const h = item.model ? item.model.count * (item.scale || 1.3) : 20;
@@ -1492,12 +1487,13 @@
           const limit = ROOM_R - 30;
           selectedItem.y = Math.max(-limit, Math.min(limit, newY));
 
-          // Se moveu a prateleira inteira, atualiza os itens apoiados nela!
+          // Se moveu a prateleira inteira, atualiza os itens apoiados nela PRESERVANDO sua posição offY exata!
           if (selectedItem.id === 'shelf') {
             for (const it of items) {
-              if (it.onShelf) {
+              if (it.surface === 'shelf') {
+                it.x = -ROOM_R + 9;
                 it.y = selectedItem.y + it.offY;
-                it.liftZ = selectedItem.liftZ + it.offZ;
+                it.liftZ = selectedItem.liftZ + 3.5;
               }
             }
           }
@@ -1539,20 +1535,28 @@
         selectedItem.x = Math.max(-limitX, Math.min(limitX, newX));
         selectedItem.y = Math.max(-limitY, Math.min(limitY, newY));
 
-        // Se estiver arrastando a mesa inteira, move todos os itens da mesa juntos!
+        // Se estiver arrastando a mesa inteira, move todos os itens apoiados nela juntos!
         if (selectedItem.id === 'desk') {
           for (const it of items) {
-            if (it.onDesk) {
+            if (it.surface === 'desk') {
               it.x = selectedItem.x + it.offX;
               it.y = selectedItem.y + it.offY;
               it.selfAngle = selectedItem.selfAngle;
             }
           }
-        } else if (selectedItem.onDesk || selectedItem.id === 'laptop' || selectedItem.id === 'tablet' || selectedItem.id === 'desk_books' || selectedItem.id === 'mug') {
-          // Se for um item da mesa sendo reposicionado
-          const onDeskArea = Math.abs(selectedItem.x - desk.x) < 42 && Math.abs(selectedItem.y - desk.y) < 24;
+        } else if (selectedItem.isProp) {
+          // ACESSÓRIO UNIVERSAL: pode ser colocado na mesa, na prateleira ou no chão!
+          const shelf = items.find(it => it.id === 'shelf');
+
+          // 1. Checa se está sobre a MESA
+          const onDeskArea = Math.abs(selectedItem.x - desk.x) < 38 && Math.abs(selectedItem.y - desk.y) < 22;
+
+          // 2. Checa se está sobre a PRATELEIRA (Parede Oeste x = -ROOM_R)
+          const onShelfArea = Math.abs(selectedItem.x - (-ROOM_R + 9)) < 18 && Math.abs(selectedItem.y - shelf.y) < (shelf.length / 2 + 6);
+
           if (onDeskArea) {
-            selectedItem.onDesk = true;
+            // Colocou NA MESA!
+            selectedItem.surface = 'desk';
             selectedItem.liftZ = 21;
             let relX = selectedItem.x - desk.x;
             let relY = selectedItem.y - desk.y;
@@ -1576,8 +1580,15 @@
             selectedItem.offY = relY;
             selectedItem.x = desk.x + relX;
             selectedItem.y = desk.y + relY;
+          } else if (onShelfArea) {
+            // Colocou NA PRATELEIRA!
+            selectedItem.surface = 'shelf';
+            selectedItem.liftZ = shelf.liftZ + 3.5;
+            selectedItem.x = -ROOM_R + 9;
+            selectedItem.offY = selectedItem.y - shelf.y; // Preserva a posição na prateleira sem resetar!
           } else {
-            selectedItem.onDesk = false;
+            // Colocou NO CHÃO!
+            selectedItem.surface = null;
             selectedItem.liftZ = 0;
           }
         }
