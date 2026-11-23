@@ -11,7 +11,25 @@ for z in (0, 1):
         for x in range(32):
             cat_body_slices[z][y][x] = '0'
 
+# Cute Anime Butt Mark (*) under the tail on slices 2, 3, 4 at y=8
+cat_body_slices[2][8][15] = '4'
+cat_body_slices[2][8][16] = '4'
+cat_body_slices[3][8][14] = '4'
+cat_body_slices[3][8][15] = '4'
+cat_body_slices[3][8][16] = '4'
+cat_body_slices[3][8][17] = '4'
+cat_body_slices[4][8][14] = '4'
+cat_body_slices[4][8][17] = '4'
+
 cat_body_slices = [[''.join(r) for r in s] for s in cat_body_slices]
+
+with open('C:/github/PixelArt/hats_pack.json', 'r', encoding='utf-8') as f:
+    hats_pack = json.load(f)
+
+witch_hat_slices = json.dumps(hats_pack['witch'])
+crown_hat_slices = json.dumps(hats_pack['crown'])
+beret_hat_slices = json.dumps(hats_pack['beret'])
+flower_hat_slices = json.dumps(hats_pack['flower'])
 
 # Criando slices de 1 patinha (4x4, 2 fatias com almofadinha rosa na base!)
 cat_paw_slices = [
@@ -330,7 +348,9 @@ html_template = r"""<!DOCTYPE html>
     <button id="btnDecorMode" class="btn btn-secondary">🛠️ Mover Itens</button>
     <button id="btnRotateMob" class="btn btn-secondary" style="display: none;">↻ Girar (R)</button>
     <button id="btnAutoSpin" class="btn active">🔄 Giro Auto</button>
-    <button id="btnPet" class="btn btn-secondary">🐾 Carinho</button>
+    <button id="btnHat" class="btn btn-secondary">🎩 Chapéu: Nenhum</button>
+    <button id="btnPosture" class="btn btn-secondary">🐾 Modo: Auto</button>
+    <button id="btnPet" class="btn btn-secondary">💕 Carinho</button>
     <div class="label">
       <span>Inclinação:</span>
       <input type="range" id="squashSlider" min="0.60" max="0.85" step="0.01" value="0.72">
@@ -422,6 +442,14 @@ html_template = r"""<!DOCTYPE html>
     const catBodyModel = createSliceSheet(__CAT_BODY_SLICES__, catPal, 32, 32);
     const catPawModel = createSliceSheet(__CAT_PAW_SLICES__, catPal, 4, 4);
 
+    // CHAPÉUZINHOS PURRMODORO
+    const HATS = {
+      witch: createSliceSheet(__WITCH_HAT_SLICES__, ['rgba(0,0,0,0)', '#221533', '#E5A93C', '#38244F'], 16, 16),
+      crown: createSliceSheet(__CROWN_HAT_SLICES__, ['rgba(0,0,0,0)', '#F4B846', '#FFD166', '#E63946'], 12, 12),
+      beret: createSliceSheet(__BERET_HAT_SLICES__, ['rgba(0,0,0,0)', '#5E1428', '#B82D52', '#3D0C1A'], 14, 14),
+      flower: createSliceSheet(__FLOWER_HAT_SLICES__, ['rgba(0,0,0,0)', '#FFB7C5', '#FFD166'], 10, 10),
+    };
+
     // 2. MESA DE ESTUDO AMPLIADA (15 slices, 64x34)
     const deskPal = [
       'rgba(0,0,0,0)',
@@ -493,8 +521,8 @@ html_template = r"""<!DOCTYPE html>
 
     // --- LISTA MODULAR DE MÓVEIS E ACESSÓRIOS INDEPENDENTES ---
     const items = [
-      // O Gatinho Articulado (com IA Autônoma de Caminhada)
-      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', model: catBodyModel,   x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true, state: 'idle', stateTimer: 180, isWalking: false, walkCycle: 0, idleTimer: 0 },
+      // O Gatinho Articulado (com IA Autônoma, Posturas e Chapéus)
+      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', model: catBodyModel,   x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true, state: 'idle', stateTimer: 180, isWalking: false, walkCycle: 0, idleTimer: 0, hat: 'none', posture: 'sit', forcedPosture: null, speech: null, bellyTimer: 0 },
 
       // Acessórios Universais (Podem ficar na MESA, na PRATELEIRA ou no CHÃO livremente!)
       { id: 'laptop',        name: 'Note no Suporte',      icon: '💻', model: laptopModel,    x: 55,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 18, isProp: true, surface: 'desk', offX: 0, offY: -9, visible: true },
@@ -649,6 +677,34 @@ html_template = r"""<!DOCTYPE html>
       for (let z = 0; z < count; z++) {
         lowCtx.save();
         lowCtx.translate(p.x, Math.round(p.y - z * scale));
+        lowCtx.scale(scale, squash * scale);
+        lowCtx.rotate(totalAngle);
+        lowCtx.drawImage(
+          sheet,
+          z * w, 0, w, h,
+          -originX, -originY, w, h
+        );
+        lowCtx.restore();
+      }
+    }
+
+    // Renderizador Invertido para Mostrar a Barriguinha (Belly Roll)
+    function drawStackInverted(model, worldX, worldY, liftZ = 0, selfAngle = 0, scale = 1.35) {
+      const p = project(worldX, worldY, liftZ);
+      const totalAngle = selfAngle + turn;
+
+      const sheet = model.sheet;
+      const count = model.count;
+      const w = model.w;
+      const h = model.h;
+      const originX = Math.floor(w / 2);
+      const originY = Math.floor(h / 2);
+
+      // Invertido: fatia count-1 fica no chão, fatia 0 (barriguinha branca) fica no topo voltada para cima!
+      for (let layer = 0; layer < count; layer++) {
+        const z = count - 1 - layer;
+        lowCtx.save();
+        lowCtx.translate(p.x, Math.round(p.y - layer * scale));
         lowCtx.scale(scale, squash * scale);
         lowCtx.rotate(totalAngle);
         lowCtx.drawImage(
@@ -1133,45 +1189,223 @@ html_template = r"""<!DOCTYPE html>
       drawQuad(fOut4, fOut3, wOut3, wOut4, '#6B3E1E');
     }
 
+    // --- ÁUDIO RETRO PROCEDURAL (Web Audio API - Zero assets externos!) ---
+    let audioCtx = null;
+    function playMeowSound() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const now = audioCtx.currentTime;
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        // Miau fofinho com modulação de frequência (460Hz -> 760Hz -> 540Hz)
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(460, now);
+        osc.frequency.exponentialRampToValueAtTime(760, now + 0.12);
+        osc.frequency.exponentialRampToValueAtTime(540, now + 0.32);
+
+        // Envelope acústico macio
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.20, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.15, now + 0.22);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+        // Purr vibrato LFO
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        lfo.frequency.value = 22;
+        lfoGain.gain.value = 16;
+        lfo.connect(osc.frequency);
+        lfo.start(now);
+        lfo.stop(now + 0.35);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      } catch (err) {}
+    }
+
+    function triggerPetReactions(cat) {
+      if (!cat) return;
+      playMeowSound();
+
+      // Coraçõezinhos flutuantes
+      const p = project(cat.x, cat.y, 24);
+      for (let i = 0; i < 8; i++) {
+        hearts.push({
+          x: p.x + (Math.random() * 28 - 14),
+          y: p.y - (Math.random() * 20),
+          alpha: 1.0
+        });
+      }
+
+      // Balão de fala carinhoso
+      const phrases = ['Purrr... ♥', 'Miau! ♪', 'Nyaa~ ✨', 'Awnn! ♥', 'Meow~ 💕'];
+      const text = phrases[Math.floor(Math.random() * phrases.length)];
+      cat.speech = { text, timer: 120 };
+
+      // Reação corporal: 50% de chance de rolar e mostrar a barriguinha!
+      if (!cat.forcedPosture || cat.forcedPosture === 'auto') {
+        if (Math.random() < 0.55) {
+          cat.posture = 'belly';
+          cat.bellyTimer = 180; // 3 segundos curtindo carinho na barriga
+        } else {
+          cat.posture = 'sit';
+          cat.stateTimer = 120;
+        }
+      }
+    }
+
+    function drawLoafZzz(cat) {
+      const p = project(cat.x, cat.y, 22 * cat.scale);
+      const time = (cat.idleTimer || 0);
+      const zzzOffset = (time * 1.5) % 3;
+      const alpha = Math.max(0, 1 - (zzzOffset / 3));
+
+      lowCtx.save();
+      lowCtx.fillStyle = `rgba(100, 130, 180, ${alpha * 0.85})`;
+      lowCtx.font = 'bold 8px monospace';
+      lowCtx.fillText('Z', p.x + 8 + zzzOffset * 2, p.y - zzzOffset * 6);
+      if (zzzOffset > 0.8) {
+        lowCtx.fillText('z', p.x + 13 + (zzzOffset - 0.8) * 3, p.y - 4 - (zzzOffset - 0.8) * 8);
+      }
+      if (zzzOffset > 1.6) {
+        lowCtx.fillText('z', p.x + 18 + (zzzOffset - 1.6) * 4, p.y - 8 - (zzzOffset - 1.6) * 10);
+      }
+      lowCtx.restore();
+    }
+
+    function drawCatSpeech(cat) {
+      if (!cat.speech || cat.speech.timer <= 0) return;
+      cat.speech.timer--;
+
+      const p = project(cat.x, cat.y, 26 * cat.scale);
+      const text = cat.speech.text;
+
+      lowCtx.save();
+      lowCtx.font = 'bold 9px sans-serif';
+      const tw = lowCtx.measureText(text).width;
+      const bw = tw + 10;
+      const bh = 14;
+      const bx = Math.round(p.x - bw / 2);
+      const by = Math.round(p.y - 18);
+
+      // Balão de fala pixel art
+      lowCtx.fillStyle = '#FFFFFF';
+      lowCtx.strokeStyle = '#3B2219';
+      lowCtx.lineWidth = 1;
+      lowCtx.fillRect(bx, by, bw, bh);
+      lowCtx.strokeRect(bx, by, bw, bh);
+
+      // Rabicho do balão
+      lowCtx.fillStyle = '#FFFFFF';
+      lowCtx.beginPath();
+      lowCtx.moveTo(p.x - 3, by + bh);
+      lowCtx.lineTo(p.x, by + bh + 4);
+      lowCtx.lineTo(p.x + 3, by + bh);
+      lowCtx.fill();
+
+      lowCtx.fillStyle = '#E63946';
+      lowCtx.fillText(text, bx + 5, by + 10);
+      lowCtx.restore();
+    }
+
     // --- GATINHO 3D COM PATINHAS ARTICULADAS E ANIMAÇÃO PROCEDURAL ---
     function drawCat(cat, baseLiftZ = 0) {
-      const isWalking = cat.isWalking && (!isDraggingItem || selectedItem !== cat);
+      const posture = cat.forcedPosture || cat.posture || (cat.isWalking ? 'walk' : 'stand');
       const t = cat.walkCycle || 0;
-
-      // Movimentos procedurais das patinhas a 60 FPS (patinha avança no ar e empurra no chão)
-      const liftFL = isWalking ? Math.max(0, Math.sin(t) * 3.5) : 0;
-      const strideFL = isWalking ? -Math.cos(t) * 2.5 : 0;
-
-      const liftBR = isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.5) : 0;
-      const strideBR = isWalking ? -Math.cos(t + 0.3) * 2.5 : 0;
-
-      const liftFR = isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.5) : 0;
-      const strideFR = isWalking ? -Math.cos(t + Math.PI) * 2.5 : 0;
-
-      const liftBL = isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.5) : 0;
-      const strideBL = isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
-
-      const bodyBob = isWalking ? Math.abs(Math.sin(t * 2)) * 0.8 : Math.sin((cat.idleTimer || 0) * 2.2) * 0.4;
-      const bodyRoll = isWalking ? Math.sin(t) * 0.04 : 0;
+      const isWalking = (posture === 'walk' || cat.isWalking) && (!isDraggingItem || selectedItem !== cat);
 
       const cosA = Math.cos(cat.selfAngle);
       const sinA = Math.sin(cat.selfAngle);
 
-      function renderPaw(lx, ly, lift, stride) {
+      function renderPaw(lx, ly, lift, stride, pawZ = 0, angleOffset = 0) {
         const wx = cat.x + lx * cosA - (ly + stride) * sinA;
         const wy = cat.y + lx * sinA + (ly + stride) * cosA;
-        const wz = baseLiftZ + lift;
-        drawStackObject(catPawModel, wx, wy, wz, cat.selfAngle, cat.scale);
+        const wz = baseLiftZ + lift + pawZ;
+        drawStackObject(catPawModel, wx, wy, wz, cat.selfAngle + angleOffset, cat.scale);
       }
 
-      // 1. As 4 patinhas articuladas
-      renderPaw(-4.5, -7.5, liftBL, strideBL); // Traseira esquerda
-      renderPaw( 3.5, -7.5, liftBR, strideBR); // Traseira direita
-      renderPaw(-4.5,  3.5, liftFL, strideFL); // Dianteira esquerda
-      renderPaw( 3.5,  3.5, liftFR, strideFR); // Dianteira direita
+      function renderHat(headZ, headPitchOffset = 0, rollOffset = 0) {
+        if (!cat.hat || cat.hat === 'none') return;
+        const hatModel = HATS[cat.hat];
+        if (!hatModel) return;
+        const hx = cat.x - (4.5 + headPitchOffset) * sinA;
+        const hy = cat.y + (4.5 + headPitchOffset) * cosA;
+        const hz = baseLiftZ + headZ * cat.scale;
+        drawStackObject(hatModel, hx, hy, hz, cat.selfAngle + rollOffset, cat.scale);
+      }
 
-      // 2. Tronco, cabeça e rabinho
-      drawStackObject(catBodyModel, cat.x, cat.y, baseLiftZ + bodyBob, cat.selfAngle + bodyRoll, cat.scale);
+      if (posture === 'belly') {
+        // === MOSTRAR A BARRIGUINHA (BELLY ROLL) ===
+        const bellyWiggle = Math.sin((cat.idleTimer || 0) * 4) * 0.08;
+        drawStackInverted(catBodyModel, cat.x, cat.y, baseLiftZ + 1.5, cat.selfAngle + bellyWiggle, cat.scale);
+
+        // 4 patinhas abanando no ar!
+        const pawTime = (cat.idleTimer || 0) * 5;
+        const pBL = Math.sin(pawTime) * 1.5;
+        const pBR = Math.sin(pawTime + 1.2) * 1.5;
+        const pFL = Math.sin(pawTime + 2.4) * 1.5;
+        const pFR = Math.sin(pawTime + 3.6) * 1.5;
+
+        renderPaw(-4.0, -6.0, 0, 0, 11 + pBL, 0.4);
+        renderPaw( 3.0, -6.0, 0, 0, 11 + pBR, -0.4);
+        renderPaw(-4.0,  3.0, 0, 0, 12 + pFL, 0.3);
+        renderPaw( 3.0,  3.0, 0, 0, 12 + pFR, -0.3);
+
+        renderHat(1.0, 2.0, 0.3);
+
+      } else if (posture === 'loaf') {
+        // === DEITAR / PÃOZINHO (LOAF) ===
+        // 4 patinhas 100% escondidas sob o corpo, corpo no chão
+        const loafBreathe = Math.sin((cat.idleTimer || 0) * 1.8) * 0.35;
+        drawStackObject(catBodyModel, cat.x, cat.y, baseLiftZ - 2.2 + loafBreathe, cat.selfAngle, cat.scale);
+        renderHat(12.0 + loafBreathe);
+        drawLoafZzz(cat);
+
+      } else if (posture === 'sit') {
+        // === SENTAR (SIT) ===
+        // Patas dianteiras apoiadas, traseiras recolhidas, traseira rebaixada
+        renderPaw(-4.5, 3.5, 0, 0);
+        renderPaw( 3.5, 3.5, 0, 0);
+        const sitBreathe = Math.sin((cat.idleTimer || 0) * 2.0) * 0.3;
+        drawStackObject(catBodyModel, cat.x, cat.y, baseLiftZ - 1.2 + sitBreathe, cat.selfAngle, cat.scale);
+        renderHat(13.2 + sitBreathe);
+
+      } else {
+        // === ANDAR OU EM PÉ (WALK / STAND) ===
+        const liftFL = isWalking ? Math.max(0, Math.sin(t) * 3.5) : 0;
+        const strideFL = isWalking ? -Math.cos(t) * 2.5 : 0;
+
+        const liftBR = isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.5) : 0;
+        const strideBR = isWalking ? -Math.cos(t + 0.3) * 2.5 : 0;
+
+        const liftFR = isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.5) : 0;
+        const strideFR = isWalking ? -Math.cos(t + Math.PI) * 2.5 : 0;
+
+        const liftBL = isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.5) : 0;
+        const strideBL = isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
+
+        const bodyBob = isWalking ? Math.abs(Math.sin(t * 2)) * 0.8 : Math.sin((cat.idleTimer || 0) * 2.2) * 0.4;
+        const bodyRoll = isWalking ? Math.sin(t) * 0.04 : 0;
+
+        renderPaw(-4.5, -7.5, liftBL, strideBL); // Traseira esquerda
+        renderPaw( 3.5, -7.5, liftBR, strideBR); // Traseira direita
+        renderPaw(-4.5,  3.5, liftFL, strideFL); // Dianteira esquerda
+        renderPaw( 3.5,  3.5, liftFR, strideFR); // Dianteira direita
+
+        drawStackObject(catBodyModel, cat.x, cat.y, baseLiftZ + bodyBob, cat.selfAngle + bodyRoll, cat.scale);
+        renderHat(14.8 + bodyBob, 0, bodyRoll);
+      }
+
+      drawCatSpeech(cat);
     }
 
     // Sistema de Colisão e Navegação do Gatinho com Móveis e Paredes
@@ -1240,11 +1474,32 @@ html_template = r"""<!DOCTYPE html>
         return;
       }
 
+      // Se o usuário fixou uma postura (Sentar, Pãozinho, Barriga):
+      if (cat.forcedPosture && cat.forcedPosture !== 'auto') {
+        if (cat.forcedPosture === 'walk') {
+          // Deixa caminhar livremente
+        } else {
+          cat.state = 'idle';
+          cat.isWalking = false;
+          cat.posture = cat.forcedPosture;
+          return;
+        }
+      }
+
+      // Se estiver em reação de carinho na barriguinha
+      if (cat.bellyTimer > 0) {
+        cat.bellyTimer--;
+        cat.state = 'idle';
+        cat.isWalking = false;
+        cat.posture = 'belly';
+        return;
+      }
+
       if (cat.state === 'idle') {
         cat.isWalking = false;
         cat.stateTimer = (cat.stateTimer || 180) - 1;
         if (cat.stateTimer <= 0) {
-          // Escolhe um novo ponto aconchegante pelo quarto (com verificação de colisão)
+          // Escolhe um novo ponto aconchegante pelo quarto
           const waypoints = [
             { x: 0, y: 0 },       // Centro do tapete
             { x: 18, y: 15 },     // Borda do tapete
@@ -1263,6 +1518,7 @@ html_template = r"""<!DOCTYPE html>
           cat.targetX = validTarget.x;
           cat.targetY = validTarget.y;
           cat.state = 'walking';
+          cat.posture = 'walk';
         }
       } else if (cat.state === 'walking') {
         const dx = cat.targetX - cat.x;
@@ -1275,33 +1531,34 @@ html_template = r"""<!DOCTYPE html>
           cat.state = 'idle';
           cat.stateTimer = 180 + Math.floor(Math.random() * 240); // 3 a 7 segundos relaxando
           cat.isWalking = false;
+          // Escolhe uma postura aconchegante aleatória fofa!
+          const r = Math.random();
+          if (r < 0.40) cat.posture = 'sit';
+          else if (r < 0.75) cat.posture = 'loaf';
+          else if (r < 0.90) cat.posture = 'belly';
+          else cat.posture = 'stand';
         } else {
           cat.isWalking = true;
-          // Ângulo onde a cara do gatinho está apontando (+Y no modelo 2D -> canvas clockwise rotation)
-          // Na matemática de tela: face aponta para (-sin(angle), cos(angle))
-          // Portanto: targetAngle = Math.atan2(-dx, dy)
+          cat.posture = 'walk';
           const targetAngle = Math.atan2(-dx, dy);
 
-          // Rotação suave no menor arco
           let diff = targetAngle - cat.selfAngle;
           while (diff < -Math.PI) diff += Math.PI * 2;
           while (diff > Math.PI) diff -= Math.PI * 2;
           cat.selfAngle += diff * 0.14;
 
-          // Caminhada estritamente para ONDE A CARA APONTA:
           const speed = 0.55;
           const nextX = cat.x - Math.sin(cat.selfAngle) * speed;
           const nextY = cat.y + Math.cos(cat.selfAngle) * speed;
 
-          // Aplica colisão com móveis e paredes em tempo real!
           const resolved = checkCatCollision(nextX, nextY);
           const moved = Math.hypot(resolved.x - cat.x, resolved.y - cat.y);
 
-          // Se bateu em algo e travou, para e descansa
           if (moved < 0.04 && dist > 8) {
             cat.state = 'idle';
             cat.stateTimer = 120;
             cat.isWalking = false;
+            cat.posture = Math.random() < 0.5 ? 'sit' : 'loaf';
           } else {
             cat.x = resolved.x;
             cat.y = resolved.y;
@@ -1868,12 +2125,13 @@ html_template = r"""<!DOCTYPE html>
           if (cat) {
             const dCat = Math.hypot(worldPos.x - cat.x, worldPos.y - cat.y);
             if (dCat < 24) {
-              document.getElementById('btnPet').click();
+              triggerPetReactions(cat);
             } else if (Math.abs(worldPos.x) < ROOM_R - 18 && Math.abs(worldPos.y) < ROOM_R - 18) {
               const valid = checkCatCollision(worldPos.x, worldPos.y);
               cat.targetX = valid.x;
               cat.targetY = valid.y;
               cat.state = 'walking';
+              cat.posture = 'walk';
             }
           }
         }
@@ -1909,16 +2167,50 @@ html_template = r"""<!DOCTYPE html>
       btnAutoSpin.classList.toggle('active', autoSpin);
     });
 
+    // Botão de Chapéu (Ciclo: Nenhum -> Bruxo -> Coroa -> Boina -> Sakura)
+    const hatKeys = ['none', 'witch', 'crown', 'beret', 'flower'];
+    const hatNames = {
+      none: '🎩 Chapéu: Nenhum',
+      witch: '🧙 Bruxo',
+      crown: '👑 Coroa',
+      beret: '🧑‍🎨 Boina',
+      flower: '🌸 Sakura'
+    };
+    let currentHatIdx = 0;
+    const btnHat = document.getElementById('btnHat');
+    btnHat.addEventListener('click', () => {
+      currentHatIdx = (currentHatIdx + 1) % hatKeys.length;
+      const hatKey = hatKeys[currentHatIdx];
+      const cat = items.find(it => it.id === 'cat');
+      if (cat) cat.hat = hatKey;
+      btnHat.textContent = hatNames[hatKey];
+    });
+
+    // Botão de Postura (Ciclo: Auto -> Andar -> Sentar -> Pãozinho -> Barriga)
+    const postures = [
+      { key: 'auto', label: '🐾 Modo: Auto' },
+      { key: 'walk', label: '🚶 Andando' },
+      { key: 'sit', label: '🐱 Sentado' },
+      { key: 'loaf', label: '🍞 Pãozinho' },
+      { key: 'belly', label: '💖 Barriguinha' }
+    ];
+    let currentPostureIdx = 0;
+    const btnPosture = document.getElementById('btnPosture');
+    btnPosture.addEventListener('click', () => {
+      currentPostureIdx = (currentPostureIdx + 1) % postures.length;
+      const p = postures[currentPostureIdx];
+      const cat = items.find(it => it.id === 'cat');
+      if (cat) {
+        cat.forcedPosture = (p.key === 'auto') ? null : p.key;
+        if (p.key !== 'auto') cat.posture = p.key;
+      }
+      btnPosture.textContent = p.label;
+    });
+
+    // Botão de Carinho
     document.getElementById('btnPet').addEventListener('click', () => {
       const cat = items.find(it => it.id === 'cat');
-      const p = project(cat.x, cat.y, 24);
-      for (let i = 0; i < 6; i++) {
-        hearts.push({
-          x: p.x + (Math.random() * 24 - 12),
-          y: p.y - (Math.random() * 16),
-          alpha: 1.0
-        });
-      }
+      if (cat) triggerPetReactions(cat);
     });
 
     const squashSlider = document.getElementById('squashSlider');
@@ -2000,6 +2292,10 @@ html_template = r"""<!DOCTYPE html>
 
 html_final = html_template.replace('__CAT_BODY_SLICES__', cat_body_slices_json)\
                           .replace('__CAT_PAW_SLICES__', cat_paw_slices_json)\
+                          .replace('__WITCH_HAT_SLICES__', witch_hat_slices)\
+                          .replace('__CROWN_HAT_SLICES__', crown_hat_slices)\
+                          .replace('__BERET_HAT_SLICES__', beret_hat_slices)\
+                          .replace('__FLOWER_HAT_SLICES__', flower_hat_slices)\
                           .replace('__DESK_SLICES__', desk_slices)\
                           .replace('__LAPTOP_SLICES__', laptop_slices)\
                           .replace('__TABLET_SLICES__', tablet_slices)\
