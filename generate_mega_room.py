@@ -2,7 +2,35 @@ import json
 
 # 1. Carrega dados de fatias
 with open('C:/github/PixelArt/slices_v5.json', 'r', encoding='utf-8') as f:
-    cat_slices = f.read().strip()
+    cat_slices_raw = json.load(f)
+
+# Criando slices do corpo (fatias 0 e 1 sem as patas)
+cat_body_slices = [ [list(r) for r in s] for s in cat_slices_raw ]
+for z in (0, 1):
+    for y in range(32):
+        for x in range(32):
+            cat_body_slices[z][y][x] = '0'
+
+cat_body_slices = [[''.join(r) for r in s] for s in cat_body_slices]
+
+# Criando slices de 1 patinha (4x4, 2 fatias com almofadinha rosa na base!)
+cat_paw_slices = [
+    [
+        '1441',
+        '4114',
+        '1441',
+        '1111'
+    ],
+    [
+        '1111',
+        '1111',
+        '1111',
+        '1111'
+    ]
+]
+
+cat_body_slices_json = json.dumps(cat_body_slices)
+cat_paw_slices_json = json.dumps(cat_paw_slices)
 
 with open('C:/github/PixelArt/furniture_pack.json', 'r', encoding='utf-8') as f:
     furn_pack = json.load(f)
@@ -389,9 +417,10 @@ html_template = r"""<!DOCTYPE html>
       return { sheet, count, w, h };
     }
 
-    // 1. GATINHO 3D (16 slices)
+    // 1. GATINHO 3D ARTICULADO (Corpo 16 slices + 4 Patinhas 4x4 com almofadinhas)
     const catPal = ['rgba(0,0,0,0)', '#FDFBF7', '#DE864A', '#3B2219', '#F2A2AB', '#FFFFFF', '#B85820', '#E5E0D8'];
-    const catModel = createSliceSheet(__CAT_SLICES__, catPal, 32, 32);
+    const catBodyModel = createSliceSheet(__CAT_BODY_SLICES__, catPal, 32, 32);
+    const catPawModel = createSliceSheet(__CAT_PAW_SLICES__, catPal, 4, 4);
 
     // 2. MESA DE ESTUDO AMPLIADA (15 slices, 64x34)
     const deskPal = [
@@ -464,8 +493,8 @@ html_template = r"""<!DOCTYPE html>
 
     // --- LISTA MODULAR DE MÓVEIS E ACESSÓRIOS INDEPENDENTES ---
     const items = [
-      // O Gatinho
-      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', model: catModel,       x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true },
+      // O Gatinho Articulado (com IA Autônoma de Caminhada)
+      { id: 'cat',           name: 'Gatinho Mochi',        icon: '🐱', model: catBodyModel,   x: 0,   y: 0,   liftZ: 0,  selfAngle: 0,   scale: 1.5,  radius: 20, isCat: true, visible: true, state: 'idle', stateTimer: 180, isWalking: false, walkCycle: 0, idleTimer: 0 },
 
       // Acessórios Universais (Podem ficar na MESA, na PRATELEIRA ou no CHÃO livremente!)
       { id: 'laptop',        name: 'Note no Suporte',      icon: '💻', model: laptopModel,    x: 55,  y: -74, liftZ: 21, selfAngle: 0,   scale: 1.45, radius: 18, isProp: true, surface: 'desk', offX: 0, offY: -9, visible: true },
@@ -1104,6 +1133,113 @@ html_template = r"""<!DOCTYPE html>
       drawQuad(fOut4, fOut3, wOut3, wOut4, '#6B3E1E');
     }
 
+    // --- GATINHO 3D COM PATINHAS ARTICULADAS E ANIMAÇÃO PROCEDURAL ---
+    function drawCat(cat, baseLiftZ = 0) {
+      const isWalking = cat.isWalking && (!isDraggingItem || selectedItem !== cat);
+      const t = cat.walkCycle || 0;
+
+      // Movimentos procedurais das patinhas a 60 FPS
+      const liftFL = isWalking ? Math.max(0, Math.sin(t) * 3.5) : 0;
+      const strideFL = isWalking ? Math.cos(t) * 2.5 : 0;
+
+      const liftBR = isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.5) : 0;
+      const strideBR = isWalking ? Math.cos(t + 0.3) * 2.5 : 0;
+
+      const liftFR = isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.5) : 0;
+      const strideFR = isWalking ? Math.cos(t + Math.PI) * 2.5 : 0;
+
+      const liftBL = isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.5) : 0;
+      const strideBL = isWalking ? Math.cos(t + Math.PI + 0.3) * 2.5 : 0;
+
+      const bodyBob = isWalking ? Math.abs(Math.sin(t * 2)) * 0.8 : Math.sin((cat.idleTimer || 0) * 2.2) * 0.4;
+      const bodyRoll = isWalking ? Math.sin(t) * 0.04 : 0;
+
+      const cosA = Math.cos(cat.selfAngle);
+      const sinA = Math.sin(cat.selfAngle);
+
+      function renderPaw(lx, ly, lift, stride) {
+        const wx = cat.x + lx * cosA - (ly + stride) * sinA;
+        const wy = cat.y + lx * sinA + (ly + stride) * cosA;
+        const wz = baseLiftZ + lift;
+        drawStackObject(catPawModel, wx, wy, wz, cat.selfAngle, cat.scale);
+      }
+
+      // 1. As 4 patinhas articuladas
+      renderPaw(-4.5, -7.5, liftBL, strideBL); // Traseira esquerda
+      renderPaw( 3.5, -7.5, liftBR, strideBR); // Traseira direita
+      renderPaw(-4.5,  3.5, liftFL, strideFL); // Dianteira esquerda
+      renderPaw( 3.5,  3.5, liftFR, strideFR); // Dianteira direita
+
+      // 2. Tronco, cabeça e rabinho
+      drawStackObject(catBodyModel, cat.x, cat.y, baseLiftZ + bodyBob, cat.selfAngle + bodyRoll, cat.scale);
+    }
+
+    // IA Autônoma do Gatinho: Passeia pelo quarto, explora e descansa
+    function updateCatAI() {
+      const cat = items.find(it => it.id === 'cat');
+      if (!cat) return;
+
+      cat.idleTimer = (cat.idleTimer || 0) + 0.05;
+
+      // Se o usuário estiver arrastando o gato no Modo Decoração, pausa a IA
+      if (isDecorMode && isDraggingItem && selectedItem === cat) {
+        cat.state = 'idle';
+        cat.stateTimer = 180;
+        cat.isWalking = false;
+        return;
+      }
+
+      if (cat.state === 'idle') {
+        cat.isWalking = false;
+        cat.stateTimer = (cat.stateTimer || 180) - 1;
+        if (cat.stateTimer <= 0) {
+          // Escolhe um novo ponto aconchegante pelo quarto
+          const waypoints = [
+            { x: 0, y: 0 },       // Centro do tapete
+            { x: 18, y: 15 },     // Borda do tapete
+            { x: -20, y: -15 },   // Perto da cama nuvem
+            { x: -35, y: 25 },    // Perto do arranhador
+            { x: 30, y: 35 },     // Perto da plantinha de chão
+            { x: 42, y: -38 },    // Perto da cadeira da mesa
+            { x: -30, y: -25 },   // Perto da janela
+            { x: -10, y: 20 }     // Lado sul do tapete
+          ];
+          const wp = waypoints[Math.floor(Math.random() * waypoints.length)];
+          cat.targetX = Math.max(-60, Math.min(60, wp.x + (Math.random() - 0.5) * 12));
+          cat.targetY = Math.max(-60, Math.min(60, wp.y + (Math.random() - 0.5) * 12));
+          cat.state = 'walking';
+        }
+      } else if (cat.state === 'walking') {
+        const dx = cat.targetX - cat.x;
+        const dy = cat.targetY - cat.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 2.5) {
+          cat.x = cat.targetX;
+          cat.y = cat.targetY;
+          cat.state = 'idle';
+          cat.stateTimer = 180 + Math.floor(Math.random() * 240); // 3 a 7 segundos relaxando
+          cat.isWalking = false;
+        } else {
+          cat.isWalking = true;
+          // Ângulo de deslocamento (+Y é para frente no modelo)
+          const targetAngle = Math.atan2(dx, dy);
+
+          // Rotação suave no menor arco
+          let diff = targetAngle - cat.selfAngle;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          cat.selfAngle += diff * 0.12;
+
+          // Caminhada na direção da rotação
+          const speed = 0.55;
+          cat.x += Math.sin(cat.selfAngle) * speed;
+          cat.y += Math.cos(cat.selfAngle) * speed;
+          cat.walkCycle = (cat.walkCycle || 0) + speed * 0.35;
+        }
+      }
+    }
+
     // --- RENDERIZADOR DE ITEM INDIVIDUAL COM INDICADORES ---
     function renderItem(item) {
       const isSel = (item === selectedItem);
@@ -1114,27 +1250,43 @@ html_template = r"""<!DOCTYPE html>
       item.dragLift += (targetLift - item.dragLift) * 0.3;
       const effectiveLiftZ = item.liftZ + item.dragLift;
 
-      // Sombra e anel de seleção para itens de chão ou mesa
+      // Sombras e anéis de seleção
       if (!item.isWallItem) {
-        const shadowZ = item.onDesk ? item.liftZ : 0;
-        const shadowP = project(item.x, item.y, shadowZ);
+        // REGRA DE OURO: Itens sobre móveis (mesa ou prateleira) NÃO têm sombra no chão!
+        const hasFloorShadow = !item.surface && (item.liftZ === 0 || item.isCat || item.isDesk);
 
-        lowCtx.save();
-        lowCtx.translate(shadowP.x, shadowP.y);
-        lowCtx.scale(1, squash * 0.45);
-        lowCtx.beginPath();
-        const baseRadius = (item.isCat ? 15 : (item.onDesk ? 10 : (item.isDesk ? 32 : 20))) * (item.scale ? item.scale / 1.3 : 1);
-        const shadowRadius = baseRadius * (1 + item.dragLift * 0.05);
-        lowCtx.arc(0, 0, shadowRadius, 0, Math.PI * 2);
-        lowCtx.fillStyle = isSel ? 'rgba(216, 125, 74, 0.40)' : 'rgba(74, 46, 27, 0.22)';
-        lowCtx.fill();
+        if (hasFloorShadow) {
+          const shadowP = project(item.x, item.y, 0);
+          lowCtx.save();
+          lowCtx.translate(shadowP.x, shadowP.y);
+          lowCtx.scale(1, squash * 0.45);
+          lowCtx.beginPath();
+          const baseRadius = (item.isCat ? 15 : (item.isDesk ? 32 : 20)) * (item.scale ? item.scale / 1.3 : 1);
+          const shadowRadius = baseRadius * (1 + (item.dragLift || 0) * 0.05);
+          lowCtx.arc(0, 0, shadowRadius, 0, Math.PI * 2);
+          lowCtx.fillStyle = isSel ? 'rgba(216, 125, 74, 0.40)' : 'rgba(74, 46, 27, 0.22)';
+          lowCtx.fill();
 
-        if (isSel || isHov) {
+          if (isSel || isHov) {
+            lowCtx.lineWidth = isSel ? 2 : 1;
+            lowCtx.strokeStyle = isSel ? '#D87D4A' : 'rgba(216, 125, 74, 0.7)';
+            lowCtx.stroke();
+          }
+          lowCtx.restore();
+        } else if ((isSel || isHov) && isDecorMode) {
+          // Apenas anel de seleção luminoso no plano da própria mesa ou prateleira
+          const ringP = project(item.x, item.y, effectiveLiftZ);
+          lowCtx.save();
+          lowCtx.translate(ringP.x, ringP.y);
+          lowCtx.scale(1, squash * 0.5);
+          lowCtx.beginPath();
+          const ringRadius = 16 * (item.scale ? item.scale / 1.3 : 1);
+          lowCtx.arc(0, 0, ringRadius, 0, Math.PI * 2);
           lowCtx.lineWidth = isSel ? 2 : 1;
           lowCtx.strokeStyle = isSel ? '#D87D4A' : 'rgba(216, 125, 74, 0.7)';
           lowCtx.stroke();
+          lowCtx.restore();
         }
-        lowCtx.restore();
 
         // Indicadores nos 4 pés da mesa quando selecionada ou em hover no Modo Decoração
         if (item.isDesk && (isSel || isHov) && isDecorMode) {
@@ -1162,7 +1314,9 @@ html_template = r"""<!DOCTYPE html>
       }
 
       // Desenho do objeto correspondente
-      if (item.model) {
+      if (item.isCat) {
+        drawCat(item, effectiveLiftZ);
+      } else if (item.model) {
         drawStackObject(item.model, item.x, item.y, effectiveLiftZ, item.selfAngle, item.scale);
       } else if (item.id === 'shelf') {
         drawShelfItem(item);
@@ -1306,6 +1460,9 @@ html_template = r"""<!DOCTYPE html>
         targetTurn += 0.006;
       }
 
+      // Atualiza a IA e animação do gatinho a 60 FPS
+      updateCatAI();
+
       lowCtx.fillStyle = P.bg;
       lowCtx.fillRect(0, 0, LOW_W, LOW_H);
 
@@ -1438,10 +1595,12 @@ html_template = r"""<!DOCTYPE html>
 
     let isDraggingView = false;
     let lastX = 0;
+    let pointerDownPos = { x: 0, y: 0 };
 
     canvas.addEventListener('pointerdown', (e) => {
       const { sx, sy } = getCanvasCoords(e);
       const worldPos = unproject(sx, sy);
+      pointerDownPos = { x: e.clientX, y: e.clientY };
 
       if (isDecorMode) {
         const item = findItemAt(worldPos, { sx, sy });
@@ -1628,7 +1787,25 @@ html_template = r"""<!DOCTYPE html>
       }
     });
 
-    window.addEventListener('pointerup', () => {
+    window.addEventListener('pointerup', (e) => {
+      if (!isDecorMode && !isDraggingItem && pointerDownPos) {
+        const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+        if (moved < 6) {
+          const { sx, sy } = getCanvasCoords(e);
+          const worldPos = unproject(sx, sy);
+          const cat = items.find(it => it.id === 'cat');
+          if (cat) {
+            const dCat = Math.hypot(worldPos.x - cat.x, worldPos.y - cat.y);
+            if (dCat < 24) {
+              document.getElementById('btnPet').click();
+            } else if (Math.abs(worldPos.x) < ROOM_R - 18 && Math.abs(worldPos.y) < ROOM_R - 18) {
+              cat.targetX = worldPos.x;
+              cat.targetY = worldPos.y;
+              cat.state = 'walking';
+            }
+          }
+        }
+      }
       isDraggingItem = false;
       isDraggingView = false;
       canvas.classList.remove('decor-dragging');
@@ -1749,7 +1926,8 @@ html_template = r"""<!DOCTYPE html>
 </html>
 """
 
-html_final = html_template.replace('__CAT_SLICES__', cat_slices)\
+html_final = html_template.replace('__CAT_BODY_SLICES__', cat_body_slices_json)\
+                          .replace('__CAT_PAW_SLICES__', cat_paw_slices_json)\
                           .replace('__DESK_SLICES__', desk_slices)\
                           .replace('__LAPTOP_SLICES__', laptop_slices)\
                           .replace('__TABLET_SLICES__', tablet_slices)\
