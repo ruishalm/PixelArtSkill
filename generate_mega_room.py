@@ -868,19 +868,19 @@ html_template = r"""<!DOCTYPE html>
       const sz = shelf.liftZ;
       const halfLen = (shelf.length || 64) / 2;
 
-      // Tábua de madeira maciça
-      draw3DBox(xWall, xWall + 13, sy - halfLen, sy + halfLen, sz, sz + 3.5, {
-        top: '#A06842', front: '#804E2B', back: '#6B3E1E', left: '#6B3E1E', right: '#804E2B', bottom: '#5A341A', stroke: '#3B2219'
-      });
-
-      // Suportes / Mísulas alinhadas sob a prateleira
+      // 1. Suportes / Mísulas desenhados PRIMEIRO (ficam estritamente ABAIXO da tábua!)
       const bOffsets = [-halfLen + 10, halfLen - 10];
       for (const bo of bOffsets) {
         const by = sy + bo;
-        draw3DBox(xWall, xWall + 9.5, by - 1.2, by + 1.2, sz - 10, sz, {
-          top: '#7E4E2C', front: '#633A18', back: '#532F16', left: '#633A18', right: '#7E4E2C', bottom: '#3B2219', stroke: '#3B2219'
+        draw3DBox(xWall, xWall + 9, by - 1.2, by + 1.2, sz - 10, sz - 0.2, {
+          top: '#633A18', front: '#633A18', back: '#532F16', left: '#532F16', right: '#7E4E2C', bottom: '#3B2219', stroke: '#3B2219'
         });
       }
+
+      // 2. Tábua da prateleira desenhada DEPOIS (cobre 100% o topo dos suportes!)
+      draw3DBox(xWall, xWall + 13, sy - halfLen, sy + halfLen, sz, sz + 3.5, {
+        top: '#A06842', front: '#804E2B', back: '#6B3E1E', left: '#6B3E1E', right: '#804E2B', bottom: '#5A341A', stroke: '#3B2219'
+      });
     }
 
     // 2. Livros em Pé da Prateleira
@@ -1217,10 +1217,20 @@ html_template = r"""<!DOCTYPE html>
       // 1. Itens da Parede Oeste (só renderiza se a parede oeste for parede de trás)
       const isWestWallVisible = (-1 * sinA <= 0.05);
       if (isWestWallVisible) {
-        const westWallItems = activeItems.filter(it => it.isWallItem && it.wall === 'west');
-        westWallItems.sort((a, b) => a.depth - b.depth);
-        for (const item of westWallItems) {
+        // Exclui itens apoiados na prateleira (onShelf) para renderizá-los diretamente em cima da prateleira
+        const westWallMains = activeItems.filter(it => it.isWallItem && it.wall === 'west' && !it.onShelf);
+        westWallMains.sort((a, b) => a.depth - b.depth);
+        for (const item of westWallMains) {
           renderItem(item);
+
+          // Ao renderizar a prateleira, desenha imediatamente todos os acessórios apoiados nela!
+          if (item.id === 'shelf') {
+            const shelfProps = activeItems.filter(it => it.onShelf);
+            shelfProps.sort((a, b) => a.depth - b.depth);
+            for (const prop of shelfProps) {
+              renderItem(prop);
+            }
+          }
         }
       }
 
