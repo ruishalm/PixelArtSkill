@@ -1174,6 +1174,57 @@ html_template = r"""<!DOCTYPE html>
       drawStackObject(catBodyModel, cat.x, cat.y, baseLiftZ + bodyBob, cat.selfAngle + bodyRoll, cat.scale);
     }
 
+    // Sistema de Colisão e Navegação do Gatinho com Móveis e Paredes
+    function checkCatCollision(nx, ny) {
+      // 1. Limites com as paredes do quarto
+      const wallLimit = ROOM_R - 16;
+      nx = Math.max(-wallLimit, Math.min(wallLimit, nx));
+      ny = Math.max(-wallLimit, Math.min(wallLimit, ny));
+
+      const catRad = 12;
+
+      // 2. Colisão com a Mesa de Estudo (caixa AABB orientada)
+      const desk = items.find(it => it.id === 'desk');
+      if (desk && desk.visible !== false) {
+        const isRot = (desk.selfAngle === Math.PI / 2 || desk.selfAngle === Math.PI * 1.5);
+        const halfW = (isRot ? 18 : 33) + catRad;
+        const halfH = (isRot ? 33 : 18) + catRad;
+        if (Math.abs(nx - desk.x) < halfW && Math.abs(ny - desk.y) < halfH) {
+          const overlapX = halfW - Math.abs(nx - desk.x);
+          const overlapY = halfH - Math.abs(ny - desk.y);
+          if (overlapX < overlapY) {
+            nx = desk.x + (nx > desk.x ? halfW : -halfW);
+          } else {
+            ny = desk.y + (ny > desk.y ? halfH : -halfH);
+          }
+        }
+      }
+
+      // 3. Colisão com outros móveis de chão (Torre de Gato, Caminha, Planta, etc.)
+      const floorObstacles = items.filter(it => 
+        it.visible !== false && 
+        !it.isCat && 
+        !it.isWallItem && 
+        it.surface !== 'desk' && 
+        it.surface !== 'shelf' && 
+        it.id !== 'desk'
+      );
+
+      for (const obs of floorObstacles) {
+        const obsRad = (obs.radius ? obs.radius * 0.75 : 16) + catRad;
+        const dx = nx - obs.x;
+        const dy = ny - obs.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < obsRad && dist > 0.001) {
+          const push = obsRad - dist;
+          nx += (dx / dist) * push;
+          ny += (dy / dist) * push;
+        }
+      }
+
+      return { x: nx, y: ny };
+    }
+
     // IA Autônoma do Gatinho: Passeia pelo quarto, explora e descansa
     function updateCatAI() {
       const cat = items.find(it => it.id === 'cat');
@@ -1193,20 +1244,24 @@ html_template = r"""<!DOCTYPE html>
         cat.isWalking = false;
         cat.stateTimer = (cat.stateTimer || 180) - 1;
         if (cat.stateTimer <= 0) {
-          // Escolhe um novo ponto aconchegante pelo quarto
+          // Escolhe um novo ponto aconchegante pelo quarto (com verificação de colisão)
           const waypoints = [
             { x: 0, y: 0 },       // Centro do tapete
             { x: 18, y: 15 },     // Borda do tapete
-            { x: -20, y: -15 },   // Perto da cama nuvem
+            { x: -35, y: -20 },   // Frente da caminha nuvem
             { x: -35, y: 25 },    // Perto do arranhador
             { x: 30, y: 35 },     // Perto da plantinha de chão
-            { x: 42, y: -38 },    // Perto da cadeira da mesa
-            { x: -30, y: -25 },   // Perto da janela
-            { x: -10, y: 20 }     // Lado sul do tapete
+            { x: 42, y: -30 },    // Frente da cadeira da mesa
+            { x: -25, y: -40 },   // Perto da janela
+            { x: -10, y: 22 }     // Lado sul do tapete
           ];
           const wp = waypoints[Math.floor(Math.random() * waypoints.length)];
-          cat.targetX = Math.max(-60, Math.min(60, wp.x + (Math.random() - 0.5) * 12));
-          cat.targetY = Math.max(-60, Math.min(60, wp.y + (Math.random() - 0.5) * 12));
+          const validTarget = checkCatCollision(
+            wp.x + (Math.random() - 0.5) * 12,
+            wp.y + (Math.random() - 0.5) * 12
+          );
+          cat.targetX = validTarget.x;
+          cat.targetY = validTarget.y;
           cat.state = 'walking';
         }
       } else if (cat.state === 'walking') {
@@ -1222,20 +1277,36 @@ html_template = r"""<!DOCTYPE html>
           cat.isWalking = false;
         } else {
           cat.isWalking = true;
-          // Ângulo de deslocamento (+Y é para frente no modelo)
-          const targetAngle = Math.atan2(dx, dy);
+          // Ângulo onde a cara do gatinho está apontando (+Y no modelo 2D -> canvas clockwise rotation)
+          // Na matemática de tela: face aponta para (-sin(angle), cos(angle))
+          // Portanto: targetAngle = Math.atan2(-dx, dy)
+          const targetAngle = Math.atan2(-dx, dy);
 
           // Rotação suave no menor arco
           let diff = targetAngle - cat.selfAngle;
           while (diff < -Math.PI) diff += Math.PI * 2;
           while (diff > Math.PI) diff -= Math.PI * 2;
-          cat.selfAngle += diff * 0.12;
+          cat.selfAngle += diff * 0.14;
 
-          // Caminhada na direção da rotação
+          // Caminhada estritamente para ONDE A CARA APONTA:
           const speed = 0.55;
-          cat.x += Math.sin(cat.selfAngle) * speed;
-          cat.y += Math.cos(cat.selfAngle) * speed;
-          cat.walkCycle = (cat.walkCycle || 0) + speed * 0.35;
+          const nextX = cat.x - Math.sin(cat.selfAngle) * speed;
+          const nextY = cat.y + Math.cos(cat.selfAngle) * speed;
+
+          // Aplica colisão com móveis e paredes em tempo real!
+          const resolved = checkCatCollision(nextX, nextY);
+          const moved = Math.hypot(resolved.x - cat.x, resolved.y - cat.y);
+
+          // Se bateu em algo e travou, para e descansa
+          if (moved < 0.04 && dist > 8) {
+            cat.state = 'idle';
+            cat.stateTimer = 120;
+            cat.isWalking = false;
+          } else {
+            cat.x = resolved.x;
+            cat.y = resolved.y;
+            cat.walkCycle = (cat.walkCycle || 0) + speed * 0.35;
+          }
         }
       }
     }
@@ -1799,8 +1870,9 @@ html_template = r"""<!DOCTYPE html>
             if (dCat < 24) {
               document.getElementById('btnPet').click();
             } else if (Math.abs(worldPos.x) < ROOM_R - 18 && Math.abs(worldPos.y) < ROOM_R - 18) {
-              cat.targetX = worldPos.x;
-              cat.targetY = worldPos.y;
+              const valid = checkCatCollision(worldPos.x, worldPos.y);
+              cat.targetX = valid.x;
+              cat.targetY = valid.y;
               cat.state = 'walking';
             }
           }
