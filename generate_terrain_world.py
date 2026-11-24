@@ -21,7 +21,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="icon" href="data:," />
-  <title>Vale Felino 3D — Terreno Micro-Voxel Orgânico 360×360</title>
+  <title>Vale Felino 3D — Terreno Micro-Voxel Orgânico 720×720</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     body {
@@ -190,8 +190,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       white-space: nowrap;
     }
     #minimapCanvas {
-      width: 112px;
-      height: 112px;
+      width: 120px;
+      height: 120px;
       border-radius: 8px;
       border: 1.5px solid #7C5C47;
       image-rendering: pixelated;
@@ -334,7 +334,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="hud-title-row">
         <span class="hud-title">🏔️ Vale Felino 3D</span>
         <div class="badges-group">
-          <span class="fish-badge" id="fishCounter">🐟 0 / 16</span>
+          <span class="fish-badge" id="fishCounter">🐟 0 / 20</span>
           <span class="biome-badge" id="biomeCounter">🗺️ 1 / 8</span>
         </div>
       </div>
@@ -350,7 +350,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     <div class="minimap-card">
       <div class="minimap-title" id="biomeLabel">Vila da Clareira</div>
-      <canvas id="minimapCanvas" width="112" height="112"></canvas>
+      <canvas id="minimapCanvas" width="120" height="120"></canvas>
     </div>
 
     <div class="touch-controls">
@@ -371,6 +371,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <span class="obstacle-chip obs-ok" id="statObstacle">✅ Caminho Livre</span>
       <span class="keys-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Mover •
+        <kbd>Shift</kbd> Correr •
         <kbd>Espaço</kbd> Pular •
         <kbd>Q</kbd>/<kbd>E</kbd> Girar •
         <kbd>M</kbd> Miar •
@@ -494,16 +495,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const sfxMeow = () => playTone(660, 490, 0.16, 'sine', 0.07);
 
     // =========================================================================
-    // 4. HEIGHTFIELD MICRO-VOXEL 360×360 & ESCULTURA ORGÂNICA "PULL-CHAIN"
+    // 4. HEIGHTFIELD MICRO-VOXEL 720×720 & ESCULTURA ORGÂNICA "PULL-CHAIN"
     // =========================================================================
     const STARTUP_T0 = performance.now();
-    const mw = 360;
-    const mh = 360;
+    const mw = 720;
+    const mh = 720;
     const VOX = 2;
-    const HALF_GRID = 180;
-    const HALF_WORLD = 360;
-    const WORLD_MIN = -360;
-    const WORLD_MAX = 360;
+    const HALF_GRID = 360;
+    const HALF_WORLD = 720;
+    const WORLD_MIN = -720;
+    const WORLD_MAX = 720;
 
     const Z_MIN = -6;
     const TERRAIN_Z_MAX = 66;
@@ -535,6 +536,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const cliffMask = new Uint8Array(mw * mh);
     const shadowMask = new Uint8Array(mw * mh); // 0..100 escurecimento de sombra estática
     const noGrassMask = new Uint8Array(mw * mh);
+    const standableMap = new Uint8Array(mw * mh); // 1 = plataforma/solo pisável (>= ~3.7×3.7 micro-voxels de área), 0 = borda/degrau estreito de falésia
+    const cliffTopMap = new Int16Array(mw * mh);  // Altura do topo da falésia vizinha (para bloqueio e HUD precisos)
 
     function worldToGrid(wx, wy) {
       return {
@@ -584,7 +587,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function pullHill(cx, cy, radius, height, steepness = 1.6, noiseAmp = 0.20, mat = null, biome = null, additive = false) {
-      const pad = radius * (1 + noiseAmp) + 4;
+      const pad = radius * (1 + noiseAmp) + 8;
       const x0 = Math.max(0, Math.floor((cx - pad) / VOX + HALF_GRID));
       const x1 = Math.min(mw - 1, Math.ceil((cx + pad) / VOX + HALF_GRID));
       const y0 = Math.max(0, Math.floor((cy - pad) / VOX + HALF_GRID));
@@ -597,7 +600,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const wx = (mx - HALF_GRID + 0.5) * VOX;
           const dx = wx - cx;
           const d = Math.hypot(dx, dy);
-          const n = fbm2d(wx * 0.032 + 11.3, wy * 0.032 - 5.7);
+          const n = fbm2d(wx * 0.016 + 11.3, wy * 0.016 - 5.7);
           const effR = radius * (1 + n * noiseAmp);
           if (d < effR) {
             const k = Math.cos((d / effR) * Math.PI * 0.5);
@@ -616,7 +619,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function pullPlateau(cx, cy, rx, ry, height, rimWidth, noiseAmp = 0.12, isCliff = false, mat = null, biome = null, lowerAllowed = false) {
-      const maxR = Math.max(rx, ry) * (1 + noiseAmp) + rimWidth + 4;
+      const maxR = Math.max(rx, ry) * (1 + noiseAmp) + rimWidth + 8;
       const x0 = Math.max(0, Math.floor((cx - maxR) / VOX + HALF_GRID));
       const x1 = Math.min(mw - 1, Math.ceil((cx + maxR) / VOX + HALF_GRID));
       const y0 = Math.max(0, Math.floor((cy - maxR) / VOX + HALF_GRID));
@@ -629,7 +632,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const wx = (mx - HALF_GRID + 0.5) * VOX;
           const dx = (wx - cx) / rx;
           const nd = Math.hypot(dx, dy);
-          const n = noiseAmp > 0 ? fbm2d(wx * 0.035 - 3.1, wy * 0.035 + 7.9) * noiseAmp : 0;
+          const n = noiseAmp > 0 ? fbm2d(wx * 0.018 - 3.1, wy * 0.018 + 7.9) * noiseAmp : 0;
           const effNd = nd / (1 + n);
           const rimNorm = rimWidth / Math.max(1, Math.min(rx, ry));
 
@@ -669,7 +672,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       for (let i = 0; i < points.length - 1; i++) {
         const [ax, ay] = points[i];
         const [bx, by] = points[i + 1];
-        const pad = halfWidth + 6;
+        const pad = halfWidth + 12;
         const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - pad) / VOX + HALF_GRID));
         const x1 = Math.min(mw - 1, Math.ceil((Math.max(ax, bx) + pad) / VOX + HALF_GRID));
         const y0 = Math.max(0, Math.floor((Math.min(ay, by) - pad) / VOX + HALF_GRID));
@@ -680,7 +683,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           for (let mx = x0; mx <= x1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const d = Math.sqrt(distToSegmentSq(wx, wy, ax, ay, bx, by));
-            const n = fbm2d(wx * 0.055 + 4.2, wy * 0.055 - 2.1) * 2.6;
+            const n = fbm2d(wx * 0.028 + 4.2, wy * 0.028 - 2.1) * 4.8;
             if (d <= halfWidth + n) {
               const idx = my * mw + mx;
               if (matMap[idx] !== MAT_WATER && matMap[idx] !== MAT_BRIDGE) {
@@ -695,7 +698,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function paintRampPath(ax, ay, az, bx, by, bz, halfWidth, mat = MAT_PATH, biome = null) {
-      const pad = halfWidth + 8;
+      const pad = halfWidth + 16;
       const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - pad) / VOX + HALF_GRID));
       const x1 = Math.min(mw - 1, Math.ceil((Math.max(ax, bx) + pad) / VOX + HALF_GRID));
       const y0 = Math.max(0, Math.floor((Math.min(ay, by) - pad) / VOX + HALF_GRID));
@@ -710,9 +713,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const t = Math.max(0, Math.min(1, ((wx - ax) * vx + (wy - ay) * vy) / lenSq));
           const px = ax + vx * t, py = ay + vy * t;
           const d = Math.hypot(wx - px, wy - py);
-          const n = fbm2d(wx * 0.05, wy * 0.05) * 2.2;
+          const n = fbm2d(wx * 0.025, wy * 0.025) * 4.2;
           const effR = halfWidth + n;
-          if (d <= effR + 6) {
+          if (d <= effR + 12) {
             const idx = my * mw + mx;
             const targetH = Math.round(az + (bz - az) * t);
             if (d <= effR) {
@@ -720,7 +723,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               matMap[idx] = mat;
               if (biome !== null) biomeMap[idx] = biome;
             } else {
-              const s = 1 - (d - effR) / 6;
+              const s = 1 - (d - effR) / 12;
               hmap[idx] = Math.max(hmap[idx], Math.round(targetH * s * s));
               if (biome !== null) biomeMap[idx] = biome;
             }
@@ -730,12 +733,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function carveRiverPath(points, width, depth = -6) {
-      const halfW = width * 0.5;
-      const bankW = halfW + 10;
+      const baseHalfW = width * 0.5;
+      const maxMouth = 32;
+      const bankPad = baseHalfW + maxMouth + 22;
       for (let i = 0; i < points.length - 1; i++) {
         const [ax, ay] = points[i];
         const [bx, by] = points[i + 1];
-        const pad = bankW + 8;
+        const pad = bankPad + 16;
         const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - pad) / VOX + HALF_GRID));
         const x1 = Math.min(mw - 1, Math.ceil((Math.max(ax, bx) + pad) / VOX + HALF_GRID));
         const y0 = Math.max(0, Math.floor((Math.min(ay, by) - pad) / VOX + HALF_GRID));
@@ -743,23 +747,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
         for (let my = y0; my <= y1; my++) {
           const wy = (my - HALF_GRID + 0.5) * VOX;
+          const mouthFlare = wy > 410 ? Math.min(maxMouth, (wy - 410) * 0.28) : 0;
+          const halfW = baseHalfW + mouthFlare;
+          const bankW = halfW + 20;
           for (let mx = x0; mx <= x1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const d = Math.sqrt(distToSegmentSq(wx, wy, ax, ay, bx, by));
-            const wobble = fbm2d(wx * 0.03 + 9.2, wy * 0.03 - 4.4) * 5.0;
+            const wobble = fbm2d(wx * 0.015 + 9.2, wy * 0.015 - 4.4) * 10.0;
             const effD = d + wobble;
             const idx = my * mw + mx;
             if (effD <= halfW) {
               hmap[idx] = depth;
               matMap[idx] = MAT_WATER;
               biomeMap[idx] = 5;
-            } else if (effD <= halfW + 3.2) {
+            } else if (effD <= halfW + 6.5) {
               if (matMap[idx] !== MAT_WATER) {
                 hmap[idx] = Math.min(hmap[idx], -4);
                 matMap[idx] = MAT_WATER;
                 biomeMap[idx] = 5;
               }
-            } else if (effD <= halfW + 6.5) {
+            } else if (effD <= halfW + 13.0) {
               if (matMap[idx] !== MAT_WATER) {
                 hmap[idx] = Math.min(hmap[idx], -1);
                 matMap[idx] = MAT_SAND;
@@ -809,6 +816,93 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     }
 
+    function buildStandableMap() {
+      for (let my = 0; my < mh; my++) {
+        const row = my * mw;
+        const edgeY = my < 2 || my >= mh - 2;
+        for (let mx = 0; mx < mw; mx++) {
+          const idx = row + mx;
+          const h0 = hmap[idx];
+          const mat = matMap[idx];
+          cliffTopMap[idx] = h0;
+
+          if (mat === MAT_WATER) {
+            standableMap[idx] = 0;
+            continue;
+          }
+          if (mat === MAT_BRIDGE || mat === MAT_LILYPAD) {
+            standableMap[idx] = 1;
+            continue;
+          }
+          if (edgeY || mx < 2 || mx >= mw - 2) {
+            standableMap[idx] = 1;
+            continue;
+          }
+
+          let min3 = h0, max3 = h0;
+          for (let dy = -1; dy <= 1; dy++) {
+            const nbRow = (my + dy) * mw;
+            for (let dx = -1; dx <= 1; dx++) {
+              const hv = hmap[nbRow + mx + dx];
+              if (hv < min3) min3 = hv;
+              if (hv > max3) max3 = hv;
+            }
+          }
+
+          if (max3 - h0 <= 3 && h0 - min3 <= 3) {
+            standableMap[idx] = 1;
+            continue;
+          }
+
+          let nearCount = 0;
+          let min5 = h0;
+          for (let dy = -2; dy <= 2; dy++) {
+            const nbRow = (my + dy) * mw;
+            for (let dx = -2; dx <= 2; dx++) {
+              const nb = nbRow + mx + dx;
+              const hv = hmap[nb];
+              if (hv < min5) min5 = hv;
+              if (matMap[nb] !== MAT_WATER && Math.abs(hv - h0) <= 3) {
+                nearCount++;
+              }
+            }
+          }
+
+          if (h0 - min5 <= 2) {
+            standableMap[idx] = 1;
+            continue;
+          }
+          if (max3 - h0 > 4 && h0 - min3 > 4) {
+            standableMap[idx] = 0;
+          } else {
+            standableMap[idx] = nearCount >= 14 ? 1 : 0;
+          }
+        }
+      }
+
+      // Segundo passo: para células não-pisáveis em falésias secas, guarda altura máxima local (r=5)
+      for (let my = 0; my < mh; my++) {
+        const row = my * mw;
+        const y0 = Math.max(0, my - 5);
+        const y1 = Math.min(mh - 1, my + 5);
+        for (let mx = 0; mx < mw; mx++) {
+          const idx = row + mx;
+          if (standableMap[idx] !== 0 || matMap[idx] === MAT_WATER) continue;
+          const x0 = Math.max(0, mx - 5);
+          const x1 = Math.min(mw - 1, mx + 5);
+          let maxH = hmap[idx];
+          for (let ny = y0; ny <= y1; ny++) {
+            const nRow = ny * mw;
+            for (let nx = x0; nx <= x1; nx++) {
+              const hv = hmap[nRow + nx];
+              if (hv > maxH) maxH = hv;
+            }
+          }
+          cliffTopMap[idx] = maxH;
+        }
+      }
+    }
+
     function setCirclePatch(cx, cy, radius, height, mat, biome, isCliff = true) {
       const x0 = Math.max(0, Math.floor((cx - radius - 2) / VOX + HALF_GRID));
       const x1 = Math.min(mw - 1, Math.ceil((cx + radius + 2) / VOX + HALF_GRID));
@@ -846,7 +940,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     }
 
-    // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 360×360
+    // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 720×720
     function initOrganicWorld() {
       // Base inicial: plano verde Z=0
       hmap.fill(0);
@@ -859,13 +953,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
           const idx = my * mw + mx;
-          const wNoise = fbm2d(wx * 0.015, wy * 0.015) * 18;
-          if (wy + wNoise > 215) biomeMap[idx] = 3; // Praia Sul
-          else if (wx + wNoise > 42 && wy + wNoise < -5) biomeMap[idx] = 7; // Montanha NE
-          else if (wx + wNoise > 42 && wy + wNoise >= -5) biomeMap[idx] = 6; // Bosque SE
-          else if (wy + wNoise < -85 && wx + wNoise < 35) biomeMap[idx] = 4; // Jardim Zen NW
-          else if (wx + wNoise < -200 && wy + wNoise >= -85) biomeMap[idx] = 1; // Girassóis W
-          else if (wy + wNoise >= 120 && wx + wNoise < 30) biomeMap[idx] = 2; // Ruínas
+          const wNoise = fbm2d(wx * 0.008, wy * 0.008) * 36;
+          if (wy + wNoise > 430) biomeMap[idx] = 3; // Praia Sul
+          else if (wx + wNoise > 84 && wy + wNoise < -10) biomeMap[idx] = 7; // Montanha NE
+          else if (wx + wNoise > 84 && wy + wNoise >= -10) biomeMap[idx] = 6; // Bosque SE
+          else if (wy + wNoise < -170 && wx + wNoise < 70) biomeMap[idx] = 4; // Jardim Zen NW
+          else if (wx + wNoise < -400 && wy + wNoise >= -170) biomeMap[idx] = 1; // Girassóis W
+          else if (wy + wNoise >= 240 && wx + wNoise < 60) biomeMap[idx] = 2; // Ruínas
           else biomeMap[idx] = 0; // Vila
         }
       }
@@ -873,13 +967,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       // Moldura natural elevada nas bordas Oeste, Norte e Leste (Sul aberto para o mar!)
       for (let my = 0; my < mh; my++) {
         const wy = (my - HALF_GRID + 0.5) * VOX;
-        if (wy > 215) continue;
+        if (wy > 430) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
           const edgeDist = Math.min(wx - WORLD_MIN, WORLD_MAX - wx, wy - WORLD_MIN);
-          const n = fbm2d(wx * 0.028 + 3.7, wy * 0.028 + 1.9) * 8;
-          if (edgeDist < 22 + n) {
-            const t = Math.max(0, Math.min(1, (22 + n - edgeDist) / 14));
+          if (edgeDist >= 64) continue;
+          const n = fbm2d(wx * 0.014 + 3.7, wy * 0.014 + 1.9) * 16;
+          if (edgeDist < 44 + n) {
+            const t = Math.max(0, Math.min(1, (44 + n - edgeDist) / 28));
             const idx = my * mw + mx;
             hmap[idx] = Math.max(hmap[idx], Math.round(22 * t));
           }
@@ -887,99 +982,139 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       // ---------------------------------------------------------------------
-      // BIOMA 1: CAMPOS DE GIRASSOL (Oeste)
+      // BIOMA 1: CAMPOS DE GIRASSOL (Oeste) — colinas amplas 200-240u
       // ---------------------------------------------------------------------
-      pullHill(-275, -25, 60, 14, 1.5, 0.22, MAT_GRASS, 1);
-      pullHill(-270, 82, 52, 8, 1.5, 0.22, MAT_GRASS, 1);
+      pullHill(-550, -50, 120, 14, 1.5, 0.22, MAT_GRASS, 1);
+      pullHill(-540, 164, 104, 8, 1.5, 0.22, MAT_GRASS, 1);
 
       // ---------------------------------------------------------------------
       // BIOMA 0: VILA DA CLAREIRA (Centro-Oeste) — rampa orgânica Z=0..6
       // ---------------------------------------------------------------------
-      pullHill(-95, -22, 24, 6, 1.35, 0.16, MAT_GRASS, 0);
+      pullHill(-190, -44, 62, 6, 1.35, 0.16, MAT_GRASS, 0);
 
       // ---------------------------------------------------------------------
       // BIOMA 4: JARDIM ZEN & PORTAL TORII (Noroeste)
       // ---------------------------------------------------------------------
-      pullPlateau(-160, -170, 114, 90, 16, 16, 0.14, false, MAT_GRASS, 4);
-      // Extensão Leste até Ponte Norte (wx=14, wy=-115)
-      pullPlateau(-32, -118, 52, 26, 16, 14, 0.10, false, MAT_GRASS, 4);
-      // Rampa larga da Vila (-145, -75) -> Jardim Zen (-145, -108)
-      paintRampPath(-145, -55, 0, -145, -108, 16, 13, MAT_PATH, 4);
+      pullPlateau(-320, -340, 228, 180, 16, 32, 0.14, false, MAT_GRASS, 4);
+      // Extensão Leste até Ponte Norte (wx=28, wy=-230)
+      pullPlateau(-64, -236, 104, 52, 16, 28, 0.10, false, MAT_GRASS, 4);
+      // Rampa larga da Vila (-290, -110) -> Jardim Zen (-290, -216)
+      paintRampPath(-290, -110, 0, -290, -216, 16, 26, MAT_PATH, 4);
       // Terraço Superior Zen (Z=32 -> Z=48)
-      pullPlateau(-255, -255, 48, 38, 32, 8, 0.12, false, MAT_GRASS, 4);
-      pullPlateau(-275, -275, 24, 20, 48, 4, 0.10, true, MAT_STONE, 4);
-      // Alameda Zen passando sob o Torii (-145, -135)
-      paintOrganicPath([[-145, -105], [-145, -205]], 10, MAT_PATH, 4, 16);
-      // Lago Zen em (-230, -195)
-      setCirclePatch(-230, -195, 24, 16, MAT_SAND, 4, true);
-      setCirclePatch(-230, -195, 20, 13, MAT_WATER, 4, true);
+      pullPlateau(-510, -510, 96, 76, 32, 16, 0.12, false, MAT_GRASS, 4);
+      pullPlateau(-550, -550, 48, 40, 48, 8, 0.10, true, MAT_STONE, 4);
+      // Alameda Zen (~34u de largura!) passando sob o Torii (-290, -270)
+      paintOrganicPath([[-290, -210], [-290, -410]], 17, MAT_PATH, 4, 16);
+      // Lago Zen (~76u de diâmetro!) em (-460, -390)
+      setCirclePatch(-460, -390, 46, 16, MAT_SAND, 4, true);
+      setCirclePatch(-460, -390, 38, 13, MAT_WATER, 4, true);
 
       // ---------------------------------------------------------------------
       // BIOMA 6: BOSQUE DOS COGUMELOS SALTITANTES (Sudeste)
       // ---------------------------------------------------------------------
-      pullHill(174, 96, 30, 12, 1.4, 0.18, MAT_STONE, 6);  // Apoio Cogumelo #2 (cap Z=28)
-      pullHill(200, 112, 34, 24, 1.4, 0.18, MAT_GRASS, 6); // Apoio Cogumelo #3 (cap Z=40)
-      pullHill(275, 165, 52, 16, 1.6, 0.22, MAT_GRASS, 6);
+      // Circuito aéreo de cogumelos: apoio Z=12 e Z=24 para caps Z=16 / 28 / 40
+      pullPlateau(330, 176, 14, 14, 12, 16, 0.12, false, MAT_STONE, 6); // Apoio #2 (cap Z=28)
+      pullPlateau(379, 192, 26, 14, 24, 18, 0.12, false, MAT_GRASS, 6); // Apoio #3 e #4 (caps Z=40)
+      pullPlateau(428, 176, 14, 14, 12, 16, 0.12, false, MAT_STONE, 6); // Apoio #5 (cap Z=28)
+      pullHill(550, 330, 104, 16, 1.6, 0.22, MAT_GRASS, 6);
 
       // ---------------------------------------------------------------------
       // BIOMA 7: MONTANHA DO PICO SAKURA (Nordeste, Z=64 topo)
       // ---------------------------------------------------------------------
-      // Contraforte Oeste Z=16 onde chega a Ponte Norte (wx=70..105, wy=-115)
-      pullPlateau(96, -110, 32, 22, 16, 12, 0.12, false, MAT_STONE, 7);
+      // Contraforte Oeste Z=16 onde chega a Ponte Norte (wx=140..210, wy=-230)
+      pullPlateau(192, -220, 64, 44, 16, 24, 0.12, false, MAT_STONE, 7);
       // Paredão escarpado Oeste/Sul (intransponível direto!)
-      pullPlateau(160, -180, 72, 62, 48, 3, 0.14, true, MAT_STONE, 7);
+      pullPlateau(320, -360, 144, 124, 48, 6, 0.14, true, MAT_STONE, 7);
       // Trilha orgânica larga em curva subindo: 0 -> 14 -> 28 -> 42 -> 54 -> 64
-      paintRampPath(205, -22, 0, 235, -55, 14, 16, MAT_PATH, 7);
-      pullPlateau(235, -55, 32, 26, 14, 14, 0.10, false, MAT_PATH, 7);
-      pullPlateau(275, -105, 34, 30, 28, 12, 0.10, false, MAT_PATH, 7);
-      pullPlateau(265, -175, 34, 32, 42, 12, 0.10, false, MAT_PATH, 7);
-      pullPlateau(225, -235, 36, 28, 54, 10, 0.10, false, MAT_PATH, 7);
+      paintRampPath(410, -44, 0, 470, -110, 14, 30, MAT_PATH, 7);
+      pullPlateau(470, -110, 64, 52, 14, 28, 0.10, false, MAT_PATH, 7);
+      paintRampPath(470, -110, 14, 550, -210, 28, 28, MAT_PATH, 7);
+      pullPlateau(550, -210, 68, 60, 28, 24, 0.10, false, MAT_PATH, 7);
+      paintRampPath(550, -210, 28, 530, -350, 42, 28, MAT_PATH, 7);
+      pullPlateau(530, -350, 68, 64, 42, 24, 0.10, false, MAT_PATH, 7);
+      paintRampPath(530, -350, 42, 450, -470, 54, 26, MAT_PATH, 7);
+      pullPlateau(450, -470, 72, 56, 54, 20, 0.10, false, MAT_PATH, 7);
+      paintRampPath(450, -470, 54, 355, -390, 64, 24, MAT_PATH, 7);
       // Cume arredondado do Pico Sakura (Z=64)
-      pullPlateau(160, -180, 52, 46, 64, 10, 0.12, false, MAT_PEAK, 7);
+      pullPlateau(320, -360, 104, 92, 64, 20, 0.12, false, MAT_PEAK, 7);
 
       // ---------------------------------------------------------------------
-      // BIOMA 5: RIO SINUOSO & CACHOEIRA ORGÂNICA
+      // BIOMA 5: RIO SINUOSO & CACHOEIRA ORGÂNICA (largura ~54u)
       // ---------------------------------------------------------------------
       const riverPts = [
-        [40, -358], [52, -265], [44, -152], [28, -55],
-        [38, 40], [48, 145], [34, 245], [38, 310]
+        [80, -716], [104, -530], [88, -304], [56, -110],
+        [76, 80], [96, 290], [68, 490], [76, 620]
       ];
-      carveRiverPath(riverPts, 28, -6);
+      carveRiverPath(riverPts, 54, -6);
 
-      // Cachoeira Orgânica descendo do paredão oeste da Montanha (wx=105 -> 48, wy=-152)
+      // Cachoeira Vertical na Falésia Oeste (wy=-330) + Poço + Riacho Plano até o Rio
+      // Parte C1: Riacho plano (Z=-5) ligando o pé da cachoeira (wx=152) ao rio principal (wx=90)
+      carveRiverPath([[152, -330], [124, -326], [90, -324]], 24, -5);
+
+      // Parte C2: Poço circular com borda rasa arenosa ao pé da falésia (sem corroer a rocha alta h > 10)
       for (let my = 0; my < mh; my++) {
         const wy = (my - HALF_GRID + 0.5) * VOX;
-        if (wy < -168 || wy > -136) continue;
+        if (wy < -356 || wy > -304) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          if (wx < 44 || wx > 110) continue;
-          const n = fbm2d(wx * 0.08, wy * 0.08) * 3.5;
-          if (Math.abs(wy + 152 + n * 0.6) <= 9.5) {
-            const idx = my * mw + mx;
-            const t = Math.max(0, Math.min(1, (wx - 46) / 62));
-            const fallZ = t < 0.15 ? -2 : Math.round(52 * Math.pow(t, 1.35));
-            hmap[idx] = Math.max(fallZ, -2);
+          if (wx < 138 || wx > 186) continue;
+          const idx = my * mw + mx;
+          if (hmap[idx] > 10) continue;
+          const d = Math.hypot(wx - 162, wy + 330) + fbm2d(wx * 0.12, wy * 0.12) * 1.4;
+          if (d <= 17) {
+            hmap[idx] = -5;
             matMap[idx] = MAT_WATER;
-            biomeMap[idx] = t > 0.3 ? 7 : 5;
+            biomeMap[idx] = 5;
             cliffMask[idx] = 1;
+          } else if (d <= 21 && matMap[idx] !== MAT_WATER && hmap[idx] <= 2) {
+            hmap[idx] = Math.min(hmap[idx], 0);
+            matMap[idx] = MAT_SAND;
+            biomeMap[idx] = 5;
+          }
+        }
+      }
+
+      // Partes A & B: Nascente rebaixada no platô (h>=44 -> 46) + Cortina vertical colada à encosta da falésia (1<=h<=48)
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        if (wy < -350 || wy > -310) continue;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          if (wx < 160 || wx > 218) continue;
+          const idx = my * mw + mx;
+          const curH = hmap[idx];
+          const n = fbm2d(wx * 0.05, wy * 0.05) * 4.5;
+          if (Math.abs(wy + 330 + n) <= 12.0) {
+            if (wx >= 178 && curH >= 44) {
+              // Parte A: Nascente encaixada 2u abaixo da borda Z=48 da montanha
+              hmap[idx] = 46;
+              matMap[idx] = MAT_WATER;
+              biomeMap[idx] = 7;
+              cliffMask[idx] = 1;
+            } else if (wx <= 194 && curH >= 1 && curH <= 48) {
+              // Parte B: Cortina vertical acompanhando o relevo real da falésia (zero rampa flutuante)
+              matMap[idx] = MAT_WATER;
+              biomeMap[idx] = 7;
+              cliffMask[idx] = 1;
+            }
           }
         }
       }
 
       // ---------------------------------------------------------------------
-      // BIOMA 3: PRAIA DOURADA, BAÍA SUL, PÍER, VITÓRIAS-RÉGIAS & FAROL
+      // BIOMA 3: PRAIA DOURADA, BAÍA SUL, PÍER, 6 VITÓRIAS-RÉGIAS & FAROL
       // ---------------------------------------------------------------------
       for (let my = 0; my < mh; my++) {
         const wy = (my - HALF_GRID + 0.5) * VOX;
-        if (wy < 205) continue;
+        if (wy < 410) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
           const idx = my * mw + mx;
-          const wave = fbm2d(wx * 0.014 + 2.5, 1.2) * 14;
-          const shoreY = 252 + wave;
-          const sandStart = 212 + wave * 0.7;
+          const wave = fbm2d(wx * 0.007 + 2.5, 1.2) * 28;
+          const shoreY = 504 + wave;
+          const sandStart = 424 + wave * 0.7;
 
-          if (wy >= shoreY + 4) {
+          if (wy >= shoreY + 8) {
             hmap[idx] = -6;
             matMap[idx] = MAT_WATER;
             biomeMap[idx] = 3;
@@ -987,7 +1122,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             hmap[idx] = -4;
             matMap[idx] = MAT_WATER;
             biomeMap[idx] = 3;
-          } else if (wy >= shoreY - 5) {
+          } else if (wy >= shoreY - 10) {
             if (matMap[idx] !== MAT_WATER) {
               hmap[idx] = -1;
               matMap[idx] = MAT_SAND;
@@ -1003,82 +1138,89 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      // Ilhota Arenosa Leste no Mar Sul
-      pullPlateau(66, 286, 24, 20, 1, 5, 0.14, true, MAT_SAND, 3, true);
+      // Ilhota Tropical Sul no Mar Sul
+      pullPlateau(132, 572, 48, 40, 1, 10, 0.14, true, MAT_SAND, 3, true);
       // Promontório Rochoso do Farol (Sudoeste) + Rampa de Acesso
-      paintRampPath(-185, 238, 0, -212, 256, 14, 10, MAT_SAND, 3);
-      pullPlateau(-230, 270, 44, 36, 14, 5, 0.14, true, MAT_STONE, 3);
+      paintRampPath(-370, 476, 0, -424, 512, 14, 20, MAT_SAND, 3);
+      pullPlateau(-460, 540, 88, 72, 14, 10, 0.14, true, MAT_STONE, 3);
 
-      // Píer de Madeira (Z=2)
-      setBridgeRect(-66, -54, 230, 295, 2, MAT_BRIDGE, 3);
-      // 4 Vitórias-Régias saltáveis sobre a água até a ilhota!
-      for (const [lx, ly] of [[-34, 282], [-10, 292], [14, 282], [38, 292]]) {
-        setCirclePatch(lx, ly, 8.5, 0, MAT_LILYPAD, 3, true);
+      // Píer Longo de Madeira (Z=2)
+      setBridgeRect(-132, -108, 460, 590, 2, MAT_BRIDGE, 3);
+      // 6 Vitórias-Régias saltáveis sobre a água até a ilhota tropical sul!
+      for (const [lx, ly] of [[-82, 574], [-48, 588], [-14, 572], [20, 588], [54, 572], [86, 582]]) {
+        setCirclePatch(lx, ly, 12.0, 0, MAT_LILYPAD, 3, true);
       }
 
       // ---------------------------------------------------------------------
       // PONTES SOBRE O RIO & PEDRAS DE TRAVESSIA
       // ---------------------------------------------------------------------
       // Ponte Central de Madeira (Z=2, Vila <-> Bosque)
-      setBridgeRect(8, 68, 28, 44, 2, MAT_BRIDGE, 5);
+      setBridgeRect(16, 136, 56, 88, 2, MAT_BRIDGE, 5);
       // Ponte Norte de Pedra (Z=16, Jardim Zen <-> Contraforte da Montanha)
-      setBridgeRect(12, 72, -123, -107, 16, MAT_BRIDGE, 5);
-      // Pedras de Travessia ao Sul (Z=2)
-      setCirclePatch(32, 165, 8.0, 2, MAT_STONE, 5, true);
-      setCirclePatch(54, 165, 8.0, 2, MAT_STONE, 5, true);
+      setBridgeRect(24, 144, -246, -214, 16, MAT_BRIDGE, 5);
+      // Pedras de Travessia ao Sul (Z=2) cruzando os ~54u do rio
+      setCirclePatch(66, 330, 10.0, 2, MAT_STONE, 5, true);
+      setCirclePatch(90, 330, 10.0, 2, MAT_STONE, 5, true);
+      setCirclePatch(114, 330, 10.0, 2, MAT_STONE, 5, true);
 
       // ---------------------------------------------------------------------
       // BIOMA 2: RUÍNAS ORGÂNICAS & 4 MONOLITOS DE TESTE (cliffMask=1)
       // ---------------------------------------------------------------------
-      // Pátio plano Z=0 em volta de wy=150..205 garantindo base limpa para os testes
+      // Pátio plano Z=0 em volta de wy=252..420 garantindo base limpa para os testes
       for (let my = 0; my < mh; my++) {
         const wy = (my - HALF_GRID + 0.5) * VOX;
-        if (wy < 126 || wy > 210) continue;
+        if (wy < 252 || wy > 420) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          if (wx < -186 || wx > 18) continue;
+          if (wx < -372 || wx > 36) continue;
           const idx = my * mw + mx;
           if (matMap[idx] !== MAT_WATER) {
             hmap[idx] = 0;
             biomeMap[idx] = 2;
             cliffMask[idx] = 1;
-            if (wy >= 136 && wy <= 202 && wx >= -166 && wx <= 14) {
+            if (wy >= 272 && wy <= 404 && wx >= -332 && wx <= 28) {
               matMap[idx] = MAT_PATH;
             }
           }
         }
       }
-      // 4 Monolitos Arredondados lado a lado em wy=165 (espaçamento 45u!)
-      pullPlateau(-140, 165, 16, 14, 6,  4.5, 0.06, true, MAT_STONE, 2); // A: Z=6  (sobe andando!)
-      pullPlateau(-95,  165, 16, 14, 16, 2.0, 0.06, true, MAT_STONE, 2); // B: Z=16 (pulo 1H!)
-      pullPlateau(-50,  165, 16, 14, 32, 2.0, 0.06, true, MAT_STONE, 2); // C: Z=32 (pulo 2H máx!)
-      pullPlateau(-5,   165, 16, 14, 48, 2.0, 0.06, true, MAT_STONE, 2); // D: Z=48 (3H bloqueado!)
+      // 4 Monolitos Arredondados bem espaçados em wy=330 (rx=26, ry=22, x=-280,-190,-100,-10)
+      pullPlateau(-280, 330, 26, 22, 6,  8.0, 0.06, true, MAT_STONE, 2); // A: Z=6  (sobe andando!)
+      pullPlateau(-190, 330, 26, 22, 16, 2.0, 0.06, true, MAT_STONE, 2); // B: Z=16 (pulo 1H!)
+      pullPlateau(-100, 330, 26, 22, 32, 2.0, 0.06, true, MAT_STONE, 2); // C: Z=32 (pulo 2H máx!)
+      pullPlateau(-10,  330, 26, 22, 48, 2.0, 0.06, true, MAT_STONE, 2); // D: Z=48 (3H bloqueado!)
 
       // ---------------------------------------------------------------------
       // TRILHAS ORGÂNICAS CONECTANDO VILA <-> BIOMAS
       // ---------------------------------------------------------------------
-      paintOrganicPath([[-110, 30], [8, 36]], 9, MAT_PATH, 0, 0);         // Vila -> Ponte Central
-      paintOrganicPath([[68, 36], [125, 55], [190, 30], [208, -20]], 8, MAT_PATH, 6); // Ponte -> Bosque / Base Montanha
-      paintOrganicPath([[-110, 30], [-210, 30]], 8, MAT_PATH, 0, 0);     // Vila -> Girassóis
-      paintOrganicPath([[-110, 30], [-110, 135]], 9, MAT_PATH, 0, 0);    // Vila -> Ruínas
-      paintOrganicPath([[-110, 30], [-145, -55]], 8, MAT_PATH, 0, 0);    // Vila -> Rampa Zen
-      paintOrganicPath([[-72, 195], [-60, 230]], 8, MAT_PATH, 2, 0);     // Ruínas -> Píer
+      paintOrganicPath([[-220, 60], [16, 72]], 16, MAT_PATH, 0, 0);          // Vila -> Ponte Central
+      paintOrganicPath([[136, 72], [250, 110], [380, 60], [410, -44]], 15, MAT_PATH, 6); // Ponte -> Bosque / Base Montanha
+      paintOrganicPath([[-220, 60], [-420, 60]], 15, MAT_PATH, 0, 0);      // Vila -> Girassóis
+      paintOrganicPath([[-220, 60], [-220, 270]], 16, MAT_PATH, 0, 0);     // Vila -> Ruínas
+      paintOrganicPath([[-220, 60], [-290, -110]], 15, MAT_PATH, 0, 0);    // Vila -> Rampa Zen
+      paintOrganicPath([[-144, 390], [-120, 460]], 15, MAT_PATH, 2, 0);    // Ruínas -> Píer
+      paintOrganicPath([[-220, 60], [-305, 90]], 11, MAT_PATH, 0, 0);      // Vila -> Cabana 1
+      paintOrganicPath([[-220, 60], [-162, 134]], 11, MAT_PATH, 0, 0);     // Vila -> Cabana 2
 
-      // Garante platô plano Z=0 sob a Cabana em (-175, 45)
-      for (let my = 0; my < mh; my++) {
-        const wy = (my - HALF_GRID + 0.5) * VOX;
-        if (wy < 15 || wy > 80) continue;
-        for (let mx = 0; mx < mw; mx++) {
-          const wx = (mx - HALF_GRID + 0.5) * VOX;
-          if (wx < -208 || wx > -140) continue;
-          const idx = my * mw + mx;
-          hmap[idx] = 0;
-          cliffMask[idx] = 1;
+      // Garante platôs planos Z=0 sob a Cabana 1 (-350, 90) e Cabana 2 (-120, 150)
+      for (const [x0w, x1w, y0w, y1w] of [[-416, -280, 30, 160], [-180, -60, 100, 200]]) {
+        const gx0 = Math.max(0, Math.floor(x0w / VOX + HALF_GRID));
+        const gx1 = Math.min(mw - 1, Math.ceil(x1w / VOX + HALF_GRID));
+        const gy0 = Math.max(0, Math.floor(y0w / VOX + HALF_GRID));
+        const gy1 = Math.min(mh - 1, Math.ceil(y1w / VOX + HALF_GRID));
+        for (let my = gy0; my <= gy1; my++) {
+          const row = my * mw;
+          for (let mx = gx0; mx <= gx1; mx++) {
+            const idx = row + mx;
+            hmap[idx] = 0;
+            cliffMask[idx] = 1;
+          }
         }
       }
 
       // Relaxamento Elástico Pull-Chain: degraus suaves de 1-2px onde cliffMask === 0
       elasticChainRelax(2);
+      buildStandableMap();
     }
     initOrganicWorld();
 
@@ -1095,7 +1237,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         biomeId: b,
         biomeKey: BIOME_KEYS[b],
         biome: BIOME_NAMES[b],
-        isCliff: cliffMask[idx] === 1
+        isCliff: cliffMask[idx] === 1,
+        standable: standableMap[idx] === 1,
+        cliffTop: cliffTopMap[idx]
       };
     }
 
@@ -1245,128 +1389,207 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       });
     }
 
-    function populateWorldObjects() {
-      // 0. Vila da Clareira
-      addProp('cozy_cabin', -175, 45);
-      addProp('campfire', -95, 10);
-      addProp('wood_sign', -90, 48, { angle: 0.22 });
-      addProp('pumpkin_patch', -155, 84);
-      addProp('tree_stump', -88, 72);
-      addProp('flower_tuft', -132, 58);
-      addProp('flower_tuft', -116, 12);
-      addProp('pine_tree', -195, -18);
-      addProp('pine_tree', -62, -25);
-      addProp('pine_tree', -190, 96);
-      addProp('bush_berry', -68, 88);
+    function isNearPathOrWater(wx, wy, bufferU = 8) {
+      const step = VOX;
+      for (let dy = -bufferU; dy <= bufferU; dy += step) {
+        for (let dx = -bufferU; dx <= bufferU; dx += step) {
+          const c = getCellAt(wx + dx, wy + dy);
+          if (!c) return true;
+          if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || c.mat === MAT_WATER || c.mat === MAT_LILYPAD) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
 
-      // 1. Campos de Girassol
+    function addForestProp(modelKey, wx, wy, options = {}) {
+      if (isNearPathOrWater(wx, wy, options.pathBuffer || 8)) return;
+      if (Math.hypot(wx + 220, wy - 60) < 26) return; // Mantém spawn livre
+      const meta = PROP_COLLIDER_META[modelKey] || { r: 5 };
+      const minGap = (meta.r || 5) + 6;
+      for (const sc of propColliders) {
+        if (isPointInPropCollider(wx, wy, sc, minGap)) return;
+      }
+      for (const pc of platformColliders) {
+        if (Math.hypot(wx - pc.wx, wy - pc.wy) < pc.r + minGap) return;
+      }
+      addProp(modelKey, wx, wy, options);
+    }
+
+    function populateWorldObjects() {
+      // 0. Vila da Clareira (Mini-Vila com 2 Cabanas, fogueira, horta e tocos)
+      addProp('cozy_cabin', -350, 90);
+      addProp('cozy_cabin', -120, 150);
+      addProp('campfire', -190, 20);
+      addProp('wood_sign', -180, 96, { angle: 0.22 });
+      addProp('pumpkin_patch', -310, 168);
+      addProp('pumpkin_patch', -284, 174);
+      addProp('tree_stump', -175, 102);
+      addProp('tree_stump', -252, 130);
+      addProp('flower_tuft', -264, 116);
+      addProp('flower_tuft', -232, 24);
+      addProp('flower_tuft', -154, 184);
+      addProp('bush_berry', -136, 198);
+      addProp('bush_berry', -386, 152);
+      addForestProp('pine_tree', -390, -36);
+      addForestProp('pine_tree', -124, -50);
+      addForestProp('pine_tree', -380, 192);
+      addForestProp('pine_tree', -80, 215);
+      addForestProp('pine_tree', -290, 22);
+      addForestProp('pine_tree', -50, -35);
+
+      // 1. Campos de Girassol (~20 girassóis + 4 fardos platform)
       for (const [tx, ty] of [
-        [-275, 10], [-255, 32], [-288, -10], [-248, -42], [-292, -45],
-        [-258, 72], [-285, 88], [-240, 108], [-302, 42], [-235, -12]
+        [-550, 20], [-510, 64], [-576, -20], [-496, -84], [-584, -90],
+        [-516, 144], [-570, 176], [-480, 216], [-604, 84], [-470, -24],
+        [-620, -40], [-598, 22], [-538, -116], [-456, -124], [-612, 136],
+        [-528, 210], [-442, 166], [-494, 24], [-556, 112], [-618, -108]
       ]) {
         addProp('sunflower', tx, ty);
       }
-      addProp('hay_bale', -225, 62);
-      addProp('hay_bale', -255, 52);
-      addProp('tree_stump', -232, 104);
-      addProp('flower_tuft', -290, 62);
+      addProp('hay_bale', -450, 124);
+      addProp('hay_bale', -510, 104);
+      addProp('hay_bale', -560, 180);
+      addProp('hay_bale', -480, -30);
+      addProp('tree_stump', -464, 208);
+      addProp('flower_tuft', -580, 124);
+      addProp('flower_tuft', -504, -54);
+      addForestProp('pine_tree', -628, -162);
+      addForestProp('pine_tree', -624, 240);
+      addForestProp('pine_tree', -430, -162);
 
-      // 2. Ruínas Orgânicas
-      addProp('ruin_pillar', -172, 138, { allowOnPath: true });
-      addProp('ruin_pillar', 16, 138, { allowOnPath: true });
-      addProp('stone_lantern', -172, 192, { allowOnPath: true });
-      addProp('stone_lantern', 16, 192, { allowOnPath: true });
-      addProp('boulder_large', -168, 165, { allowOnPath: true });
-      addProp('flower_tuft', -120, 202);
+      // 2. Ruínas Orgânicas (Pátio sul em wy=330)
+      addProp('ruin_pillar', -344, 276, { allowOnPath: true });
+      addProp('ruin_pillar', 32,   276, { allowOnPath: true });
+      addProp('stone_lantern', -344, 384, { allowOnPath: true });
+      addProp('stone_lantern', 32,   384, { allowOnPath: true });
+      addProp('boulder_large', -336, 330, { allowOnPath: true });
+      addProp('flower_tuft', -240, 404);
+      addProp('flower_tuft', -55,  404);
 
-      // 3. Praia Dourada, Enseada & Farol
-      addProp('lighthouse', -238, 274);
-      addProp('stone_lantern', -202, 258);
-      addProp('beach_umbrella', -105, 234);
-      addProp('beach_umbrella', -16, 236);
-      addProp('wood_boat', 115, 240, { angle: 0.16 });
-      addProp('boulder_large', 78, 290);
+      // 3. Praia Dourada, Enseada & Farol Monumental
+      addProp('lighthouse', -476, 548);
+      addProp('stone_lantern', -404, 516);
+      addProp('beach_umbrella', -240, 468);
+      addProp('beach_umbrella', -40,  472);
+      addProp('beach_umbrella', 180,  468);
+      addProp('wood_boat', 230,  480, { angle: 0.16 });
+      addProp('wood_boat', -310, 484, { angle: -0.22 });
+      addProp('boulder_large', 156, 580);
+      addProp('boulder_large', -360, 504);
 
       // 4. Jardim Zen & Portal Torii Gigante
-      addProp('torii_gate', -145, -135, { angle: 0, allowOnPath: true });
-      addProp('stone_lantern', -182, -135);
-      addProp('stone_lantern', -108, -135);
-      addProp('stone_lantern', -192, -190);
-      addProp('bush_berry', -92, -195);
-      addProp('flower_tuft', -158, -210);
-      addProp('boulder_large', -235, -245);
-      addProp('ruin_pillar', -254, -248);
-      addProp('pine_tree', -84, -225);
+      addProp('torii_gate', -290, -270, { angle: 0, allowOnPath: true });
+      addProp('stone_lantern', -364, -270);
+      addProp('stone_lantern', -216, -270);
+      addProp('stone_lantern', -384, -380);
+      addProp('bush_berry', -184, -390);
+      addProp('flower_tuft', -316, -420);
+      addProp('boulder_large', -470, -490);
+      addProp('ruin_pillar', -508, -496);
+      addForestProp('pine_tree', -168, -450);
+      addForestProp('pine_tree', -420, -490);
+      addForestProp('pine_tree', -560, -310);
+      addForestProp('pine_tree', -140, -560);
+      addForestProp('pine_tree', -360, -570);
 
-      // 6. Bosque dos Cogumelos Saltitantes
-      addProp('mushroom_giant', 148, 82);   // Cap Z=16
-      addProp('mushroom_giant', 174, 96);   // Em Z=12 -> Cap Z=28!
-      addProp('mushroom_giant', 200, 112);  // Em Z=24 -> Cap Z=40!
-      addProp('mushroom_giant', 235, 68);   // Cap Z=16
-      addProp('mushroom_giant', 128, 145);  // Cap Z=16
+      // 6. Bosque dos Cogumelos Saltitantes (7 cogumelos gigantes em circuito aéreo)
+      addProp('mushroom_giant', 296, 160);  // #1 Cap Z=16
+      addProp('mushroom_giant', 330, 176);  // #2 Em Z=12 -> Cap Z=28!
+      addProp('mushroom_giant', 362, 192);  // #3 Em Z=24 -> Cap Z=40!
+      addProp('mushroom_giant', 396, 192);  // #4 Em Z=24 -> Cap Z=40!
+      addProp('mushroom_giant', 428, 176);  // #5 Em Z=12 -> Cap Z=28!
+      addProp('mushroom_giant', 462, 160);  // #6 Cap Z=16
+      addProp('mushroom_giant', 256, 290);  // #7 Cap Z=16 (âncora sul)
       for (const [tx, ty] of [
-        [105, 76], [118, 115], [160, 175], [228, 172], [255, 92],
-        [295, 110], [290, 185], [102, 182], [308, 145]
+        [210, 152], [236, 230], [320, 350], [456, 344], [510, 184],
+        [590, 220], [580, 370], [204, 364], [616, 290], [496, 84],
+        [340, 290], [420, 270]
       ]) {
-        addProp('pine_tree', tx, ty);
+        addForestProp('pine_tree', tx, ty);
       }
-      addProp('tree_stump', 126, 86);
-      addProp('hay_bale', 268, 158);
-      addProp('boulder_large', 248, 42);
-      addProp('bush_berry', 180, 142);
-      addProp('flower_tuft', 136, 72);
-      addProp('flower_tuft', 220, 80);
+      addProp('tree_stump', 252, 172);
+      addProp('tree_stump', 494, 158);
+      addProp('hay_bale', 536, 316);
+      addProp('boulder_large', 496, 84);
+      addProp('boulder_large', 310, 240);
+      addProp('boulder_large', 575, 295);
+      addProp('bush_berry', 360, 284);
+      addProp('bush_berry', 450, 248);
+      addProp('flower_tuft', 272, 144);
+      addProp('flower_tuft', 440, 160);
 
-      // 7. Montanha & Pico Sakura (Trilha mantida 100% livre!)
-      addProp('sakura_oak', 150, -192);
-      addProp('stone_lantern', 186, -162, { allowOnPath: true });
-      addProp('stone_lantern', 136, -158, { allowOnPath: true });
-      addProp('flower_tuft', 146, -158);
-      addProp('flower_tuft', 182, -192);
-      addProp('boulder_large', 112, -96);
-      addProp('pine_tree', 142, -55);
+      // 7. Montanha & Pico Sakura (Trilha em espiral mantida 100% livre!)
+      addProp('sakura_oak', 300, -384);
+      addProp('stone_lantern', 372, -324, { allowOnPath: true });
+      addProp('stone_lantern', 272, -316, { allowOnPath: true });
+      addProp('flower_tuft', 292, -316);
+      addProp('flower_tuft', 364, -384);
+      addProp('boulder_large', 224, -192);
+      addForestProp('pine_tree', 284, -110);
+      addForestProp('pine_tree', 250, -520);
+      addForestProp('pine_tree', 600, -470);
+      addForestProp('pine_tree', 620, -60);
+      addForestProp('pine_tree', 190, -450);
 
-      // Pinheiros nas bordas arborizadas (Norte, Oeste, Leste)
-      for (let wx = -320; wx <= 320; wx += 64) {
-        if (Math.abs(wx - 44) < 35) continue;
-        addProp('pine_tree', wx, -342);
+      // Florestas Densas nas bordas arborizadas (Norte, Oeste, Leste) — total ~60 pinheiros!
+      for (let wx = -640; wx <= 640; wx += 116) {
+        if (Math.abs(wx - 80) < 68) continue;
+        addForestProp('pine_tree', wx, -682);
       }
-      for (let wy = -290; wy <= 190; wy += 64) {
-        addProp('pine_tree', -342, wy);
-        addProp('pine_tree', 342, wy);
+      for (let wy = -580; wy <= 360; wy += 118) {
+        addForestProp('pine_tree', -682, wy);
+        addForestProp('pine_tree', 682, wy);
+      }
+      // Bosques orgânicos secundários de borda
+      for (const [bx, by] of [
+        [-640, -610], [-470, -630], [180, -620], [420, -620],
+        [-635, -360], [630, -240], [635, 110], [-630, 320]
+      ]) {
+        addForestProp('pine_tree', bx, by);
+      }
+      for (const [bx, by] of [
+        [-600, -540], [-360, -620], [230, -580], [580, -390], [600, 140], [-610, 290]
+      ]) {
+        addForestProp('bush_berry', bx, by);
       }
 
-      // 16 PEIXES DOURADOS COLECIONÁVEIS
-      addFish(-95,  -22, 'Rampa da Vila');                  // #1  (Z=6)
-      addFish(-225, 62,  'Fardo dos Girassóis', 10);        // #2  (Z=10)
-      addFish(-275, -25, 'Colina dos Girassóis');           // #3  (Z=14)
-      addFish(-5,   165, 'Torre das Ruínas');               // #4  (Z=48)
-      addFish(-60,  290, 'Ponta do Píer');                  // #5  (Z=2)
-      addFish(-205, 282, 'Mirante do Farol');               // #6  (Z=14)
-      addFish(66,   286, 'Ilhota das Vitórias-Régias');     // #7  (Z=1)
-      addFish(38,   36,  'Ponte Central');                  // #8  (Z=2)
-      addFish(54,   165, 'Pedra do Rio');                   // #9  (Z=2)
-      addFish(-145, -195,'Alameda Pós-Torii');              // #10 (Z=16)
-      addFish(-275, -275,'Mirante Zen');                    // #11 (Z=48)
-      addFish(42,   -115,'Ponte Norte');                    // #12 (Z=16)
-      addFish(174,  96,  'Cogumelo Médio', 16);             // #13 (Z=28)
-      addFish(200,  112, 'Cogumelo Alto', 16);              // #14 (Z=40)
-      addFish(265,  -175,'Patamar da Montanha');            // #15 (Z=42)
-      addFish(176,  -176,'Pico Sakura Lendário');           // #16 (Z=64)
+      // 20 PEIXES DOURADOS COLECIONÁVEIS (distribuídos pelos 8 biomas)
+      addFish(-190, -44,  'Rampa da Vila');                  // #1  Vila (Z=6)
+      addFish(-175, 102,  'Toco da Vila', 10);               // #2  Vila (Z=10)
+      addFish(-450, 124,  'Fardo dos Girassóis', 10);        // #3  Girassóis (Z=10)
+      addFish(-550, -50,  'Colina dos Girassóis');           // #4  Girassóis (Z=14)
+      addFish(-540, 164,  'Campo Sul dos Girassóis');        // #5  Girassóis (Z=8)
+      addFish(-190, 330,  'Monolito Médio das Ruínas');      // #6  Ruínas (Z=16)
+      addFish(-10,  330,  'Torre das Ruínas');               // #7  Ruínas (Z=48)
+      addFish(-120, 580,  'Ponta do Píer');                  // #8  Praia (Z=2)
+      addFish(-410, 564,  'Mirante do Farol');               // #9  Praia (Z=14)
+      addFish(132,  572,  'Ilhota das Vitórias-Régias');     // #10 Praia (Z=1)
+      addFish(320,  476,  'Enseada Leste');                  // #11 Praia (Z=0)
+      addFish(76,   72,   'Ponte Central');                  // #12 Rio (Z=2)
+      addFish(90,   330,  'Pedra do Rio');                   // #13 Rio (Z=2)
+      addFish(84,   -230, 'Ponte Norte');                    // #14 Rio (Z=16)
+      addFish(-290, -390, 'Alameda Pós-Torii');              // #15 Zen (Z=16)
+      addFish(-550, -550, 'Mirante Zen');                    // #16 Zen (Z=48)
+      addFish(330,  176,  'Cogumelo Médio', 16);             // #17 Cogumelos (Z=28)
+      addFish(396,  192,  'Cogumelo Alto', 16);              // #18 Cogumelos (Z=40)
+      addFish(530,  -350, 'Patamar da Montanha');            // #19 Montanha (Z=42)
+      addFish(352,  -352, 'Pico Sakura Lendário');           // #20 Montanha (Z=64)
 
-      // NPCs: Galinha Popó na Vila + 2 Pintinhos Piu nos Girassóis
-      const popoCell = getCellAt(-108, 56);
+      // NPCs: Galinha Popó na Vila + 3 Pintinhos Piu nos Girassóis
+      const popoCell = getCellAt(-216, 112);
       npcs.push({
         kind: 'chicken', name: 'Popó', model: chickenModel, scale: 0.72,
-        x: -108, y: 56, z: popoCell ? popoCell.h : 0, homeX: -108, homeY: 56, roamR: 34,
+        x: -216, y: 112, z: popoCell ? popoCell.h : 0, homeX: -216, homeY: 112, roamR: 48,
         selfAngle: 0, walkPhase: 0, timer: 1.4, moving: true, dirX: 1, dirY: 0,
         speech: null
       });
-      for (const [cx, cy] of [[-260, 20], [-265, -15]]) {
+      for (const [cx, cy] of [[-520, 40], [-530, -30], [-460, 150]]) {
         const c = getCellAt(cx, cy);
         npcs.push({
           kind: 'chick', name: 'Piu', model: propModels.baby_chick, scale: 0.95,
-          x: cx, y: cy, z: c ? c.h : 0, homeX: cx, homeY: cy, roamR: 26,
+          x: cx, y: cy, z: c ? c.h : 0, homeX: cx, homeY: cy, roamR: 38,
           selfAngle: 0, walkPhase: 0, timer: 0.8 + Math.random(), moving: true, dirX: -1, dirY: 0.5,
           speech: null
         });
@@ -1375,7 +1598,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     populateWorldObjects();
 
     // =========================================================================
-    // 6. PRÉ-BAKE DAS FATIAS HORIZONTAIS (terrainSlices + grassTipSlices)
+    // 6. PRÉ-BAKE TIGHT-CROP BOUNDED SLICES (terrainSlices + grassTipSlices)
     // =========================================================================
     const IS_LE = (new Uint8Array(new Uint32Array([0x11223344]).buffer))[0] === 0x44;
     function packRGBA(r, g, b, a = 255) {
@@ -1404,81 +1627,200 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const COL_GRASS_TIP_BASE = packRGBA(45, 120, 41, 255);   // #2D7829
     const COL_GRASS_TIP_MID  = packRGBA(82, 193, 75, 255);   // #52C14B
     const COL_GRASS_TIP_HIGH = packRGBA(139, 232, 101, 255); // #8BE865
+    const COL_WILDFLOWERS = [
+      packRGBA(253, 224, 71, 255),  // Amarelo
+      packRGBA(255, 255, 255, 255), // Branco
+      packRGBA(249, 168, 212, 255)  // Rosa
+    ];
 
     const terrainSlices = {};
     const grassTipSlices = {};
 
     function bakeTerrainSlices() {
       const nTerrain = TERRAIN_Z_MAX - Z_MIN + 1;
-      const terrainBufs = new Array(nTerrain);
-      const terrainUsed = new Uint8Array(nTerrain);
-      for (let i = 0; i < nTerrain; i++) terrainBufs[i] = new Uint32Array(mw * mh);
+      const tMinX = new Int16Array(nTerrain).fill(mw);
+      const tMaxX = new Int16Array(nTerrain).fill(-1);
+      const tMinY = new Int16Array(nTerrain).fill(mh);
+      const tMaxY = new Int16Array(nTerrain).fill(-1);
 
       const nGrass = Z_GRASS_MAX - Z_MIN + 1;
-      const grassBufs = new Array(nGrass);
-      const grassUsed = new Uint8Array(nGrass);
-      for (let i = 0; i < nGrass; i++) grassBufs[i] = new Uint32Array(mw * mh);
+      const gMinX = new Int16Array(nGrass).fill(mw);
+      const gMaxX = new Int16Array(nGrass).fill(-1);
+      const gMinY = new Int16Array(nGrass).fill(mh);
+      const gMaxY = new Int16Array(nGrass).fill(-1);
 
+      const min8Cache = new Int16Array(mw * mh);
+      const grassType = new Uint8Array(mw * mh); // 0=none, 1=2px, 2=3px verde, 3..5=3px flor
+
+      const markT = (z, mx, my) => {
+        const si = z - Z_MIN;
+        if (mx < tMinX[si]) tMinX[si] = mx;
+        if (mx > tMaxX[si]) tMaxX[si] = mx;
+        if (my < tMinY[si]) tMinY[si] = my;
+        if (my > tMaxY[si]) tMaxY[si] = my;
+      };
+      const markG = (z, mx, my) => {
+        const gi = z - Z_MIN;
+        if (mx < gMinX[gi]) gMinX[gi] = mx;
+        if (mx > gMaxX[gi]) gMaxX[gi] = mx;
+        if (my < gMinY[gi]) gMinY[gi] = my;
+        if (my > gMaxY[gi]) gMaxY[gi] = my;
+      };
+
+      // Passo 1: Descobrir bounding boxes exatos + distribuir moitas orgânicas de grama
       for (let my = 0; my < mh; my++) {
         const row = my * mw;
-        const onBorder = (mx0, my0) => mx0 === 0 || my0 === 0 || mx0 === mw - 1 || my0 === mh - 1;
+        const onBorderY = (my === 0 || my === mh - 1);
+        for (let mx = 0; mx < mw; mx++) {
+          const idx = row + mx;
+          let h = hmap[idx];
+          if (h < Z_MIN) h = Z_MIN;
+          else if (h >= TERRAIN_Z_MAX) h = TERRAIN_Z_MAX - 1;
+          const mat = matMap[idx];
+
+          let min8 = 999;
+          let max4 = h;
+          let hL = h, hR = h, hU = h, hD = h;
+          if (onBorderY || mx === 0 || mx === mw - 1) {
+            min8 = -8;
+          } else {
+            hL = hmap[idx - 1];
+            hR = hmap[idx + 1];
+            hU = hmap[idx - mw];
+            hD = hmap[idx + mw];
+            const hLU = hmap[idx - mw - 1];
+            const hRU = hmap[idx - mw + 1];
+            const hLD = hmap[idx + mw - 1];
+            const hRD = hmap[idx + mw + 1];
+            min8 = hL;
+            if (hR < min8) min8 = hR;
+            if (hU < min8) min8 = hU;
+            if (hD < min8) min8 = hD;
+            if (hLU < min8) min8 = hLU;
+            if (hRU < min8) min8 = hRU;
+            if (hLD < min8) min8 = hLD;
+            if (hRD < min8) min8 = hRD;
+            max4 = hL;
+            if (hR > max4) max4 = hR;
+            if (hU > max4) max4 = hU;
+            if (hD > max4) max4 = hD;
+          }
+          min8Cache[idx] = min8;
+
+          if (mat === MAT_WATER) {
+            if (h < 0) {
+              const zEnd = h + 1 < -4 ? h + 1 : -4;
+              for (let z = Z_MIN; z <= zEnd; z++) markT(z, mx, my);
+              markT(-2, mx, my);
+            } else {
+              const zFrom = Math.max(Z_MIN, Math.min(h - 1, min8 - 2));
+              for (let z = zFrom; z <= h; z++) markT(z, mx, my);
+            }
+            continue;
+          }
+
+          const zStart = min8 - 2 > Z_MIN ? min8 - 2 : Z_MIN;
+          for (let z = zStart; z <= h; z++) {
+            const si = z - Z_MIN;
+            if (mx < tMinX[si]) tMinX[si] = mx;
+            if (mx > tMaxX[si]) tMaxX[si] = mx;
+            if (my < tMinY[si]) tMinY[si] = my;
+            if (my > tMaxY[si]) tMaxY[si] = my;
+          }
+
+          // Grama orgânica em moitas usando fbm2d(mx*0.14, my*0.14) + hash XOR sem listras
+          if ((mat === MAT_GRASS || mat === MAT_PEAK) && !noGrassMask[idx] && max4 <= h) {
+            let nh = ((mx * 73856093) ^ (my * 19349663)) >>> 0;
+            nh ^= nh >>> 13;
+            nh = Math.imul(nh, 1274126177) >>> 0;
+            const fine01 = nh / 4294967295;
+            if (fine01 > 0.18) {
+              const clumpVal = fbm2d(mx * 0.14, my * 0.14) + fine01 * 0.42;
+              if (clumpVal > 0.43) {
+                let gt = (clumpVal > 0.50 || (nh & 3) !== 0) ? 2 : 1;
+                if (gt === 2 && (nh % 29 === 0)) {
+                  gt = 3 + ((nh >>> 8) % 3);
+                }
+                grassType[idx] = gt;
+                if (h + 1 <= TERRAIN_Z_MAX) markT(h + 1, mx, my);
+                if (h + 2 <= Z_GRASS_MAX) markG(h + 2, mx, my);
+                if (gt >= 2 && h + 3 <= Z_GRASS_MAX) markG(h + 3, mx, my);
+              }
+            }
+          }
+        }
+      }
+
+      // Aloca SOMENTE os buffers no tamanho justo (bw × bh) por fatia usada
+      const terrainBufs = new Array(nTerrain).fill(null);
+      const tW = new Int16Array(nTerrain);
+      const tH = new Int16Array(nTerrain);
+      for (let i = 0; i < nTerrain; i++) {
+        if (tMaxX[i] >= tMinX[i]) {
+          tW[i] = tMaxX[i] - tMinX[i] + 1;
+          tH[i] = tMaxY[i] - tMinY[i] + 1;
+          terrainBufs[i] = new Uint32Array(tW[i] * tH[i]);
+        }
+      }
+
+      const grassBufs = new Array(nGrass).fill(null);
+      const gW = new Int16Array(nGrass);
+      const gH = new Int16Array(nGrass);
+      for (let i = 0; i < nGrass; i++) {
+        if (gMaxX[i] >= gMinX[i]) {
+          gW[i] = gMaxX[i] - gMinX[i] + 1;
+          gH[i] = gMaxY[i] - gMinY[i] + 1;
+          grassBufs[i] = new Uint32Array(gW[i] * gH[i]);
+        }
+      }
+
+      // Passo 2: Preenche diretamente os buffers recortados (Tight-Crop)
+      for (let my = 0; my < mh; my++) {
+        const row = my * mw;
         for (let mx = 0; mx < mw; mx++) {
           const idx = row + mx;
           const h = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX - 1, hmap[idx]));
           const mat = matMap[idx];
           const sh = shadowMask[idx];
-
-          // Menor altura entre os 8 vizinhos (borda externa = -8 formando saia da ilha)
-          let min8 = 999;
-          if (onBorder(mx, my)) {
-            min8 = -8;
-          } else {
-            for (let oy = -1; oy <= 1; oy++) {
-              const nrow = (my + oy) * mw;
-              for (let ox = -1; ox <= 1; ox++) {
-                if (ox === 0 && oy === 0) continue;
-                const nh = hmap[nrow + mx + ox];
-                if (nh < min8) min8 = nh;
-              }
-            }
-          }
-          const zStart = Math.max(Z_MIN, min8 - 2);
+          const min8 = min8Cache[idx];
           const nHash = ((mx * 73856093) ^ (my * 19349663)) >>> 0;
           const microTex = ((nHash & 7) - 3) * 2;
 
-          // Caso Água (rio/baía em h < 0 ou lago zen/cachoeira em h >= 0)
           if (mat === MAT_WATER) {
             if (h < 0) {
-              // Leito escuro em -6..-4
-              for (let z = Z_MIN; z <= Math.min(-4, h + 1); z++) {
+              const zEnd = Math.min(-4, h + 1);
+              const bedCol = packRGBA(28, 66, 108, 255);
+              for (let z = Z_MIN; z <= zEnd; z++) {
                 const si = z - Z_MIN;
-                terrainBufs[si][idx] = packRGBA(28, 66, 108, 255);
-                terrainUsed[si] = 1;
+                terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = bedCol;
               }
-              // Superfície da água visível em z = -2
               const siSurf = -2 - Z_MIN;
               const isShallow = h > -6;
-              const colWater = isShallow
-                ? ((nHash & 1) ? packRGBA(72, 202, 245, 225) : packRGBA(95, 215, 250, 225))
-                : ((nHash & 3) === 0 ? packRGBA(56, 189, 248, 235) : packRGBA(42, 172, 236, 235));
-              terrainBufs[siSurf][idx] = colWater;
-              terrainUsed[siSurf] = 1;
+              const wxSurf = (mx - HALF_GRID + 0.5) * VOX;
+              const wySurf = (my - HALF_GRID + 0.5) * VOX;
+              const isPlungeFoam = (Math.hypot(wxSurf - 168, wySurf + 330) < 16) && ((nHash & 3) === 0);
+              terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isPlungeFoam
+                ? packRGBA(236, 248, 255, 245)
+                : (isShallow
+                  ? ((nHash & 1) ? packRGBA(72, 202, 245, 225) : packRGBA(95, 215, 250, 225))
+                  : ((nHash & 3) === 0 ? packRGBA(56, 189, 248, 235) : packRGBA(42, 172, 236, 235)));
             } else {
-              // Cachoeira / Lago Zen elevado
               const zFrom = Math.max(Z_MIN, Math.min(h - 1, min8 - 2));
+              const streakHash = ((mx * 17) ^ (my * 31)) & 7;
               for (let z = zFrom; z <= h; z++) {
                 const si = z - Z_MIN;
-                const isFoam = (z < h && ((mx + my + z) % 5 === 0));
-                terrainBufs[si][idx] = isFoam
+                const isTop = (z === h);
+                const isFoam = isTop
+                  ? ((mx + my) % 3 === 0 && h < 45)
+                  : ((streakHash < 2 && ((z + (mx & 1)) % 3 !== 0)) || (z <= 2));
+                terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = isFoam
                   ? packRGBA(224, 242, 254, 255)
-                  : ((z === h) ? packRGBA(56, 189, 248, 235) : packRGBA(14, 138, 206, 255));
-                terrainUsed[si] = 1;
+                  : (isTop ? packRGBA(56, 189, 248, 240) : packRGBA(28, 158, 224, 255));
               }
             }
             continue;
           }
 
-          // Gradiente local para iluminação direcional das encostas (Sol vindo de Noroeste)
           const hL = mx > 0 ? hmap[idx - 1] : h;
           const hR = mx < mw - 1 ? hmap[idx + 1] : h;
           const hU = my > 0 ? hmap[idx - mw] : h;
@@ -1487,12 +1829,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const gy = hD - hU;
           const sunShade = Math.max(-22, Math.min(22, Math.round((-gx - gy) * 1.4)));
           const exposedEdge = (hL < h || hU < h) ? 10 : 0;
+          const zStart = Math.max(Z_MIN, min8 - 2);
 
           for (let z = zStart; z <= h; z++) {
             const si = z - Z_MIN;
             let col;
             if (z === h) {
-              // Topo do terreno
               let baseRGB;
               if (mat === MAT_PATH) baseRGB = PAL_PATH[nHash & 1];
               else if (mat === MAT_SAND) baseRGB = PAL_SAND[nHash & 1];
@@ -1511,7 +1853,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               const altLift = Math.min(14, Math.max(-6, Math.round(h * 0.16)));
               col = shadePack(baseRGB, microTex + altLift + exposedEdge, sh);
             } else {
-              // Parede / Encosta estratificada
               const d = h - z;
               if (mat === MAT_BRIDGE) {
                 col = shadePack([118, 72, 42], sunShade, sh * 0.5);
@@ -1520,69 +1861,63 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               } else if (mat === MAT_SAND && d <= 5) {
                 col = shadePack([196, 168, 112], sunShade, sh * 0.5);
               } else if (d <= 3 && mat !== MAT_STONE) {
-                // Musgo / grama pendurada
                 const moss = (nHash & 1) ? [58, 143, 56] : [41, 107, 39];
                 col = shadePack(moss, sunShade, sh * 0.6);
               } else if (d <= 12 && mat !== MAT_STONE) {
-                // Terra quente estratificada
                 const strata = (z & 2) ? 6 : -5;
                 const earth = (nHash & 1) ? [156, 102, 68] : [128, 79, 50];
                 col = shadePack(earth, sunShade + strata, sh * 0.4);
               } else {
-                // Rocha ardósia com listras horizontais geológicas
                 const strata = ((z >> 1) & 1) ? 9 : -8;
                 const rock = (nHash & 1) ? [109, 118, 132] : [86, 95, 108];
                 col = shadePack(rock, sunShade + strata, sh * 0.3);
               }
             }
-            terrainBufs[si][idx] = col;
-            terrainUsed[si] = 1;
+            terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = col;
           }
 
-          // Lâminas de Grama Voxel (2-3px) em ~52% dos pixels grass/peak livres
-          if ((mat === MAT_GRASS || mat === MAT_PEAK) && !noGrassMask[idx]) {
-            const maxNb = Math.max(hL, hR, hU, hD);
-            if (maxNb <= h) {
-              const gHash = ((mx * 1619 + my * 31337) >>> 0) % 100;
-              if (gHash < 52) {
-                if (h + 1 <= TERRAIN_Z_MAX) {
-                  const si1 = (h + 1) - Z_MIN;
-                  terrainBufs[si1][idx] = COL_GRASS_TIP_BASE;
-                  terrainUsed[si1] = 1;
-                }
-                if (h + 2 <= Z_GRASS_MAX) {
-                  const gi2 = (h + 2) - Z_MIN;
-                  grassBufs[gi2][idx] = COL_GRASS_TIP_MID;
-                  grassUsed[gi2] = 1;
-                }
-                if (gHash < 28 && h + 3 <= Z_GRASS_MAX) {
-                  const gi3 = (h + 3) - Z_MIN;
-                  grassBufs[gi3][idx] = COL_GRASS_TIP_HIGH;
-                  grassUsed[gi3] = 1;
-                }
-              }
+          const gt = grassType[idx];
+          if (gt > 0) {
+            if (h + 1 <= TERRAIN_Z_MAX) {
+              const si1 = (h + 1) - Z_MIN;
+              terrainBufs[si1][(my - tMinY[si1]) * tW[si1] + (mx - tMinX[si1])] = COL_GRASS_TIP_BASE;
+            }
+            if (h + 2 <= Z_GRASS_MAX) {
+              const gi2 = (h + 2) - Z_MIN;
+              grassBufs[gi2][(my - gMinY[gi2]) * gW[gi2] + (mx - gMinX[gi2])] = COL_GRASS_TIP_MID;
+            }
+            if (gt >= 2 && h + 3 <= Z_GRASS_MAX) {
+              const gi3 = (h + 3) - Z_MIN;
+              const tipCol = gt >= 3 ? COL_WILDFLOWERS[gt - 3] : COL_GRASS_TIP_HIGH;
+              grassBufs[gi3][(my - gMinY[gi3]) * gW[gi3] + (mx - gMinX[gi3])] = tipCol;
             }
           }
         }
       }
 
-      const uploadSlices = (bufs, used, targetMap, zMax) => {
+      const uploadTightSlices = (bufs, minXArr, minYArr, wArr, hArr, targetMap, zMax) => {
         for (let z = Z_MIN; z <= zMax; z++) {
           const i = z - Z_MIN;
-          if (!used[i]) continue;
+          const buf = bufs[i];
+          if (!buf) {
+            targetMap[z] = null;
+            continue;
+          }
+          const bw = wArr[i];
+          const bh = hArr[i];
           const cv = document.createElement('canvas');
-          cv.width = mw;
-          cv.height = mh;
+          cv.width = bw;
+          cv.height = bh;
           const cx = cv.getContext('2d');
-          const img = cx.createImageData(mw, mh);
-          new Uint32Array(img.data.buffer).set(bufs[i]);
+          const img = cx.createImageData(bw, bh);
+          new Uint32Array(img.data.buffer).set(buf);
           cx.putImageData(img, 0, 0);
-          targetMap[z] = cv;
+          targetMap[z] = { canvas: cv, offX: minXArr[i], offY: minYArr[i], w: bw, h: bh };
         }
       };
 
-      uploadSlices(terrainBufs, terrainUsed, terrainSlices, TERRAIN_Z_MAX);
-      uploadSlices(grassBufs, grassUsed, grassTipSlices, Z_GRASS_MAX);
+      uploadTightSlices(terrainBufs, tMinX, tMinY, tW, tH, terrainSlices, TERRAIN_Z_MAX);
+      uploadTightSlices(grassBufs, gMinX, gMinY, gW, gH, grassTipSlices, Z_GRASS_MAX);
     }
     bakeTerrainSlices();
     const STARTUP_MS = Math.round((performance.now() - STARTUP_T0) * 10) / 10;
@@ -1590,8 +1925,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     // =========================================================================
     // 7. ESTADO DO GATO, FÍSICA CONTÍNUA EM MICRO-VOXELS & TRAVEL
     // =========================================================================
-    const SPAWN_X = -110;
-    const SPAWN_Y = 30;
+    const SPAWN_X = -220;
+    const SPAWN_Y = 60;
     const spawnH = getHeightAt(SPAWN_X, SPAWN_Y) || 0;
 
     const cat = {
@@ -1610,7 +1945,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       scale: 1.0,
       skinIdx: 0,
       hatIdx: 0,
-      speech: { text: 'Miau! Vale Orgânico 360×360! 🐾', timer: 190 },
+      speech: { text: 'Miau! Vale Orgânico 720×720! 🐾', timer: 190 },
       lastSafeX: SPAWN_X,
       lastSafeY: SPAWN_Y,
       lastSafeZ: spawnH,
@@ -1620,13 +1955,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     };
 
     const TRAVEL_SPOTS = [
-      { wx: -110, wy: 30,   label: '🏡 Vila da Clareira' },
-      { wx: -72,  wy: 195,  label: '🏛️ Ruínas Orgânicas' },
-      { wx: -60,  wy: 228,  label: '🏖️ Praia & Farol' },
-      { wx: -145, wy: -105, label: '⛩️ Jardim Zen & Torii' },
-      { wx: 142,  wy: 76,   label: '🍄 Bosque Cogumelos' },
-      { wx: 205,  wy: -22,  label: '🥾 Base da Montanha' },
-      { wx: 160,  wy: -165, label: '🌸 Pico Sakura (Z=64)' }
+      { wx: -220, wy: 60,   label: '🏡 Vila da Clareira' },
+      { wx: -165, wy: 150,  label: '🏠 Cabana 2' },
+      { wx: -520, wy: 60,   label: '🌻 Campos de Girassol' },
+      { wx: -190, wy: 375,  label: '🏛️ Ruínas Orgânicas' },
+      { wx: -120, wy: 456,  label: '🏖️ Praia Dourada' },
+      { wx: -410, wy: 530,  label: '🗼 Farol Monumental' },
+      { wx: -290, wy: -210, label: '⛩️ Jardim Zen & Torii' },
+      { wx: 284,  wy: 152,  label: '🍄 Bosque Cogumelos' },
+      { wx: 410,  wy: -44,  label: '🥾 Base da Montanha' },
+      { wx: 320,  wy: -330, label: '🌸 Pico Sakura (Z=64)' }
     ];
     let travelIdx = 0;
 
@@ -1674,19 +2012,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       ];
       let bestH = -999;
       const centerCell = getCellAt(wx, wy);
+      const climbAllowed = onGround ? AUTO_STEP_MAX + 0.5 : 2.0;
 
       for (const [sx, sy] of samples) {
         const c = getCellAt(sx, sy);
-        if (!c || c.mat === MAT_WATER) continue;
-        if (c.h <= currentZ + AUTO_STEP_MAX + 0.5) {
+        if (!c || c.mat === MAT_WATER || !c.standable) continue;
+        if (c.h <= currentZ + climbAllowed) {
           if (c.h > bestH) bestH = c.h;
         }
       }
 
       for (const pc of platformColliders) {
         const d = Math.hypot(wx - pc.wx, wy - pc.wy);
-        const climbAllowed = onGround ? 4.0 : 1.5;
-        if (d <= pc.r && pc.topZ <= currentZ + climbAllowed) {
+        const pClimb = onGround ? 4.0 : 1.5;
+        if (d <= pc.r && pc.topZ <= currentZ + pClimb) {
           if (pc.topZ > bestH) bestH = pc.topZ;
         }
       }
@@ -1737,6 +2076,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           continue;
         }
         if (c.mat === MAT_WATER) continue;
+        if (!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) {
+          const wallH = Math.max(c.h, c.cliffTop);
+          if (wallH > catZ + allowedClimb) {
+            blocked = true;
+            if (wallH > maxBlockingH) maxBlockingH = wallH;
+            continue;
+          }
+        }
         if (c.h > catZ + allowedClimb) {
           blocked = true;
           if (c.h > maxBlockingH) maxBlockingH = c.h;
@@ -1802,7 +2149,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      let targetH = c.h;
+      let targetH = (!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) ? Math.max(c.h, c.cliffTop) : c.h;
       for (const pc of platformColliders) {
         if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 && pc.topZ > targetH) {
           targetH = pc.topZ;
@@ -2066,7 +2413,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         cat.isWalking = false;
       }
 
-      const speed = cat.onGround ? 90 : 80;
+      const isSprinting = !!(keys['ShiftLeft'] || keys['ShiftRight']);
+      const baseSpeed = isSprinting ? 168 : 112;
+      const speed = cat.onGround ? baseSpeed : Math.round(baseSpeed * 0.85);
       if (ilen > 0) {
         const dx = moveWorldX * speed * dt;
         const dy = moveWorldY * speed * dt;
@@ -2172,19 +2521,27 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         cat.groundZ = -6;
         cat.onGround = false;
         if (cat.z < -2.5) {
+          const inWater = sup.centerCell && sup.centerCell.mat === MAT_WATER;
           cat.x = cat.lastSafeX;
           cat.y = cat.lastSafeY;
-          cat.z = cat.lastSafeZ + 2;
           cat.vz = 0;
           cat.onGround = true;
-          sfxBlocked();
-          catSpeak('Splash! De volta à margem! 💦', 110);
-          spawnParticles(cat.x, cat.y, cat.z + 2, 10, ['#93C5FD', '#FFFFFF'], 32);
+          if (inWater) {
+            cat.z = cat.lastSafeZ + 2;
+            sfxBlocked();
+            catSpeak('Splash! De volta à margem! 💦', 110);
+            spawnParticles(cat.x, cat.y, cat.z + 2, 10, ['#93C5FD', '#FFFFFF'], 32);
+          } else {
+            cat.z = cat.lastSafeZ;
+          }
         }
       }
 
       if (cat.isWalking && cat.onGround) {
-        cat.walkPhase += dt * 11;
+        cat.walkPhase += dt * (isSprinting ? 17 : 12);
+        if (isSprinting && Math.random() < dt * 16) {
+          spawnParticles(cat.x, cat.y, cat.z + 1, 1, ['#FFF8EC', '#E7D8C2'], 16);
+        }
       }
 
       // Grama rustle & descoberta de bioma
@@ -2203,7 +2560,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      // Coleta dos 16 Peixes Dourados
+      // Coleta dos 20 Peixes Dourados
       let collectedCount = 0;
       for (const f of fishes) {
         if (f.collected) {
@@ -2217,7 +2574,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           f.collected = true;
           collectedCount++;
           sfxFish();
-          catSpeak(`Peixinho! (${collectedCount}/16) 🐟✨`, 135);
+          catSpeak(`Peixinho! (${collectedCount}/${fishes.length}) 🐟✨`, 135);
           spawnParticles(f.wx, f.wy, f.baseZ + 6, 16, ['#FBBF24', '#FEF08A', '#F97316', '#FFFFFF'], 44);
         }
       }
@@ -2230,6 +2587,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const obsEl = document.getElementById('statObstacle');
       obsEl.textContent = cat.obstacleLabel;
       obsEl.className = 'obstacle-chip obs-' + cat.obstacleHint;
+
+      if (Math.hypot(cat.x - 168, cat.y + 330) < 320 && Math.random() < dt * 14) {
+        spawnParticles(
+          168 + (Math.random() - 0.5) * 12,
+          -330 + (Math.random() - 0.5) * 14,
+          1, 1, ['#E0F2FE', '#FFFFFF', '#7DD3FC'], 16
+        );
+      }
 
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
@@ -2276,13 +2641,27 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       };
     }
 
-    function drawTerrainSliceTo(targetCtx, sliceCanvas, z, sx, sy, sw, sh, camGx, camGy, windOffX = 0) {
+    function drawBoundedSliceTo(targetCtx, sl, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, windOffX = 0) {
+      if (!sl) return;
+      const ix0 = Math.max(viewMinMx, sl.offX);
+      const ix1 = Math.min(viewMaxMx, sl.offX + sl.w);
+      if (ix1 <= ix0) return;
+      const iy0 = Math.max(viewMinMy, sl.offY);
+      const iy1 = Math.min(viewMaxMy, sl.offY + sl.h);
+      if (iy1 <= iy0) return;
+
+      const sx = ix0 - sl.offX;
+      const sy = iy0 - sl.offY;
+      const dw = ix1 - ix0;
+      const dh = iy1 - iy0;
+
       targetCtx.save();
       targetCtx.translate(LOW_W / 2 + windOffX, LOW_H / 2 + 16 - (z - camZ));
       targetCtx.scale(1, squash);
       targetCtx.rotate(turn);
       targetCtx.scale(VOX, VOX);
-      targetCtx.drawImage(sliceCanvas, sx, sy, sw, sh, sx - camGx, sy - camGy, sw, sh);
+      targetCtx.translate(-camX / VOX, -camY / VOX);
+      targetCtx.drawImage(sl.canvas, sx, sy, dw, dh, ix0 - HALF_GRID, iy0 - HALF_GRID, dw, dh);
       targetCtx.restore();
     }
 
@@ -2377,8 +2756,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const windOff = Math.round(Math.sin(animTick * 0.65) * 1.0);
       const speechQueue = [];
 
-      // 2. Bounding box visível no grid 360×360 (culling exato por viewport!)
-      let minGx = 999, maxGx = -999, minGy = 999, maxGy = -999;
+      // 2. Bounding box visível no grid 720×720 (culling exato por viewport!)
+      let minGx = 9999, maxGx = -9999, minGy = 9999, maxGy = -9999;
       for (const zTest of [Z_MIN, TERRAIN_Z_MAX]) {
         for (const [cx, cy] of [[0, 0], [LOW_W, 0], [0, LOW_H], [LOW_W, LOW_H]]) {
           const g = unprojectToGrid(cx, cy, zTest, cosA, sinA);
@@ -2388,19 +2767,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           if (g.gy > maxGy) maxGy = g.gy;
         }
       }
-      const sx = Math.max(0, Math.floor(minGx) - 4);
-      const sy = Math.max(0, Math.floor(minGy) - 4);
-      const ex = Math.min(mw, Math.ceil(maxGx) + 4);
-      const ey = Math.min(mh, Math.ceil(maxGy) + 4);
-      const sw = Math.max(0, ex - sx);
-      const sh = Math.max(0, ey - sy);
-      const camGx = camX / VOX + HALF_GRID;
-      const camGy = camY / VOX + HALF_GRID;
+      const viewMinMx = Math.max(0, Math.floor(minGx) - 4);
+      const viewMinMy = Math.max(0, Math.floor(minGy) - 4);
+      const viewMaxMx = Math.min(mw, Math.ceil(maxGx) + 4);
+      const viewMaxMy = Math.min(mh, Math.ceil(maxGy) + 4);
 
-      const minVisWx = (sx - HALF_GRID) * VOX - 36;
-      const maxVisWx = (ex - HALF_GRID) * VOX + 36;
-      const minVisWy = (sy - HALF_GRID) * VOX - 36;
-      const maxVisWy = (ey - HALF_GRID) * VOX + 36;
+      const minVisWx = (viewMinMx - HALF_GRID) * VOX - 36;
+      const maxVisWx = (viewMaxMx - HALF_GRID) * VOX + 36;
+      const minVisWy = (viewMinMy - HALF_GRID) * VOX - 36;
+      const maxVisWy = (viewMaxMy - HALF_GRID) * VOX + 36;
 
       // 3. Coleta de todas as entidades visíveis [baseZ, topZ) para o loop unificado
       const activeDrawables = [];
@@ -2564,10 +2939,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       let entityStarted = false;
 
       for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
-        // 4a. Fatia do terreno (recorte visível)
+        // 4a. Fatia do terreno (Tight-Crop Bounded Slice + skip O(1))
         const tSlice = z <= TERRAIN_Z_MAX ? terrainSlices[z] : null;
-        if (tSlice && sw > 0 && sh > 0) {
-          drawTerrainSliceTo(lowCtx, tSlice, z, sx, sy, sw, sh, camGx, camGy);
+        if (tSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
+          drawBoundedSliceTo(lowCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
 
           // Brilho animado na superfície da água (z = -2)
           if (z === -2) {
@@ -2590,7 +2965,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           // 4b. Recorte matemático de oclusão 3D em entityCanvas
           if (entityStarted) {
             entityCtx.globalCompositeOperation = 'destination-out';
-            drawTerrainSliceTo(entityCtx, tSlice, z, sx, sy, sw, sh, camGx, camGy);
+            drawBoundedSliceTo(entityCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
             entityCtx.globalCompositeOperation = 'source-over';
           }
         }
@@ -2610,10 +2985,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           }
         }
 
-        // 4c. Pontas de grama animadas pelo vento (8 FPS)
+        // 4c. Pontas de grama animadas pelo vento (8 FPS, Tight-Crop)
         const gSlice = z <= Z_GRASS_MAX ? grassTipSlices[z] : null;
-        if (gSlice && sw > 0 && sh > 0) {
-          drawTerrainSliceTo(lowCtx, gSlice, z, sx, sy, sw, sh, camGx, camGy, windOff);
+        if (gSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
+          drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, windOff);
         }
 
         // 4d. Entidades cujo [baseZ, topZ) contém z
@@ -2673,11 +3048,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     // =========================================================================
-    // 11. MINIMAPA TOPOGRÁFICO ORGÂNICO (360×360 -> 112×112)
+    // 11. MINIMAPA TOPOGRÁFICO ORGÂNICO (720×720 passo 6 -> 120×120)
     // =========================================================================
     const mmCanvas = document.getElementById('minimapCanvas');
     const mmCtx = mmCanvas.getContext('2d');
-    const MM_RES = 180;
+    const MM_RES = 120;
     const mmBase = document.createElement('canvas');
     mmBase.width = MM_RES;
     mmBase.height = MM_RES;
@@ -2686,25 +3061,33 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     function bakeMinimapBase() {
       const img = mmBaseCtx.createImageData(MM_RES, MM_RES);
       const buf = new Uint32Array(img.data.buffer);
-      for (let py = 0; py < MM_RES; py++) {
-        const my = py * 2;
-        for (let px = 0; px < MM_RES; px++) {
-          const mx = px * 2;
+      for (let gy = 0; gy < MM_RES; gy++) {
+        const my = gy * 6;
+        for (let gx = 0; gx < MM_RES; gx++) {
+          const mx = gx * 6;
           const idx = my * mw + mx;
           const h = hmap[idx];
           const mat = matMap[idx];
-          let col;
-          if (mat === MAT_WATER) col = packRGBA(56, 189, 248);
-          else if (mat === MAT_LILYPAD) col = packRGBA(34, 197, 94);
-          else if (mat === MAT_BRIDGE) col = packRGBA(185, 122, 74);
-          else if (mat === MAT_SAND) col = packRGBA(243, 221, 169);
-          else if (mat === MAT_PEAK || h >= 62) col = packRGBA(244, 114, 182);
-          else if (h >= 46) col = packRGBA(156, 163, 175);
-          else if (h >= 28) col = packRGBA(148, 163, 184);
-          else if (h >= 14) col = packRGBA(78, 169, 76);
-          else if (mat === MAT_PATH) col = packRGBA(223, 182, 132);
-          else col = packRGBA(101, 196, 102);
-          buf[py * MM_RES + px] = col;
+          const hL = mx >= 6 ? hmap[my * mw + (mx - 6)] : h;
+          const hU = my >= 6 ? hmap[(my - 6) * mw + mx] : h;
+          const isContour = mat !== MAT_WATER && mat !== MAT_BRIDGE &&
+            (Math.floor(h / 10) !== Math.floor(hL / 10) || Math.floor(h / 10) !== Math.floor(hU / 10));
+
+          let rgb;
+          if (mat === MAT_WATER) rgb = [56, 189, 248];
+          else if (mat === MAT_LILYPAD) rgb = [34, 197, 94];
+          else if (mat === MAT_BRIDGE) rgb = [185, 122, 74];
+          else if (mat === MAT_SAND) rgb = [243, 221, 169];
+          else if (mat === MAT_PEAK || h >= 62) rgb = [244, 114, 182];
+          else if (h >= 46) rgb = [156, 163, 175];
+          else if (h >= 28) rgb = [148, 163, 184];
+          else if (h >= 14) rgb = [78, 169, 76];
+          else if (mat === MAT_PATH) rgb = [223, 182, 132];
+          else rgb = [101, 196, 102];
+
+          buf[gy * MM_RES + gx] = isContour
+            ? packRGBA(Math.round(rgb[0] * 0.78), Math.round(rgb[1] * 0.78), Math.round(rgb[2] * 0.78))
+            : packRGBA(rgb[0], rgb[1], rgb[2]);
         }
       }
       mmBaseCtx.putImageData(img, 0, 0);
@@ -2713,9 +3096,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     function drawMinimap() {
       mmCtx.imageSmoothingEnabled = false;
-      mmCtx.drawImage(mmBase, 0, 0, 112, 112);
+      mmCtx.drawImage(mmBase, 0, 0, 120, 120);
 
-      const toMm = (w) => (w / VOX + HALF_GRID) * (112 / mw);
+      const toMm = (w) => (w / VOX + HALF_GRID) * (120 / mw);
 
       for (const f of fishes) {
         if (f.collected) continue;
@@ -2795,13 +3178,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       },
       getHeightAt: (wx, wy) => getHeightAt(wx, wy),
       getCellAt: (wx, wy) => getCellAt(wx, wy),
+      isStandable: (wx, wy) => { const c = getCellAt(wx, wy); return c ? c.standable : false; },
+      getCliffTop: (wx, wy) => { const c = getCellAt(wx, wy); return c ? c.cliffTop : null; },
       getRuinsCoords: () => ({
-        approachSouth: { wx: -95, wy: 195, z: getHeightAt(-95, 195) },
+        approachSouth: { wx: -190, wy: 375, z: getHeightAt(-190, 375) },
         monoliths: [
-          { name: 'A', wx: -140, wy: 165, rx: 16, ry: 14, targetZ: 6,  topZ: getHeightAt(-140, 165), southApproach: { wx: -140, wy: 195, z: getHeightAt(-140, 195) } },
-          { name: 'B', wx: -95,  wy: 165, rx: 16, ry: 14, targetZ: 16, topZ: getHeightAt(-95,  165), southApproach: { wx: -95,  wy: 195, z: getHeightAt(-95,  195) } },
-          { name: 'C', wx: -50,  wy: 165, rx: 16, ry: 14, targetZ: 32, topZ: getHeightAt(-50,  165), southApproach: { wx: -50,  wy: 195, z: getHeightAt(-50,  195) } },
-          { name: 'D', wx: -5,   wy: 165, rx: 16, ry: 14, targetZ: 48, topZ: getHeightAt(-5,   165), southApproach: { wx: -5,   wy: 195, z: getHeightAt(-5,   195) } }
+          { name: 'A', wx: -280, wy: 330, rx: 26, ry: 22, targetZ: 6,  topZ: getHeightAt(-280, 330), southApproach: { wx: -280, wy: 375, z: getHeightAt(-280, 375) } },
+          { name: 'B', wx: -190, wy: 330, rx: 26, ry: 22, targetZ: 16, topZ: getHeightAt(-190, 330), southApproach: { wx: -190, wy: 375, z: getHeightAt(-190, 375) } },
+          { name: 'C', wx: -100, wy: 330, rx: 26, ry: 22, targetZ: 32, topZ: getHeightAt(-100, 330), southApproach: { wx: -100, wy: 375, z: getHeightAt(-100, 375) } },
+          { name: 'D', wx: -10,  wy: 330, rx: 26, ry: 22, targetZ: 48, topZ: getHeightAt(-10,  330), southApproach: { wx: -10,  wy: 375, z: getHeightAt(-10,  375) } }
         ]
       }),
       setTurn: (rad) => { turn = rad; targetTurn = rad; },
