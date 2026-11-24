@@ -1568,10 +1568,12 @@ html_template = r"""<!DOCTYPE html>
       { id: 'kitchen_counter', name: 'Bancada com Pia e Fogão', icon: '🍳', category: 'furniture', model: counterModel, x: 0, y: -ROOM_R + 15, liftZ: 0, selfAngle: 0, scale: 1.45, radius: 80, isFixed: true, visible: true },
 
       // GELADEIRA RETRÔ PASTEL NA PAREDE OESTE (Funcional com Lista de Compras!) - FIXO
-      { id: 'fridge_retro',    name: 'Geladeira Retrô Pastel', icon: '🧊', category: 'furniture', model: retroFridgeModel, x: -ROOM_R + 20, y: -20, liftZ: 0, selfAngle: Math.PI / 2, scale: 1.4, radius: 32, isFixed: true, isFridge: true, visible: true },
+      // Regra Canônica de Orientação: selfAngle = 0 deixa a porta e os ímãs virados para o jogador/centro da cozinha!
+      { id: 'fridge_retro',    name: 'Geladeira Retrô Pastel', icon: '🧊', category: 'furniture', model: retroFridgeModel, x: -ROOM_R + 20, y: -20, liftZ: 0, selfAngle: 0, scale: 1.4, radius: 32, isFixed: true, isFridge: true, visible: true },
 
       // APARADOR DE LOUÇAS NA PAREDE OESTE - FIXO
-      { id: 'kitchen_sideboard', name: 'Aparador de Louças', icon: '🍽️', category: 'furniture', model: sideboardModel, x: -ROOM_R + 16, y: 48, liftZ: 0, selfAngle: Math.PI / 2, scale: 1.4, radius: 30, isFixed: true, visible: true },
+      // Regra Canônica de Orientação: selfAngle = 0 deixa as gavetas e bules voltados para o jogador/centro da cozinha!
+      { id: 'kitchen_sideboard', name: 'Aparador de Louças', icon: '🍽️', category: 'furniture', model: sideboardModel, x: -ROOM_R + 16, y: 48, liftZ: 0, selfAngle: 0, scale: 1.4, radius: 30, isFixed: true, visible: true },
 
       // MESA CENTRAL DE JANTAR QUADRADA BEM MAIOR (Modular e Móvel com Parenting nas 4 Cadeiras e Fruteira!)
       { id: 'dining_table',    name: 'Mesa de Jantar Quadrada', icon: '🪵', category: 'furniture', model: diningTableModel, x: -8, y: 22, liftZ: 0, selfAngle: 0, scale: 1.4, radius: 48, isMovable: true, visible: true },
@@ -2060,6 +2062,13 @@ html_template = r"""<!DOCTYPE html>
       sortedWalls.sort((a, b) => a.depth - b.depth);
 
       for (const w of sortedWalls) {
+        if (currentRoomId === 'garden') {
+          // NO JARDIM NÃO EXISTEM PAREDES LATERAIS OU TRASEIRAS! APENAS A PAREDE NORTE (FACHADA DA CASA)!
+          if (w.id !== 'north') {
+            continue; // As outras 3 faces são 100% abertas para o céu azul e natureza!
+          }
+        }
+
         if (w.isFrontWall) {
           const pA0 = project(w.a.x, w.a.y, 0);
           const pB0 = project(w.b.x, w.b.y, 0);
@@ -2079,42 +2088,11 @@ html_template = r"""<!DOCTYPE html>
         const tA = project(w.a.x, w.a.y, WALL_H);
         const tB = project(w.b.x, w.b.y, WALL_H);
 
-        if (currentRoomId === 'garden' && w.id !== 'north') {
-          // PAREDE DO JARDIM SUBSTITUÍDA POR CÉU AZUL, NUVENS E COLINAS DISTANTES!
-          const skyWallGrad = lowCtx.createLinearGradient(0, tA.y, 0, bA.y);
-          skyWallGrad.addColorStop(0, '#38BDF8');   // Azul céu ensolarado
-          skyWallGrad.addColorStop(0.55, '#7DD3FC'); // Azul límpido
-          skyWallGrad.addColorStop(0.85, '#BAE6FD'); // Horizonte claro
-          skyWallGrad.addColorStop(1, '#86EFAC');   // Colina verde suave no horizonte
-
-          lowCtx.fillStyle = skyWallGrad;
-          lowCtx.beginPath();
-          lowCtx.moveTo(bA.x, bA.y); lowCtx.lineTo(bB.x, bB.y);
-          lowCtx.lineTo(tB.x, tB.y); lowCtx.lineTo(tA.x, tA.y);
-          lowCtx.closePath(); lowCtx.fill();
-
-          // Nuvens fofas na parede-céu
-          lowCtx.save();
-          lowCtx.beginPath();
-          lowCtx.moveTo(bA.x, bA.y); lowCtx.lineTo(bB.x, bB.y);
-          lowCtx.lineTo(tB.x, tB.y); lowCtx.lineTo(tA.x, tA.y);
-          lowCtx.closePath();
-          lowCtx.clip();
-
-          lowCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-          const midX = (bA.x + bB.x) / 2;
-          const midY = (tA.y + bA.y) / 2;
-          lowCtx.beginPath(); lowCtx.arc(midX - 25, midY - 20, 18, 0, Math.PI * 2); lowCtx.fill();
-          lowCtx.beginPath(); lowCtx.arc(midX - 10, midY - 24, 14, 0, Math.PI * 2); lowCtx.fill();
-          lowCtx.beginPath(); lowCtx.arc(midX + 15, midY - 18, 16, 0, Math.PI * 2); lowCtx.fill();
-          lowCtx.restore();
-        } else {
-          lowCtx.fillStyle = P.wallInner;
-          lowCtx.beginPath();
-          lowCtx.moveTo(bA.x, bA.y); lowCtx.lineTo(bB.x, bB.y);
-          lowCtx.lineTo(tB.x, tB.y); lowCtx.lineTo(tA.x, tA.y);
-          lowCtx.closePath(); lowCtx.fill();
-        }
+        lowCtx.fillStyle = P.wallInner;
+        lowCtx.beginPath();
+        lowCtx.moveTo(bA.x, bA.y); lowCtx.lineTo(bB.x, bB.y);
+        lowCtx.lineTo(tB.x, tB.y); lowCtx.lineTo(tA.x, tA.y);
+        lowCtx.closePath(); lowCtx.fill();
 
         lowCtx.strokeStyle = P.wallTrim;
         lowCtx.lineWidth = 1;
@@ -2124,7 +2102,7 @@ html_template = r"""<!DOCTYPE html>
 
         const rA = project(w.a.x, w.a.y, 7);
         const rB = project(w.b.x, w.b.y, 7);
-        lowCtx.fillStyle = (currentRoomId === 'garden' && w.id !== 'north') ? '#15803D' : P.baseboard;
+        lowCtx.fillStyle = P.baseboard;
         lowCtx.beginPath();
         lowCtx.moveTo(bA.x, bA.y); lowCtx.lineTo(bB.x, bB.y);
         lowCtx.lineTo(rB.x, rB.y); lowCtx.lineTo(rA.x, rA.y);
@@ -4694,8 +4672,26 @@ html_template = r"""<!DOCTYPE html>
       swingObj.selfAngle = Math.sin(Date.now() * 0.002) * 0.10;
     }
 
-      lowCtx.fillStyle = P.bg;
-      lowCtx.fillRect(0, 0, LOW_W, LOW_H);
+      if (currentRoomId === 'garden') {
+        // CÉU AZUL ENSOLARADO DO JARDIM EXTERNO ABERTO!
+        const skyGrad = lowCtx.createLinearGradient(0, 0, 0, LOW_H);
+        skyGrad.addColorStop(0, '#38BDF8');   // Azul céu ensolarado
+        skyGrad.addColorStop(0.40, '#7DD3FC'); // Azul suave
+        skyGrad.addColorStop(0.75, '#BAE6FD'); // Horizonte claro
+        skyGrad.addColorStop(1, '#E0F2FE');
+        lowCtx.fillStyle = skyGrad;
+        lowCtx.fillRect(0, 0, LOW_W, LOW_H);
+
+        // Nuvens brancas suaves no topo do céu
+        lowCtx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        lowCtx.beginPath(); lowCtx.arc(50, 40, 22, 0, Math.PI * 2); lowCtx.fill();
+        lowCtx.beginPath(); lowCtx.arc(70, 36, 16, 0, Math.PI * 2); lowCtx.fill();
+        lowCtx.beginPath(); lowCtx.arc(260, 55, 28, 0, Math.PI * 2); lowCtx.fill();
+        lowCtx.beginPath(); lowCtx.arc(285, 50, 20, 0, Math.PI * 2); lowCtx.fill();
+      } else {
+        lowCtx.fillStyle = P.bg;
+        lowCtx.fillRect(0, 0, LOW_W, LOW_H);
+      }
 
       // 1. Paredes de trás
       drawWalls();
