@@ -74,7 +74,7 @@ html_template = r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Mega Quartinho 3D Modular - PurrModoro Diorama</title>
   <style>
     * {
@@ -88,17 +88,24 @@ html_template = r"""<!DOCTYPE html>
       color: #3B2A20;
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       min-height: 100vh;
+      min-height: 100dvh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      position: relative;
     }
     :root {
       --paw-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cellipse cx='14' cy='16' rx='9' ry='8' fill='rgba(0,0,0,0.18)'/%3E%3Cpath d='M7 14 C7 8, 21 8, 21 14 C21 21, 7 21, 7 14 Z' fill='%23FDFBF7' stroke='%233B2A20' stroke-width='1.5'/%3E%3Cpath d='M14 9 C18 9, 20 12, 19 16 C16 16, 14 12, 14 9 Z' fill='%23DE864A'/%3E%3Cpath d='M11 16 C11 14, 17 14, 17 16 C17 18.5, 11 18.5, 11 16 Z' fill='%23F497A4'/%3E%3Ccircle cx='8.5' cy='11.5' r='1.8' fill='%23F497A4'/%3E%3Ccircle cx='12' cy='8.5' r='2' fill='%23F497A4'/%3E%3Ccircle cx='16' cy='8.5' r='2' fill='%23F497A4'/%3E%3Ccircle cx='19.5' cy='11.5' r='1.8' fill='%23F497A4'/%3E%3C/svg%3E") 14 14, grab;
       --paw-grab: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cellipse cx='14' cy='15' rx='8' ry='7' fill='rgba(0,0,0,0.22)'/%3E%3Ccircle cx='14' cy='14' r='7.5' fill='%23FDFBF7' stroke='%233B2A20' stroke-width='1.5'/%3E%3Cpath d='M14 8 C18 8, 20 11, 18 14 C15 14, 14 11, 14 8 Z' fill='%23DE864A'/%3E%3Ccircle cx='10' cy='12' r='1.8' fill='%23F497A4'/%3E%3Ccircle cx='14' cy='11' r='2' fill='%23F497A4'/%3E%3Ccircle cx='18' cy='12' r='1.8' fill='%23F497A4'/%3E%3Ccircle cx='14' cy='16' r='2.5' fill='%23F497A4'/%3E%3C/svg%3E") 14 14, grabbing;
     }
     #viewport {
+      width: min(94vw, calc(100vh - 120px));
+      height: min(94vw, calc(100vh - 120px));
+      max-width: 800px;
+      max-height: 800px;
+      aspect-ratio: 1 / 1;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       box-shadow: 0 30px 70px rgba(74, 46, 27, 0.22);
@@ -528,6 +535,115 @@ html_template = r"""<!DOCTYPE html>
       justify-content: space-between;
       margin-top: 12px;
       gap: 8px;
+    }
+
+    /* Ajustes Especiais para Telas Mobile */
+    @media (max-width: 768px) {
+      body {
+        justify-content: center;
+        padding: 0;
+      }
+      #viewport {
+        width: min(96vw, calc(100dvh - 105px));
+        height: min(96vw, calc(100dvh - 105px));
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(74, 46, 27, 0.16);
+      }
+      .badge {
+        top: 6px;
+        left: 0;
+        right: 0;
+        padding: 0 10px;
+      }
+      .badge h1 {
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .badge p {
+        display: none;
+      }
+      .banner-info {
+        top: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 4px 10px;
+        font-size: 10px;
+        gap: 6px;
+        max-width: 95vw;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hud {
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 16px);
+        max-width: 100%;
+        padding: 5px 8px;
+        gap: 6px;
+        border-radius: 24px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        justify-content: flex-start;
+      }
+      .hud::-webkit-scrollbar {
+        display: none;
+      }
+      .btn {
+        padding: 6px 11px;
+        font-size: 11px;
+        border-radius: 14px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        gap: 4px;
+      }
+      .label {
+        font-size: 11px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        gap: 4px;
+        padding-right: 4px;
+      }
+      input[type=range] {
+        width: 50px;
+      }
+      .asset-drawer {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-height: 72vh;
+        border-radius: 24px 24px 0 0;
+        padding: 12px 14px 20px;
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+        z-index: 250;
+      }
+      .asset-drawer::before {
+        content: '';
+        display: block;
+        width: 38px;
+        height: 4px;
+        background: #D5C7B7;
+        border-radius: 2px;
+        margin: 0 auto 8px;
+      }
+      .corkboard-frame {
+        width: 95%;
+        max-height: 85vh;
+        border-width: 8px;
+      }
+      .note-editor-card {
+        width: 92%;
+        max-width: 320px;
+      }
     }
   </style>
 </head>
