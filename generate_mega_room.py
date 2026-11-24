@@ -2140,57 +2140,60 @@ html_template = r"""<!DOCTYPE html>
       // 2. Corpo & Cabeça
       if (isBabyChick) {
         if (chk.hat && chk.hat !== 'none') {
-          // === PINTINHO ESCONDIDO DENTRO DO CHAPÉU (Walking Hat!) ===
+          // === PINTINHO ESCONDIDO DENTRO DO CHAPÉU GIGANTE (Oversized Walking Hat!) ===
           const hatModel = HATS[chk.hat];
           if (hatModel) {
-            // Corpo amarelinho translúcido revelando que ele está aconchegado lá dentro
+            // O chapéu cobre o pintinho por inteiro com proporção cômica fofa
+            const hatScale = 1.45; // Chapéu grandão que realmente cobre a bolinha
+            const hatZ = baseLiftZ + (0.5 + bodyBobZ) * (chk.scale || 1.35);
+
+            // Silhueta amarela aconchegada dentro do chapéu (apenas visível por leve transparência interna)
             lowCtx.save();
-            lowCtx.globalAlpha = 0.55;
+            lowCtx.globalAlpha = 0.40;
             const totalUpper = activeUpper.length;
+            const innerScale = (chk.scale || 1.35) * 0.75; // Reduzido para caber 100% dentro da copa do chapéu
+            const isw = baseDim * innerScale;
+            const ish = baseDim * innerScale;
             for (let i = 0; i < totalUpper; i++) {
-              const zIndex = i + 2;
-              const hRatio = i >= 4 ? (i - 3) / 5 : 0;
-              const z = baseLiftZ + (zIndex + bodyBobZ + headOffZ * hRatio) * (chk.scale || 1.35);
+              const zIndex = i + 1;
+              const z = baseLiftZ + (zIndex + bodyBobZ) * innerScale;
               const p = project(chk.x, chk.y, z);
-              const sx = p.x + (headOffX * hRatio * Math.cos(chkAngle)) * chk.scale;
-              const sy = p.y + (headOffX * hRatio * Math.sin(chkAngle)) * chk.scale * squash;
               lowCtx.save();
-              lowCtx.translate(sx, sy);
+              lowCtx.translate(p.x, p.y);
               lowCtx.scale(1, squash);
               lowCtx.rotate(chkAngle + rollWobble);
-              lowCtx.drawImage(activeUpper[i], -sw / 2, -sh / 2, sw, sh);
+              lowCtx.drawImage(activeUpper[i], -isw / 2, -ish / 2, isw, ish);
               lowCtx.restore();
             }
             lowCtx.restore();
 
-            // Chapéu com leve transparência (88%) assentado sobre o pintinho
+            // Chapéu grandão com 92% de opacidade assentado sobre ele
             lowCtx.save();
-            lowCtx.globalAlpha = 0.88;
-            const hatZ = baseLiftZ + (1.5 + bodyBobZ) * (chk.scale || 1.35);
-            drawStackObject(hatModel, chk.x, chk.y, hatZ, chk.selfAngle + rollWobble * 1.5, 0.95);
+            lowCtx.globalAlpha = 0.92;
+            drawStackObject(hatModel, chk.x, chk.y, hatZ, chk.selfAngle + rollWobble * 1.5, hatScale);
             lowCtx.restore();
 
-            // Olhinhos pretos brilhantes e biquinho laranja espiando pela aba frontal!
-            const peekZ = baseLiftZ + (3.6 + bodyBobZ + headOffZ) * (chk.scale || 1.35);
+            // Olhinhos pretos brilhantes e biquinho laranja espiando pela aba frontal do chapéu!
+            const peekZ = baseLiftZ + (2.8 + bodyBobZ) * (chk.scale || 1.35);
             const pFace = project(chk.x, chk.y, peekZ);
-            const faceDist = 4.6 * (chk.scale || 1.35);
+            const faceDist = 6.2 * (chk.scale || 1.35);
             const fx = pFace.x + Math.cos(chkAngle) * faceDist;
             const fy = pFace.y + Math.sin(chkAngle) * faceDist * squash;
             lowCtx.save();
             lowCtx.translate(fx, fy);
             // Olho esquerdo
             lowCtx.fillStyle = '#1A1A1A';
-            lowCtx.fillRect(-3, -2, 2, 2);
+            lowCtx.fillRect(-4, -2, 2, 2);
             lowCtx.fillStyle = '#FFFFFF';
-            lowCtx.fillRect(-3, -2, 1, 1);
+            lowCtx.fillRect(-4, -2, 1, 1);
             // Olho direito
             lowCtx.fillStyle = '#1A1A1A';
-            lowCtx.fillRect(2, -2, 2, 2);
+            lowCtx.fillRect(3, -2, 2, 2);
             lowCtx.fillStyle = '#FFFFFF';
-            lowCtx.fillRect(2, -2, 1, 1);
+            lowCtx.fillRect(3, -2, 1, 1);
             // Biquinho laranja fofo
             lowCtx.fillStyle = '#F97316';
-            lowCtx.fillRect(-1, 0, 2, 2);
+            lowCtx.fillRect(-1, 0, 3, 2);
             lowCtx.restore();
 
             return;
