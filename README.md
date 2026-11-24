@@ -13,6 +13,7 @@
 ## 🎮 Live Demos (Jogue no Navegador!)
 
 * 🏡 **[Diorama Multi-Ambientes Completo (room-3d.html / index.html)](https://ruishalm.github.io/PixelArtSkill/)**: Navegue livremente pelos 4 cômodos (Quarto, Sala de Estar, Cozinha e Jardim Externo), decore no modo Drag & Drop e interaja com os pets e murais!
+* 🏔️ **[Vale Felino 3D — Terreno Voxel com Relevo & Pulo 2×H (terrain-world.html)](https://ruishalm.github.io/PixelArtSkill/terrain-world.html)**: Mundo aberto 36×36 tiles separado dos cômodos, com platôs escalonados, rio com cachoeira, pontes, cogumelos-plataforma e controle do gato via **WASD + Espaço (pulo de 2× a altura)**.
 * 🐱 **[Visualizador Anatômico do Gatinho 3D (cat-3d.html)](https://ruishalm.github.io/PixelArtSkill/cat-3d.html)**: Modelo quadrupedal de 16 fatias do gatinho com olhões expressivos e orelhas empinadas.
 * 🐔 **[Visualizador da Galinha Popó 3D (chicken-3d.html)](https://ruishalm.github.io/PixelArtSkill/chicken-3d.html)**: Modelo rechonchudo da galinha com crista, bico articulado anti-cisalhamento e ciclo de bicadas.
 
@@ -57,6 +58,18 @@ Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo 
    - **Balanço de Pneu Vertical**: Suspenso no galho horizontal da árvore por uma única corda trançada, onde a galinha Popó sobe para balançar no vento!
    - Fachada colonial da casa com janela com floreiras, arbustos e cadeira de varanda aconchegante.
    - Paredes substituídas por um horizonte panorâmico de céu azul infinito e nuvens ensolaradas.
+
+---
+
+## 🏔️ Vale Felino 3D — Motor de Terreno Voxel & Relevo (`terrain-world.html`)
+
+Mapa aberto **36×36 tiles (`576×576u`)** separado da casa, demonstrando o novo **Motor de Terreno Voxel 3D em Canvas 2D**:
+- **6 Regiões Conectadas**: Clareira do Spawn, Circuito das Ruínas (escada de calibração `Z=6 / 16 / 32 / 48`), Rio Cristalino com Ponte & Pedras de Travessia, Terraços Noroeste, Bosque dos Cogumelos Saltitantes (chapéus sólidos escaláveis) e Montanha do Pico Sakura (`Z=80`) com cachoeira animada e **10 Peixes Dourados** colecionáveis.
+- **Calibração Física pela Altura do Gato (`H = 16u`)**:
+  - `ΔZ ≤ 0.4H` (`Z=6`): Rampa suave transponível apenas andando (`AUTO_STEP`).
+  - `0.4H < ΔZ ≤ 2.0H` (`Z=16` e `Z=32`): Degraus transponíveis com pulo (`Espaço` = pico `~35u`, com Coyote Time e Jump Buffer).
+  - `ΔZ > 2.0H` (`Z=48+`) ou **Água**: Áreas intransponíveis com bloqueio por eixo separado e feedback visual do gato.
+- **Controles**: `W A S D` / Setas para mover relativo à câmera, `Espaço` para pular `2×H`, `Q`/`E` ou arraste do mouse para girar 360°, `M` para miar e `R` para voltar ao Spawn.
 
 ---
 
@@ -133,16 +146,20 @@ python -m http.server 8088
 ```
 PixelArtSkill/
 ├── .github/workflows/deploy.yml         # GitHub Actions: Deploy contínuo no GitHub Pages
-├── SKILL.md                             # Antigravity Skill: regras de arquitetura, render e modelagem
+├── SKILL.md                             # Antigravity Skill blindada (regras de render, terreno, modelagem e IA)
 ├── index.html                           # Ponto de entrada padrão (Diorama 3D Multi-Ambientes)
 ├── room-3d.html                         # Diorama 3D com os 4 cômodos e modo Decor
+├── terrain-world.html                   # Mundo Aberto 3D 36×36 com Relevo, Física de Altura e Controle WASD
 ├── cat-3d.html                          # Visualizador 3D do gatinho
 ├── chicken-3d.html                      # Visualizador 3D da galinha Popó
 ├── generate_mega_room.py                # Script principal gerador do mundo 3D multi-cômodos
+├── generate_terrain_world.py            # Construtor do Vale Felino 3D (terreno voxel, cachoeira e física 2×H)
+├── generate_terrain_props.py            # Construtor dos 10 props voxel do mapa aberto
 ├── generate_kitchen_and_garden_packs.py # Construtor voxel da Cozinha e Jardim
 ├── generate_living_room_pack.py         # Construtor voxel da Sala de Estar
 ├── generate_modular_furniture.py        # Construtor voxel do Quarto e Móveis Modulares
 ├── build_chicken_slices.py              # Construtor anatômico da galinha e pintinho
+├── terrain_props_pack.json              # Voxel slices dos props do terreno (sakura, pinheiro, cogumelo, peixe)
 ├── kitchen_pack.json                    # Voxel slices da Cozinha (bancada, geladeira, mesa, fruteira)
 ├── garden_pack.json                     # Voxel slices do Jardim (carvalho gigante, balanço de pneu, cadeira)
 ├── living_room_pack.json                # Voxel slices da Sala (sofá, estante sólida, TV retrô, mesa)

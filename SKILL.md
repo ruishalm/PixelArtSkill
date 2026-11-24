@@ -16,11 +16,17 @@ Covers three modern engineering paradigms:
 
 ## 1. Paradigm Selector
 
+> [!CAUTION]
+> **PADRÃO OURO OFICIAL E OBRIGATÓRIO DESTE PROJETO:**
+> **Pure HTML5 Canvas 2D Sprite Stacking + Matrizes Voxel JSON geradas por scripts Python** é a **ÚNICA** arquitetura autorizada para dioramas, personagens, móveis, cômodos e terrenos 3D neste repositório.
+>
+> **PROIBIDO:** NÃO utilize Three.js, WebGL, shaders GLSL, `Canvas` 3D ou bibliotecas externas de renderização para este estilo. Zero dependências em runtime — tudo deve rodar diretamente em Canvas 2D puro (`imageSmoothingEnabled = false`) com fatias voxel JSON e integer upscaling.
+
 | Requirement | Recommended Paradigm | Key Technologies |
 |---|---|---|
-| **Simple web gallery, cozy dioramas, social media reels, lightweight mini-games** | **Sprite Stacking** | Canvas 2D, Vite + TypeScript, OffscreenCanvas |
-| **Full 3D orbit camera, imported GLTF/GLB rigged characters, organic SDF sculpture** | **Pixel-Art Gaussian Splatting** | Three.js, Spark, WebGL 2, GLSL Post-process |
-| **Isometric fixed camera, zero dependencies, single-file games, procedural geometry** | **Software Depth Rasterizer** | Pure JS, Canvas 2D ImageData, Float32Array Z-buffer |
+| **Dioramas, personagens, cômodos, terrenos, mini-games e UI pixel art 3D (PADRÃO OFICIAL)** | **Sprite Stacking (OBRIGATÓRIO)** | Pure HTML5 Canvas 2D, OffscreenCanvas, Matrizes Voxel JSON (Python) |
+| *(Legado / Opcional — NÃO usar por padrão)* Orbit 3D / GLTF importado | *Pixel-Art Gaussian Splatting* | Three.js, Spark, WebGL 2 *(Proibido no padrão oficial)* |
+| *(Legado / Opcional — NÃO usar por padrão)* Câmera isométrica fixa | *Software Depth Rasterizer* | ImageData, Float32Array Z-buffer |
 
 ---
 
@@ -132,9 +138,229 @@ function drawStack(
     - Bake 3 directional shades per material: Top (highlight), Light-facing side (mid), Shadow-facing side (dark).
     - Pre-render static stacks to offscreen canvases and cache them per camera angle.
 
+### Template Oficial Python -> JSON de Modelagem Voxel
+
+Todo novo asset (móvel, prop, árvore, personagem) deve ser gerado em Python para JSON seguindo esta estrutura exata:
+
+- **Convenção de Eixos da Fatia (`slices[z][y][x]`)**:
+  - `z = 0`: base / chão; `z = count - 1`: topo.
+  - `y = 0`: **TRASEIRA (Back)** do modelo.
+  - `y = H - 1`: **FRENTE (Front)** do modelo (portas, gavetas, puxadores, rostos, telas).
+  - `x = 0 .. W - 1`: esquerda para direita.
+- **Paleta Base-36**:
+  - Suporta índices `'0'..'9'` e `'a'..'z'` (até 36 cores por objeto; no JS decodifique cada caractere com `parseInt(ch, 36)`).
+  - Índice `'0'` é **sempre transparente** (`'rgba(0,0,0,0)'`).
+- **Schema JSON Padrão**:
+  ```json
+  {
+    "palette": ["rgba(0,0,0,0)", "#381F12", "#5C361E", "#9E6740"],
+    "slices": [
+      ["0000", "0110", "0220", "0330"]
+    ]
+  }
+  ```
+- **AVISO CRÍTICO DE FORMATAÇÃO**: **NUNCA** concatene todas as linhas `y` de uma fatia em uma única string plana! Cada fatia `slices[z]` DEVE ser uma lista de `H` strings, cada uma de comprimento exatamente `W` (`list[list[str]]`).
+
+```python
+import json
+
+BASE36_CHARS = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+def encode_val(v: int) -> str:
+    if not (0 <= v < 36):
+        raise ValueError(f"Voxel index out of base-36 range (0..35): {v}")
+    return BASE36_CHARS[v]
+
+def make_grid(w: int, h: int, fill: int = 0) -> list[list[int]]:
+    return [[fill for _ in range(w)] for _ in range(h)]
+
+def fill_box(
+    slices: list[list[list[int]]],
+    x0: int, x1: int,
+    y0: int, y1: int,
+    z0: int, z1: int,
+    val: int
+) -> None:
+    """Preenche um paralelepípedo inclusivo/exclusivo [x0,x1) x [y0,y1) x [z0,z1) com segurança de bordas."""
+    d_z = len(slices)
+    if d_z == 0:
+        return
+    h, w = len(slices[0]), len(slices[0][0])
+    for z in range(max(0, z0), min(d_z, z1)):
+        grid = slices[z]
+        for y in range(max(0, y0), min(h, y1)):
+            for x in range(max(0, x0), min(w, x1)):
+                grid[y][x] = val
+
+def to_strings(slices: list[list[list[int]]]) -> list[list[str]]:
+    """Converte slices[z][y][x] em list[list[str]].
+    NUNCA concatene todas as linhas de uma fatia em uma única string:
+    cada fatia slices[z] DEVE ser uma lista de H strings de comprimento W.
+    """
+    return [
+        [''.join(encode_val(v) for v in row) for row in s]
+        for s in slices
+    ]
+
+# Exemplo de uso:
+# W, H, D = 24, 16, 12
+# slices = [make_grid(W, H, 0) for _ in range(D)]
+# fill_box(slices, 2, 22, 0, 14, 0, 10, 1)  # Corpo traseiro (y=0..13)
+# fill_box(slices, 4, 20, 14, 16, 2, 8, 2)  # Frente detalhada (y=H-2..H-1)
+# asset = { "palette": ["rgba(0,0,0,0)", "#5C361E", "#9E6740"], "slices": to_strings(slices) }
+```
+
+### Core Matemático Copiável do Diorama 3D
+
+Snippets de referência direta usados na engine oficial em Canvas 2D:
+
+#### 1. Projeção Global (`project` e `unproject` com `squash = 0.75` e `turn`)
+```javascript
+const squash = 0.75; // Fator oficial de inclinação da câmera (nunca < 0.60)
+
+function project(x, y, z) {
+  const cosA = Math.cos(turn);
+  const sinA = Math.sin(turn);
+  const rx = x * cosA - y * sinA;
+  const ry = x * sinA + y * cosA;
+  const cx = Math.floor(LOW_W / 2);
+  const cy = Math.floor(LOW_H / 2) + 48;
+  return {
+    x: Math.round(cx + rx),
+    y: Math.round(cy + ry * squash - z),
+    depth: ry
+  };
+}
+
+// Projeção Inversa (Screen -> World no plano do chão Z = 0)
+function unproject(screenX, screenY) {
+  const cx = Math.floor(LOW_W / 2);
+  const cy = Math.floor(LOW_H / 2) + 48;
+  const rx = screenX - cx;
+  const ry = (screenY - cy) / squash;
+  const cosA = Math.cos(turn);
+  const sinA = Math.sin(turn);
+  return {
+    x: rx * cosA + ry * sinA,
+    y: -rx * sinA + ry * cosA
+  };
+}
+```
+
+#### 2. `drawStackObject(...)` + Pipeline de Contorno Único de Silhueta 1px
+```javascript
+function drawStackObject(targetCtx, model, worldX, worldY, liftZ = 0, selfAngle = 0, scale = 1.35) {
+  const p = project(worldX, worldY, liftZ);
+  const totalAngle = selfAngle + turn;
+  const { sheet, count, w, h } = model;
+  const originX = Math.floor(w / 2);
+  const originY = Math.floor(h / 2);
+
+  for (let z = 0; z < count; z++) {
+    targetCtx.save();
+    targetCtx.translate(p.x, Math.round(p.y - z * scale));
+    targetCtx.scale(scale, squash * scale);
+    targetCtx.rotate(totalAngle);
+    targetCtx.drawImage(sheet, z * w, 0, w, h, -originX, -originY, w, h);
+    targetCtx.restore();
+  }
+}
+
+// Pipeline de Contorno Único em Canvas Scratch/Offscreen (ZERO listras entre fatias)
+// OUTLINE_COLOR: '#3B2A20' ou '#3B2219' (nunca preto puro)
+function compositeWithSingleOutline(lowCtx, stackCanvas, outlineCanvas, outlineColor = '#3B2219') {
+  const outCtx = outlineCanvas.getContext('2d');
+  outCtx.imageSmoothingEnabled = false;
+  outCtx.globalCompositeOperation = 'source-over';
+  outCtx.clearRect(0, 0, outlineCanvas.width, outlineCanvas.height);
+
+  const offsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const [dx, dy] of offsets) {
+    outCtx.drawImage(stackCanvas, dx, dy);
+  }
+  outCtx.globalCompositeOperation = 'source-in';
+  outCtx.fillStyle = outlineColor;
+  outCtx.fillRect(0, 0, outlineCanvas.width, outlineCanvas.height);
+
+  lowCtx.drawImage(outlineCanvas, 0, 0);
+  lowCtx.drawImage(stackCanvas, 0, 0);
+}
+```
+
+#### 3. Smart Dynamic Wall Culling & Hitbox Gate
+Paredes voltadas para a câmera colapsam em um rodapé de `3px` para nunca tampar o interior, e itens montados nessas paredes consultam o culling antes de aceitar cliques:
+```javascript
+function drawWalls(WALLS, ROOM_R, WALL_H) {
+  const cosA = Math.cos(turn);
+  const sinA = Math.sin(turn);
+
+  const sortedWalls = WALLS.map(w => {
+    const mx = (w.a.x + w.b.x) / 2;
+    const my = (w.a.y + w.b.y) / 2;
+    const rCenter = project(mx, my, WALL_H / 2);
+    const nyRot = w.normal.x * sinA + w.normal.y * cosA;
+    return { ...w, depth: rCenter.depth, isFrontWall: nyRot > 0.05 };
+  }).sort((a, b) => a.depth - b.depth);
+
+  for (const w of sortedWalls) {
+    if (w.isFrontWall) {
+      // Colapsa a parede frontal para um rodapé discreto de 3px
+      const pA0 = project(w.a.x, w.a.y, 0), pB0 = project(w.b.x, w.b.y, 0);
+      const pA1 = project(w.a.x, w.a.y, 3), pB1 = project(w.b.x, w.b.y, 3);
+      lowCtx.fillStyle = P.baseboard;
+      lowCtx.beginPath();
+      lowCtx.moveTo(pA0.x, pA0.y); lowCtx.lineTo(pB0.x, pB0.y);
+      lowCtx.lineTo(pB1.x, pB1.y); lowCtx.lineTo(pA1.x, pA1.y);
+      lowCtx.closePath(); lowCtx.fill();
+      continue;
+    }
+    // Renderiza parede completa (traseira/lateral visível) até WALL_H...
+  }
+}
+
+// Gate de clique para itens de parede (ex.: parede Leste normal +X -> nyRot = Math.sin(turn))
+function getEastWallItemQuad(item, ROOM_R) {
+  if (Math.sin(turn) > -0.08) return null; // Parede oculta / culled: desativa cliques!
+  const p1 = project(ROOM_R - 0.5, item.y - 24, item.liftZ - 26);
+  const p2 = project(ROOM_R - 0.5, item.y + 24, item.liftZ - 26);
+  const p3 = project(ROOM_R - 0.5, item.y + 24, item.liftZ + 26);
+  const p4 = project(ROOM_R - 0.5, item.y - 24, item.liftZ + 26);
+  const projW = Math.max(p1.x, p2.x, p3.x, p4.x) - Math.min(p1.x, p2.x, p3.x, p4.x);
+  return projW < 8 ? null : { p1, p2, p3, p4 };
+}
+```
+
+#### 4. Oclusão Angular de Móveis Ocos (Estantes, Nichos e Balanços)
+Móveis com vãos internos (ex.: estantes de 3 nichos) devem possuir fundo (`y = 0`) e painéis laterais (`x = 0..wallThick` e `x = w - wallThick..w - 1`) sólidos na matriz voxel e usar ordenação/culling angular para impedir que itens internos atravessem as paredes laterais ou traseira quando a câmera gira:
+```javascript
+function drawHollowCabinetWithOcclusion(shelfItem, propsByTier, renderItem) {
+  const totalAngle = (shelfItem.selfAngle || 0) + turn;
+  const cosFront = Math.cos(totalAngle);
+  // Abertura frontal está em +Y (y = H - 1).
+  // Se cosFront <= 0.22, a câmera olha de lado ou de trás: fundo e laterais ocluem 100% o interior!
+  const isFrontVisible = cosFront > 0.22;
+
+  if (!isFrontVisible) {
+    drawShelfSlices(0, shelfItem.model.count - 1);
+    for (const prop of propsByTier.top) renderItem(prop); // Só o topo fica visível
+    return;
+  }
+
+  // Visão frontal/isométrica: desenha por faixas Z intercalando props e sobrepondo paredes laterais
+  for (const tier of tiers) { // Ex: [0..13], [14..26], [27..39]
+    drawShelfSlices(tier.z0, tier.z1);
+    tier.props.sort((a, b) => a.depth - b.depth);
+    for (const prop of tier.props) renderItem(prop);
+    drawShelfSideWalls(tier.z0, tier.z1, 5); // Redesenha bordas laterais sólidas (wallThick = 5px) por cima
+  }
+  drawShelfSlices(topZ0, shelfItem.model.count - 1);
+  for (const prop of propsByTier.top) renderItem(prop);
+}
+```
+
 ---
 
-## 3. Paradigm 2: Pixel-Art Gaussian Splatting (Three.js + Spark)
+## 3. Paradigm 2: Pixel-Art Gaussian Splatting (Three.js + Spark) *(Referência Legada / Opcional — NÃO usar por padrão neste repositório)*
 
 Based on `cobanov/pixelart-gaussiansplat` and `siliconjungle/shapeshift-labs-ink-studio`.
 
@@ -182,7 +408,7 @@ To turn 3D Gaussian splats into hand-crafted pixel art:
 
 ---
 
-## 4. Paradigm 3: Software Depth-Buffered Rasterizer (Pure JS)
+## 4. Paradigm 3: Software Depth-Buffered Rasterizer (Pure JS) *(Referência Legada / Opcional — NÃO usar por padrão neste repositório)*
 
 Based on `amirmushichge/pixel-plays`.
 
@@ -434,3 +660,84 @@ interface RoomDecorSlot {
   };
   ```
 - Isso garante que a funcionalidade funcione imediatamente no navegador via `localStorage` e fique 100% pronta para a futura integração de autenticação e contas de usuário.
+
+---
+
+## 10. Motor de Terreno Voxel 3D com Relevo, Colisão por Altura e Controle WASD + Pulo
+
+Arquitetura oficial para mapas externos, ilhas, plataformas e exploração em relevo sobre o mesmo motor **Pure HTML5 Canvas 2D** (`squash = 0.75`, `turn` livre 360°).
+
+### 1. Traversão Back-to-Front em 360° sem `Array.sort` no Grid
+Na projeção oficial, a profundidade de uma célula cresce ao longo do vetor da câmera:
+$$\text{depth} = \Delta x \cdot \sin(\text{turn}) + \Delta y \cdot \cos(\text{turn})$$
+
+Portanto, a ordem exata de trás para frente (*back-to-front*) em qualquer ângulo `turn` é determinística em $O(W \times H)$ sem nenhuma alocação ou `Array.sort` nos tiles do terreno:
+
+```javascript
+const stepX = Math.sin(turn) >= 0 ? 1 : -1;
+const stepY = Math.cos(turn) >= 0 ? 1 : -1;
+
+const startX = stepX > 0 ? 0 : GRID_W - 1;
+const endX   = stepX > 0 ? GRID_W : -1;
+const startY = stepY > 0 ? 0 : GRID_H - 1;
+const endY   = stepY > 0 ? GRID_H : -1;
+
+for (let gx = startX; gx !== endX; gx += stepX) {
+  for (let gy = startY; gy !== endY; gy += stepY) {
+    drawTerrainColumn(gx, gy);
+    drawCellBucketEntities(gx, gy); // Desenhadas imediatamente após a coluna!
+  }
+}
+```
+
+### 2. Cell-Bucketing de Entidades + Promoção de Ledge em Pulo
+- **Cell-Bucketing**: Cada prop estático e personagem entra no bucket `(gx, gy)` correspondente à célula onde seu pé toca o plano (`gx = clamp(Math.floor(x / TILE), 0, GRID_W - 1)`), sendo desenhado logo após a coluna `(gx, gy)` (com ordenação por `depth` apenas dentro de células que contenham mais de uma entidade).
+- **Promoção de Ledge em Pulo**: Quando o personagem está no ar (`!entity.grounded`) próximo a uma borda frontal de degrau onde a célula adjacente em direção à câmera (`(gx + stepX, gy)` ou `(gx, gy + stepY)`) possui altura `h <= entity.z + 2`, promova o bucket do personagem para a célula frontal (`gx + stepX` e/ou `gy + stepY`) em direção à câmera. Isso evita que patas ou parte do corpo sofram *clipping* atrás da quina do degrau recém-saltado.
+
+### 3. Face Culling Vertical e Estratos Geológicos
+Para cada coluna `(gx, gy)` com altura de topo `z`:
+- **Desenhe apenas as 2 faces verticais voltadas à câmera**:
+  - **Face X**: desenhe a face `+X` (`x + TILE`) se `Math.sin(turn) > 0`; caso contrário desenhe a face `-X` (`x`).
+  - **Face Y**: desenhe a face `+Y` (`y + TILE`) se `Math.cos(turn) > 0`; caso contrário desenhe a face `-Y` (`y`).
+- **Oclusão por Vizinho (`minNeighborZ`)**: Para cada uma das 2 faces visíveis, consulte a altura `neighborZ` da célula adjacente naquela direção (`0` se estiver fora do mapa, formando a "saia" nas bordas externas). Só desenhe o paredão vertical do topo `z` até `minNeighborZ` quando `z > minNeighborZ`.
+- **Estratos Geológicos nas Faces Verticais**:
+  1. **Borda de grama / musgo pendurada (`~3px`)**: Faixa superior no topo da face (`z` até `z - 3`).
+  2. **Terra quente (`soil`)**: Camada intermediária com **sombreamento direcional distinto** entre a face X (tom mais iluminado) e a face Y (tom mais sombreado) para leitura volumétrica imediata.
+  3. **Rocha ardósia estratificada (`slate`)**: Camada basal abaixo da terra com listras horizontais de estratificação rochosa.
+
+### 4. Regras de Transponibilidade Calibradas pela Altura do Personagem (`H`)
+Sendo `H` a altura física total do personagem em unidades Z do mundo e $\Delta Z = Z_{\text{destino}} - Z_{\text{atual}}$:
+
+| Condição de Altura / Tile | Classificação | Comportamento Físico |
+|---|---|---|
+| `ΔZ <= 0.4 * H` | **Rampa / Degrau Suave (`AUTO_STEP`)** | Transponível andando automaticamente sem precisar pular. |
+| `0.4 * H < ΔZ <= 2.0 * H` | **Degrau de Pulo** | Bloqueia caminhada; transponível com pulo usando `vz = Math.sqrt(2 * g * (2 * H + margin))`. |
+| `ΔZ > 2.0 * H` ou `type === 'water'` | **Parede / Água (Intransponível)** | Bloqueia entrada com **deslizamento separado nos eixos X e Y** (testa `X` e `Y` independentemente) + feedback visual/balão (ex.: *"Muito alto!"*, *"Água!"*). |
+
+- **Game Feel de Pulo Obrigatório**:
+  - **Coyote Time**: `~0.10s–0.11s` de tolerância após deixar uma borda onde o pulo ainda é aceito.
+  - **Jump Buffer**: `~0.12s` de buffer ao pressionar pulo logo antes de aterrissar.
+
+### 5. Controle WASD Relativo à Câmera + Coerência de Direção (`+Y` = Frente)
+Com `ix` (`-1` esquerda / `+1` direita) e `iy` (`-1` W / `+1` S) vindos do teclado/D-pad, converta o input para o espaço de mundo invertendo a rotação `turn` da câmera e alinhe à convenção canônica `+Y` (`y = H - 1`) = Frente:
+
+```javascript
+const worldMoveX = ix * Math.cos(turn) + iy * Math.sin(turn);
+const worldMoveY = -ix * Math.sin(turn) + iy * Math.cos(turn);
+const targetAngle = Math.atan2(-worldMoveX, worldMoveY);
+```
+
+---
+
+## 11. Guia Rápido de Prompt para Qualquer IA Reproduzir o Padrão
+
+Copie e cole este bloco como instrução base ao pedir para qualquer IA criar novos assets, cômodos, personagens ou terrenos neste repositório:
+
+```text
+REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
+1. TECNOLOGIA: Use EXCLUSIVAMENTE HTML5 Canvas 2D puro (ctx.imageSmoothingEnabled = false), buffer offscreen em baixa resolução + upscale inteiro e matrizes voxel JSON geradas em Python. PROIBIDO usar Three.js, WebGL, shaders ou bibliotecas 3D externas.
+2. MODELAGEM PYTHON -> JSON: Gere cada modelo com make_grid(w, h, fill=0), fill_box(...) e to_strings(slices) retornando list[list[str]] (NUNCA concatene todas as linhas de uma fatia em uma única string). Suporte base-36 ('0'..'9','a'..'z'), '0' transparente, y=0 TRASEIRA e y=H-1 FRENTE.
+3. RENDER & SILHUETA: Use squash = 0.75, drawStackObject com totalAngle = selfAngle + turn, e contorno único 1px (#3B2219 ou #3B2A20) via canvas offscreen após empilhar todas as fatias (PROIBIDO contornar fatias individuais).
+4. PAREDES & MÓVEIS OCOS: Use Wall Culling dinâmico (nyRot = nx*sin(turn) + ny*cos(turn) > 0.05 -> rodapé 3px + desativar hitbox) e oclusão angular em estantes/nichos (fundo + laterais sólidas + redesenho de paredes laterais por tier quando cosFront > 0.22).
+5. TERRENO & FÍSICA (se aplicável): Traversão back-to-front O(W*H) via stepX/stepY (sin/cos de turn), cell-bucketing + promoção de ledge no pulo, face culling das 2 faces visíveis até minNeighborZ, colisão calibrada pela altura H do personagem (<= 0.4*H auto-step; <= 2*H pulo com Coyote 0.11s e Buffer 0.12s; > 2*H ou água bloqueio com slide X/Y) e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
+```
