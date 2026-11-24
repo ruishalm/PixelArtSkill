@@ -829,13 +829,14 @@ html_template = r"""<!DOCTYPE html>
     const chickenPal = ['rgba(0,0,0,0)', '#FFFFFF', '#F1F5F9', '#CBD5E1', '#EF4444', '#B91C1C', '#F59E0B', '#D97706', '#0F172A', '#FFFFFF'];
     const chickenModel = createSliceSheet(__CHICKEN_SLICES__, chickenPal, 24, 24);
     // CANVASES SEPARADOS DA GALINHA POPÓ (Patas, Corpo e Cabeça Articulados)
-    function createPartCanvas(sliceGrid, filterFn, pal = chickenPal) {
+    // MODELO DA GALINHA POPÓ E DO PINTINHO PIU (Bolinha Amarela Sem Crista)
+    function createPartCanvas(sliceGrid, filterFn, pal, size = 24) {
       const sc = document.createElement('canvas');
-      sc.width = 24; sc.height = 24;
+      sc.width = size; sc.height = size;
       const sctx = sc.getContext('2d');
       sctx.imageSmoothingEnabled = false;
-      for (let y = 0; y < 24; y++) {
-        for (let x = 0; x < 24; x++) {
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
           const cIdx = sliceGrid[y] ? (sliceGrid[y][x] || 0) : 0;
           if (cIdx > 0) {
             if (filterFn && !filterFn(x, y)) continue;
@@ -847,24 +848,31 @@ html_template = r"""<!DOCTYPE html>
       return sc;
     }
 
-    // Paleta Amarelinha Fofa para o Pintinho Piu (Pintinho Amarelinho!)
-    const chickPal = ['rgba(0,0,0,0)', '#FEF08A', '#FACC15', '#EAB308', '#EA580C', '#C2410C', '#F97316', '#D97706', '#0F172A', '#FFFFFF'];
+    // Paleta Amarela para o Pintinho Piu (Pintinho Amarelinho)
+    const chickPal = ['rgba(0,0,0,0)', '#FEF08A', '#FACC15', '#EAB308', '#CA8A04', '#FB923C', '#EA580C', '#0F172A', '#FFFFFF', '#F472B6'];
+    const __CHICK_SLICES__ = [[[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 2, 3, 3, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 2, 3, 3, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0], [0, 0, 2, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0], [0, 0, 2, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0], [0, 0, 0, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0], [0, 0, 2, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0], [0, 0, 2, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0], [0, 0, 0, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 5, 6, 0, 0], [0, 0, 0, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 5, 6, 0, 0], [0, 0, 0, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 3, 1, 9, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 7, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 3, 2, 1, 1, 1, 1, 1, 5, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 3, 2, 1, 1, 1, 1, 1, 5, 0, 0, 0], [0, 0, 0, 0, 3, 3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 7, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 3, 1, 9, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 1, 1, 1, 7, 8, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 3, 3, 3, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 1, 1, 1, 7, 8, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 3, 3, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]];
 
     const chickenLegL = [];
     const chickenLegR = [];
-    const chickLegL = [];
-    const chickLegR = [];
     for (let i = 0; i <= 3; i++) {
-      chickenLegL.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y < 12, chickenPal));
-      chickenLegR.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y >= 12, chickenPal));
-      chickLegL.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y < 12, chickPal));
-      chickLegR.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y >= 12, chickPal));
+      chickenLegL.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y < 12, chickenPal, 24));
+      chickenLegR.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y >= 12, chickenPal, 24));
     }
     const chickenUpper = [];
-    const chickUpper = [];
     for (let i = 4; i < __CHICKEN_SLICES__.length; i++) {
-      chickenUpper.push(createPartCanvas(__CHICKEN_SLICES__[i], null, chickenPal));
-      chickUpper.push(createPartCanvas(__CHICKEN_SLICES__[i], null, chickPal));
+      chickenUpper.push(createPartCanvas(__CHICKEN_SLICES__[i], null, chickenPal, 24));
+    }
+
+    // Partes dedicadas do Pintinho Piu: 18x18, sem crista, pura fofura redonda
+    const chickLegL = [];
+    const chickLegR = [];
+    for (let i = 0; i <= 1; i++) {
+      chickLegL.push(createPartCanvas(__CHICK_SLICES__[i], (x, y) => y < 9, chickPal, 18));
+      chickLegR.push(createPartCanvas(__CHICK_SLICES__[i], (x, y) => y >= 9, chickPal, 18));
+    }
+    const chickUpper = [];
+    for (let i = 2; i < __CHICK_SLICES__.length; i++) {
+      chickUpper.push(createPartCanvas(__CHICK_SLICES__[i], null, chickPal, 18));
     }
 
 
@@ -882,8 +890,7 @@ html_template = r"""<!DOCTYPE html>
       { id: 'shelf_plant',   name: 'Vasinho de Suculenta', icon: '🪴', category: 'decor',     x: -ROOM_R + 9, y: -10, liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 0,   visible: true },
       { id: 'shelf_crystal', name: 'Cristal de Quartzo',   icon: '💎', category: 'decor',     x: -ROOM_R + 9, y: 8,   liftZ: 61.5, radius: 14, isProp: true, surface: 'shelf', offY: 18,  visible: true },
       { id: 'clock',         name: 'Relógio de Parede',    icon: '⏰', category: 'decor',     isWallItem: true, wall: 'west', x: -ROOM_R, y: 0, liftZ: 85, radius: 16, visible: true },
-      { id: 'corkboard',     name: 'Mural de Post-its',    icon: '📌', category: 'decor',     isWallItem: true, wall: 'east', x: ROOM_R, y: -20, liftZ: 62, radius: 26, visible: true, isCorkboard: true },
-      { id: 'frame_plant',   name: 'Quadro Botânico',      icon: '🌿', category: 'decor',     isWallItem: true, wall: 'east', x: ROOM_R, y: 28,  liftZ: 54, radius: 18, visible: true },
+      { id: 'corkboard',     name: 'Mural de Post-its',    icon: '📌', category: 'decor',     isWallItem: true, wall: 'east', x: ROOM_R, y: -10, liftZ: 65, radius: 36, visible: true, isCorkboard: true },
       { id: 'plant',         name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
       { id: 'chicken',       name: 'Galinha Popó',         icon: '🐔', category: 'pets',      model: chickenModel,   x: -35, y: 35,  liftZ: 0,  selfAngle: 0.6, scale: 1.35, radius: 18, isChicken: true, visible: true, state: 'idle', stateTimer: 120, isWalking: false, walkCycle: 0, animTime: 0, targetX: -35, targetY: 35 },
       { id: 'chick',         name: 'Pintinho Piu',         icon: '🐥', category: 'pets',      model: chickenModel,   x: -20, y: 48,  liftZ: 0,  selfAngle: 0.2, scale: 0.85, radius: 12, isChicken: true, visible: true, state: 'idle', stateTimer: 80,  isWalking: false, walkCycle: 0, animTime: 0, targetX: -20, targetY: 48 },
@@ -1136,7 +1143,7 @@ html_template = r"""<!DOCTYPE html>
     const WALLS = [
       { id: 'north', a: { x: -ROOM_R, y: -ROOM_R }, b: { x: ROOM_R, y: -ROOM_R }, normal: { x: 0, y: -1 }, decor: 'window' },
       { id: 'west',  a: { x: -ROOM_R, y: ROOM_R },  b: { x: -ROOM_R, y: -ROOM_R }, normal: { x: -1, y: 0 }, decor: null },
-      { id: 'south', a: { x: ROOM_R, y: ROOM_R },   b: { x: -ROOM_R, y: ROOM_R },  normal: { x: 0, y: 1 },  decor: 'pegboard' },
+      { id: 'south', a: { x: ROOM_R, y: ROOM_R },   b: { x: -ROOM_R, y: ROOM_R },  normal: { x: 0, y: 1 },  decor: null },
       { id: 'east',  a: { x: ROOM_R, y: -ROOM_R },  b: { x: ROOM_R, y: ROOM_R },   normal: { x: 1, y: 0 },  decor: null },
     ];
 
@@ -1595,39 +1602,49 @@ html_template = r"""<!DOCTYPE html>
     // 6. Quadros 3D Individuais (Parede Leste: x = ROOM_R)
     function drawSingleFrame(item, type) {
       const xWall = ROOM_R;
-      const frameThick = 3.5;
-      const y0 = item.y - (type === 'cat' ? 15 : 13);
-      const y1 = item.y + (type === 'cat' ? 15 : 13);
-      const z0 = item.liftZ - (type === 'cat' ? 17 : 16);
-      const z1 = item.liftZ + (type === 'cat' ? 17 : 16);
+      const frameThick = 4.0;
+      // QUADRO DE POST-ITS EXPANDIDO (Quase o dobro do tamanho!)
+      const halfW = (type === 'corkboard' ? 24 : 14);
+      const halfH = (type === 'corkboard' ? 26 : 16);
+      const y0 = item.y - halfW;
+      const y1 = item.y + halfW;
+      const z0 = item.liftZ - halfH;
+      const z1 = item.liftZ + halfH;
 
+      // Moldura externa de madeira bonita
       const p1 = project(xWall - 0.5, y0, z0);
       const p2 = project(xWall - 0.5, y1, z0);
       const p3 = project(xWall - 0.5, y1, z1);
       const p4 = project(xWall - 0.5, y0, z1);
-      drawQuad(p1, p2, p3, p4, '#FAF7F2');
+      drawQuad(p1, p2, p3, p4, '#5C3823'); // Moldura de madeira maciça
 
       if (type === 'corkboard') {
-        // Arte: Mural de Cortiça com Mini Post-its Coloridos e Tachinhas!
-        drawQuad(p1, p2, p3, p4, '#D4A373');
+        // Fundo de Cortiça aconchegante
+        const innerP1 = lerpP(lerpP(p1, p2, 0.05), lerpP(p4, p3, 0.05), 0.05);
+        const innerP2 = lerpP(lerpP(p1, p2, 0.95), lerpP(p4, p3, 0.95), 0.05);
+        const innerP3 = lerpP(lerpP(p1, p2, 0.95), lerpP(p4, p3, 0.95), 0.95);
+        const innerP4 = lerpP(lerpP(p1, p2, 0.05), lerpP(p4, p3, 0.05), 0.95);
+        drawQuad(innerP1, innerP2, innerP3, innerP4, '#D4A373');
 
-        // Textura suave de pontinhos de cortiça
-        const nCols = ['#FEF08A', '#FBCFE8', '#BAE6FD', '#BBF7D0'];
+        // Mini Post-its Coloridos e Tachinhas espalhados pelo mural expandido!
+        const nCols = ['#FEF08A', '#FBCFE8', '#BAE6FD', '#BBF7D0', '#FED7AA', '#DDD6FE'];
         const noteLocs = [
-          { u0: 0.15, u1: 0.48, v0: 0.55, v1: 0.88, c: nCols[0] },
-          { u0: 0.55, u1: 0.88, v0: 0.52, v1: 0.85, c: nCols[1] },
-          { u0: 0.20, u1: 0.52, v0: 0.15, v1: 0.48, c: nCols[2] },
-          { u0: 0.58, u1: 0.88, v0: 0.18, v1: 0.48, c: nCols[3] }
+          { u0: 0.10, u1: 0.38, v0: 0.58, v1: 0.88, c: nCols[0] }, // Post-it amarelo
+          { u0: 0.42, u1: 0.70, v0: 0.58, v1: 0.88, c: nCols[1] }, // Post-it rosa
+          { u0: 0.73, u1: 0.95, v0: 0.52, v1: 0.82, c: nCols[2] }, // Post-it azul
+          { u0: 0.12, u1: 0.40, v0: 0.14, v1: 0.46, c: nCols[3] }, // Post-it verde
+          { u0: 0.44, u1: 0.72, v0: 0.14, v1: 0.46, c: nCols[4] }, // Post-it laranja
+          { u0: 0.74, u1: 0.96, v0: 0.16, v1: 0.44, c: nCols[5] }  // Post-it lilás
         ];
 
         for (const nl of noteLocs) {
-          const np1 = lerpP(lerpP(p1, p2, nl.u0), lerpP(p4, p3, nl.u0), nl.v0);
-          const np2 = lerpP(lerpP(p1, p2, nl.u1), lerpP(p4, p3, nl.u1), nl.v0);
-          const np3 = lerpP(lerpP(p1, p2, nl.u1), lerpP(p4, p3, nl.u1), nl.v1);
-          const np4 = lerpP(lerpP(p1, p2, nl.u0), lerpP(p4, p3, nl.u0), nl.v1);
+          const np1 = lerpP(lerpP(innerP1, innerP2, nl.u0), lerpP(innerP4, innerP3, nl.u0), nl.v0);
+          const np2 = lerpP(lerpP(innerP1, innerP2, nl.u1), lerpP(innerP4, innerP3, nl.u1), nl.v0);
+          const np3 = lerpP(lerpP(innerP1, innerP2, nl.u1), lerpP(innerP4, innerP3, nl.u1), nl.v1);
+          const np4 = lerpP(lerpP(innerP1, innerP2, nl.u0), lerpP(innerP4, innerP3, nl.u0), nl.v1);
           drawQuad(np1, np2, np3, np4, nl.c);
 
-          // Tachinha vermelha no topo
+          // Tachinha vermelha ou dourada no topo
           const pinP = lerpP(np4, np3, 0.5);
           lowCtx.fillStyle = '#EF4444';
           lowCtx.fillRect(pinP.x - 1, pinP.y - 1, 2, 2);
@@ -1982,6 +1999,7 @@ html_template = r"""<!DOCTYPE html>
       const activeLegL = isBabyChick ? chickLegL : chickenLegL;
       const activeLegR = isBabyChick ? chickLegR : chickenLegR;
       const activeUpper = isBabyChick ? chickUpper : chickenUpper;
+      const legCount = isBabyChick ? 2 : 4;
 
       let legLOffX = 0, legLLiftZ = 0;
       let legROffX = 0, legRLiftZ = 0;
@@ -1989,9 +2007,9 @@ html_template = r"""<!DOCTYPE html>
       let headOffX = 0, headOffZ = 0;
 
       if (isWalking) {
-        const swingDist = 3.2;
-        const maxLift = 2.4;
-        const speed = 0.55;
+        const swingDist = isBabyChick ? 2.4 : 3.2;
+        const maxLift = isBabyChick ? 1.8 : 2.4;
+        const speed = isBabyChick ? 0.75 : 0.55;
 
         function getLegPose(phase) {
           const u = ((phase % 1) + 1) % 1;
@@ -2011,54 +2029,57 @@ html_template = r"""<!DOCTYPE html>
         legLOffX = legL.offX; legLLiftZ = legL.liftZ;
         legROffX = legR.offX; legRLiftZ = legR.liftZ;
 
-        // Rebolado da Popó (quadril/bundinha sacudindo com estilo!)
-        rollWobble = Math.sin(t * 3.4) * 0.12;
-        bodyBobZ = Math.abs(Math.sin(t * 3.4)) * 1.3;
-        headOffX = Math.sin(t * 3.4) * 2.2;
+        rollWobble = Math.sin(t * (isBabyChick ? 4.5 : 3.4)) * (isBabyChick ? 0.16 : 0.12);
+        bodyBobZ = Math.abs(Math.sin(t * (isBabyChick ? 4.5 : 3.4))) * (isBabyChick ? 1.6 : 1.3);
+        headOffX = Math.sin(t * 3.4) * (isBabyChick ? 1.2 : 2.2);
       } else if (isPecking) {
-        // Ciscando: corpo e pés quietinhos, cabeça mergulha para os grãos
+        // Ciscando
         const cycle = (t * 2.4) % (Math.PI * 2);
         if (cycle < Math.PI * 0.35) {
           const p = Math.sin((cycle / (Math.PI * 0.35)) * Math.PI * 0.5);
-          headOffX = p * 4.5;
-          headOffZ = -p * 1.5;
+          headOffX = p * (isBabyChick ? 2.8 : 4.5);
+          headOffZ = -p * (isBabyChick ? 1.2 : 1.5);
         } else if (cycle < Math.PI * 0.70) {
           const p = (cycle - Math.PI * 0.35) / (Math.PI * 0.35);
           const pSin = Math.sin(p * Math.PI * 0.5);
-          headOffX = 4.5 + pSin * 0.8;
-          headOffZ = -1.5 - pSin * 5.0; // Bico toca o chão!
+          headOffX = (isBabyChick ? 2.8 : 4.5) + pSin * (isBabyChick ? 0.5 : 0.8);
+          headOffZ = (isBabyChick ? -1.2 : -1.5) - pSin * (isBabyChick ? 3.5 : 5.0);
         } else if (cycle < Math.PI * 1.10) {
           const p = (cycle - Math.PI * 0.70) / (Math.PI * 0.40);
-          headOffX = 5.3 * (1 - p * 0.3);
-          headOffZ = -6.5 * (1 - p);
+          headOffX = (isBabyChick ? 3.3 : 5.3) * (1 - p * 0.3);
+          headOffZ = (isBabyChick ? -4.7 : -6.5) * (1 - p);
         } else {
           const p = (cycle - Math.PI * 1.10) / (Math.PI * 0.90);
-          headOffX = 3.7 * (1 - p);
+          headOffX = (isBabyChick ? 2.3 : 3.7) * (1 - p);
           headOffZ = 0;
         }
 
-        // Grãozinhos de milho dourado no chão
+        // Grãozinhos de milho
         const pFloor = project(chk.x, chk.y, baseLiftZ);
-        const dist = 11 * chk.scale;
+        const dist = (isBabyChick ? 8 : 11) * chk.scale;
         const seedX = pFloor.x + Math.cos(chkAngle) * dist;
         const seedY = pFloor.y + Math.sin(chkAngle) * dist * squash;
         lowCtx.fillStyle = '#F59E0B';
-        lowCtx.fillRect(seedX - 2, seedY - 1, 3, 2);
-        lowCtx.fillRect(seedX + 3, seedY + 1, 2, 2);
+        if (isBabyChick) {
+          lowCtx.fillRect(seedX, seedY, 2, 2);
+        } else {
+          lowCtx.fillRect(seedX - 2, seedY - 1, 3, 2);
+          lowCtx.fillRect(seedX + 3, seedY + 1, 2, 2);
+        }
       } else if (isBrooding) {
-        bodyBobZ = -3.2; // Achatadinha chocando
+        bodyBobZ = isBabyChick ? -1.8 : -3.2;
       } else {
-        // Idle: respiração sutil
-        bodyBobZ = Math.sin(t * 1.2) * 0.4;
+        bodyBobZ = Math.sin(t * 1.5) * (isBabyChick ? 0.3 : 0.4);
       }
 
-      const zStep = 1.35 * chk.scale;
-      const sw = 24 * chk.scale;
-      const sh = 24 * chk.scale;
+      const zStep = (isBabyChick ? 1.15 : 1.35) * chk.scale;
+      const baseDim = isBabyChick ? 18 : 24;
+      const sw = baseDim * chk.scale;
+      const sh = baseDim * chk.scale;
 
       // 1. Patas
       if (!isBrooding) {
-        for (let i = 0; i <= 3; i++) {
+        for (let i = 0; i < legCount; i++) {
           // Pata Esquerda
           const zL = baseLiftZ + (i + legLLiftZ) * (chk.scale || 1.35);
           const pL = project(chk.x, chk.y, zL);
@@ -2085,30 +2106,50 @@ html_template = r"""<!DOCTYPE html>
         }
       }
 
-      // 2. Corpo e Asas (Slices 4 a 9)
-      for (let i = 4; i <= 9; i++) {
-        const z = baseLiftZ + (i + bodyBobZ) * (chk.scale || 1.35);
-        const p = project(chk.x, chk.y, z);
-        lowCtx.save();
-        lowCtx.translate(p.x, p.y);
-        lowCtx.scale(1, squash);
-        lowCtx.rotate(chkAngle + rollWobble);
-        lowCtx.drawImage(activeUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
-        lowCtx.restore();
-      }
+      // 2. Corpo & Cabeça
+      if (isBabyChick) {
+        // O pintinho é uma bolinha unificada (slices 2 a 9)
+        const totalUpper = activeUpper.length;
+        for (let i = 0; i < totalUpper; i++) {
+          const zIndex = i + 2;
+          // As camadas superiores (olhos e bico) mergulham junto ao ciscar
+          const hRatio = i >= 4 ? (i - 3) / 5 : 0;
+          const z = baseLiftZ + (zIndex + bodyBobZ + headOffZ * hRatio) * (chk.scale || 1.35);
+          const p = project(chk.x, chk.y, z);
+          const sx = p.x + (headOffX * hRatio * Math.cos(chkAngle)) * chk.scale;
+          const sy = p.y + (headOffX * hRatio * Math.sin(chkAngle)) * chk.scale * squash;
+          lowCtx.save();
+          lowCtx.translate(sx, sy);
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(chkAngle + rollWobble);
+          lowCtx.drawImage(activeUpper[i], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.restore();
+        }
+      } else {
+        // Galinha Adulta Popó: Corpo (4..9) e Cabeça (10..15)
+        for (let i = 4; i <= 9; i++) {
+          const z = baseLiftZ + (i + bodyBobZ) * (chk.scale || 1.35);
+          const p = project(chk.x, chk.y, z);
+          lowCtx.save();
+          lowCtx.translate(p.x, p.y);
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(chkAngle + rollWobble);
+          lowCtx.drawImage(activeUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.restore();
+        }
 
-      // 3. Cabeça Sólida (Slices 10 a 15)
-      for (let i = 10; i < __CHICKEN_SLICES__.length; i++) {
-        const z = baseLiftZ + (i + bodyBobZ + headOffZ) * (chk.scale || 1.35);
-        const p = project(chk.x, chk.y, z);
-        const sx = p.x + (headOffX * Math.cos(chkAngle)) * chk.scale;
-        const sy = p.y + (headOffX * Math.sin(chkAngle)) * chk.scale * squash;
-        lowCtx.save();
-        lowCtx.translate(sx, sy);
-        lowCtx.scale(1, squash);
-        lowCtx.rotate(chkAngle + rollWobble);
-        lowCtx.drawImage(activeUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
-        lowCtx.restore();
+        for (let i = 10; i < __CHICKEN_SLICES__.length; i++) {
+          const z = baseLiftZ + (i + bodyBobZ + headOffZ) * (chk.scale || 1.35);
+          const p = project(chk.x, chk.y, z);
+          const sx = p.x + (headOffX * Math.cos(chkAngle)) * chk.scale;
+          const sy = p.y + (headOffX * Math.sin(chkAngle)) * chk.scale * squash;
+          lowCtx.save();
+          lowCtx.translate(sx, sy);
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(chkAngle + rollWobble);
+          lowCtx.drawImage(activeUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.restore();
+        }
       }
     }
 
@@ -2713,10 +2754,10 @@ html_template = r"""<!DOCTYPE html>
         const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
         if (corkboard && Math.sin(turn) <= 0.05) {
           const xWall = ROOM_R;
-          const p1 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ - 16);
-          const p2 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ - 16);
-          const p3 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ + 16);
-          const p4 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ + 16);
+          const p1 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ - 26);
+          const p2 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ - 26);
+          const p3 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ + 26);
+          const p4 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ + 26);
           const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 10;
           const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 10;
           const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 10;
@@ -2946,10 +2987,10 @@ html_template = r"""<!DOCTYPE html>
         const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
         if (corkboard && Math.sin(turn) <= 0.05) {
           const xWall = ROOM_R;
-          const p1 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ - 16);
-          const p2 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ - 16);
-          const p3 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ + 16);
-          const p4 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ + 16);
+          const p1 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ - 26);
+          const p2 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ - 26);
+          const p3 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ + 26);
+          const p4 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ + 26);
           const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 12;
           const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 12;
           const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 12;
