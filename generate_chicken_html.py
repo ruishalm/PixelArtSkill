@@ -1,10 +1,7 @@
 """
 Gera o visualizador independente da Galinha 3D (chicken-3d.html)
-Zero dependências externas, puro HTML5 Canvas 2D + Sprite Stacking + Web Audio API.
-Refinamentos:
-1. Andando: Projeção 3D real dos pés (com Math.cos e Math.sin do turn)! Pés avançam para frente ao levantar do chão.
-2. Ciscando: Corpo e pés 100% PARADOS! Cabeça inclina 60 graus com cálculo trigonométrico dos slices (não colapsa mais!) e o bico vai direto pro chão bater nos grãos.
-3. Chocando: Mantido perfeito!
+Refinamento da ciscada: a cabeça mantém formato perfeitamente redondo e fofo (zero distorção de shear),
+mergulhando para a frente e para baixo tocando os grãos no chão ("toc-toc"), subindo e voltando.
 """
 import json
 
@@ -353,12 +350,7 @@ html_content = f"""<!DOCTYPE html>
       let legLOffX = 0, legLLiftZ = 0;
       let legROffX = 0, legRLiftZ = 0;
       let bodyBobZ = 0, rollWobble = 0;
-
-      // Variáveis do Ciscando (Inclinação angular de 60 graus da cabeça!)
-      let pitchAngle = 0; // em radianos
-      let neckExtX = 0;
-      let neckExtZ = 0;
-      let headBobX = 0;
+      let headOffX = 0, headOffZ = 0;
 
       if (currentAnim === 'walk') {{
         // 1. ANDANDO:
@@ -366,12 +358,10 @@ html_content = f"""<!DOCTYPE html>
         const walkCycle = animTime * 3.0;
         const swingDist = 3.6;
 
-        // Pata Esquerda
         const lStep = Math.sin(walkCycle);
         legLOffX = lStep * swingDist;
         legLLiftZ = (lStep > 0) ? Math.sin(lStep * Math.PI) * 2.2 : 0;
 
-        // Pata Direita (em contrafase)
         const rStep = -Math.sin(walkCycle);
         legROffX = rStep * swingDist;
         legRLiftZ = (rStep > 0) ? Math.sin(rStep * Math.PI) * 2.2 : 0;
@@ -381,7 +371,7 @@ html_content = f"""<!DOCTYPE html>
         rollWobble = Math.cos(walkCycle * 0.5) * 0.05;
 
         // Cabeça dá bicadas rítmicas acompanhando os passos
-        headBobX = Math.sin(walkCycle) * 2.0;
+        headOffX = Math.sin(walkCycle) * 2.0;
       }} else if (currentAnim === 'peck') {{
         // 2. CISCANDO:
         // REGRA DE OURO: Corpo e pés ficam 100% PARADINHOS!
@@ -389,45 +379,40 @@ html_content = f"""<!DOCTYPE html>
         legROffX = 0; legRLiftZ = 0;
         bodyBobZ = 0; rollWobble = 0;
 
-        // Ciclo do Ciscando com rotação de 60 graus (1.05 radianos):
-        const cycle = (animTime * 2.2) % (Math.PI * 2);
+        // Ciclo da cabeça: vai pra frente, mergulha pra baixo, sobe e volta!
+        const cycle = (animTime * 2.4) % (Math.PI * 2);
 
-        if (cycle < Math.PI * 0.40) {{
-          // Fase 1: Cabeça se projeta para frente e começa a inclinar
-          const p = Math.sin((cycle / (Math.PI * 0.40)) * Math.PI * 0.5);
-          pitchAngle = p * 0.55; // inclina até ~32°
-          neckExtX = p * 4.0;
-          neckExtZ = -p * 2.0;
-        }} else if (cycle < Math.PI * 0.75) {{
-          // Fase 2: Mergulho total a 60 graus! O bico bate no chão ("toc-toc"!)
-          const p = (cycle - Math.PI * 0.40) / (Math.PI * 0.35);
+        if (cycle < Math.PI * 0.35) {{
+          // Fase 1: Cabeça projeta para frente
+          const p = Math.sin((cycle / (Math.PI * 0.35)) * Math.PI * 0.5);
+          headOffX = p * 4.5;
+          headOffZ = -p * 1.5;
+        }} else if (cycle < Math.PI * 0.70) {{
+          // Fase 2: Mergulha pra baixo com o bico no chão ("toc-toc"!)
+          const p = (cycle - Math.PI * 0.35) / (Math.PI * 0.35);
           const pSin = Math.sin(p * Math.PI * 0.5);
-          pitchAngle = 0.55 + pSin * 0.50; // chega a 1.05 rad = 60°!
-          neckExtX = 4.0 + pSin * 2.8;
-          neckExtZ = -2.0 - pSin * 4.5;
+          headOffX = 4.5 + pSin * 0.8;
+          headOffZ = -1.5 - pSin * 5.0; // Bico desce rente ao chão!
           if (p > 0.85 && Math.random() < 0.28) {{
             playPeckSound();
           }}
-        }} else if (cycle < Math.PI * 1.15) {{
-          // Fase 3: Cabeça sobe de volta desinclinando
-          const p = (cycle - Math.PI * 0.75) / (Math.PI * 0.40);
-          pitchAngle = 1.05 * (1 - p); // desce de 60° para 0°
-          neckExtX = 6.8 * (1 - p * 0.5);
-          neckExtZ = -6.5 * (1 - p);
+        }} else if (cycle < Math.PI * 1.10) {{
+          // Fase 3: Cabeça sobe de volta
+          const p = (cycle - Math.PI * 0.70) / (Math.PI * 0.40);
+          headOffX = 5.3 * (1 - p * 0.3);
+          headOffZ = -6.5 * (1 - p);
         }} else {{
-          // Fase 4: Retração final à postura de repouso
-          const p = (cycle - Math.PI * 1.15) / (Math.PI * 0.85);
-          const pCos = (1 - Math.cos(p * Math.PI)) * 0.5;
-          pitchAngle = 0;
-          neckExtX = 3.4 * (1 - pCos);
-          neckExtZ = 0;
+          // Fase 4: Retrai para o pescoço em repouso
+          const p = (cycle - Math.PI * 1.10) / (Math.PI * 0.90);
+          headOffX = 3.7 * (1 - p);
+          headOffZ = 0;
         }}
       }} else if (currentAnim === 'flap') {{
         // 3. BATER ASAS: pulinho animado
         bodyBobZ = Math.max(0, Math.sin(animTime * 2.8)) * 8.0;
         legLLiftZ = bodyBobZ;
         legRLiftZ = bodyBobZ;
-        headBobX = Math.sin(animTime * 4.0) * 1.5;
+        headOffX = Math.sin(animTime * 4.0) * 1.5;
       }} else if (currentAnim === 'loaf') {{
         // 4. CHOCANDO: pés somem, corpo repousa achatado
         bodyBobZ = -3.8;
@@ -448,10 +433,10 @@ html_content = f"""<!DOCTYPE html>
       const sw = CHICKEN_DATA.width * scale;
       const sh = CHICKEN_DATA.height * scale;
 
-      // 1. Renderiza Patas (Z=0 a 3) com PROJEÇÃO ISOMÉTRICA VERDADEIRA!
+      // 1. Renderiza Patas (Z=0 a 3) com projeção isométrica verdadeira
       if (currentAnim !== 'loaf') {{
         for (let i = 0; i <= 3; i++) {{
-          // Pata Esquerda: projeta deslocamento (legLOffX) nos eixos X e Y da tela!
+          // Pata Esquerda
           const zL = i + legLLiftZ;
           const sLx = cx + (legLOffX * Math.cos(turn)) * scale;
           const sLy = cy + (legLOffX * Math.sin(turn)) * scale * squash - (zL * zStep) * squash;
@@ -488,20 +473,12 @@ html_content = f"""<!DOCTYPE html>
         lowCtx.restore();
       }}
 
-      // 3. Renderiza Pescoço, Cabeça, Bico e Crista (Z=10 a 15) com INCLINAÇÃO REAL DE 60°
+      // 3. Renderiza Cabeça Sólida (Z=10 a 15) como um bloco redondo e fofo sem distorção
       for (let i = 10; i < CHICKEN_DATA.slices.length; i++) {{
-        const h = (i - 9.5); // Altura acima da base do pescoço
-
-        // Vetores de rotação 2D de pitch (inclinação para a frente)
-        // Quando pitchAngle > 0, os slices superiores avançam em X e comprimem em Z segundo o cosseno!
-        const tiltX = (headBobX) + neckExtX + (h * Math.sin(pitchAngle) * 1.5);
-        const tiltZ = 9.5 + bodyBobZ + neckExtZ + (h * Math.cos(pitchAngle));
-
-        const screenOffX = (tiltX * Math.cos(turn)) * scale;
-        const screenOffY = (tiltX * Math.sin(turn)) * scale * squash;
-
-        const sX = cx + screenOffX;
-        const sY = cy + screenOffY - (tiltZ * zStep) * squash;
+        // Deslocamento da cabeça inteira sem shear artificial entre as fatias
+        const z = i + bodyBobZ + headOffZ;
+        const sX = cx + (headOffX * Math.cos(turn)) * scale;
+        const sY = cy + (headOffX * Math.sin(turn)) * scale * squash - (z * zStep) * squash;
 
         lowCtx.save();
         lowCtx.translate(sX, sY);
@@ -513,7 +490,7 @@ html_content = f"""<!DOCTYPE html>
 
       // Grãozinhos de milho no chão quando ciscando
       if (currentAnim === 'peck') {{
-        const seedDist = (CHICKEN_DATA.width / 2 + 5) * scale;
+        const seedDist = (CHICKEN_DATA.width / 2 + 3) * scale;
         const seedX = cx + seedDist * Math.cos(turn);
         const seedY = cy + seedDist * Math.sin(turn) * squash + 4;
         lowCtx.fillStyle = '#F59E0B';
@@ -603,4 +580,4 @@ html_content = f"""<!DOCTYPE html>
 with open('chicken-3d.html', 'w', encoding='utf-8') as f:
     f.write(html_content)
 
-print('chicken-3d.html atualizado com rotacao 60 graus e projecao 3D dos pes!')
+print('chicken-3d.html atualizado com ciscada fofa e redonda!')
