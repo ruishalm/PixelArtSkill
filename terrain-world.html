@@ -569,8 +569,164 @@
       return sum;
     }
 
+    function warp2d(wx, wy, freq = 0.012, amp = 24) {
+      const qx = fbm2d(wx * freq + 5.2, wy * freq + 1.3);
+      const qy = fbm2d(wx * freq + 1.7, wy * freq + 9.2);
+      const f2 = freq * 1.35;
+      const rx = fbm2d((wx + qx * amp) * f2 + 8.3, (wy + qy * amp) * f2 + 2.8);
+      const ry = fbm2d((wx + qx * amp) * f2 + 1.2, (wy + qy * amp) * f2 + 6.4);
+      return { x: wx + rx * amp, y: wy + ry * amp };
+    }
+
+    function smax(a, b, k) {
+      if (k <= 0.001) return Math.max(a, b);
+      const h = Math.max(0, Math.min(1, 0.5 + 0.5 * (b - a) / k));
+      return a + (b - a) * h + k * h * (1 - h);
+    }
+
+    function smin(a, b, k) {
+      return -smax(-a, -b, k);
+    }
+
+    function ridgedFbm(x, y, octaves = 3) {
+      let sum = 0, amp = 0.55, freq = 1.0, norm = 0;
+      for (let i = 0; i < octaves; i++) {
+        const n = 1.0 - Math.abs(valueNoise2d(x * freq, y * freq));
+        sum += n * n * amp;
+        norm += amp;
+        freq *= 2.05;
+        amp *= 0.48;
+      }
+      return sum / norm;
+    }
+
+    function rockTerrace(h, step = 12, strength = 0.5, wx = 0, wy = 0) {
+      if (h <= 2 || step <= 0 || strength <= 0) return h;
+      const s = step * (1 + fbm2d(wx * 0.014 + 3.1, wy * 0.014 - 4.7) * 0.22);
+      const u = h / s;
+      const base = Math.floor(u);
+      const frac = u - base;
+      const smooth = frac * frac * (3 - 2 * frac);
+      const terraced = (base + smooth * smooth) * s;
+      return h + (terraced - h) * strength;
+    }
+
+    function segDistAndT(px, py, ax, ay, bx, by) {
+      const vx = bx - ax, vy = by - ay;
+      const wx = px - ax, wy = py - ay;
+      const lenSq = vx * vx + vy * vy;
+      const t = lenSq > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / lenSq)) : 0;
+      const cx = ax + vx * t, cy = ay + vy * t;
+      return { d: Math.hypot(px - cx, py - cy), t };
+    }
+
+    function pullRidge(points, halfWidth, heights, opts = {}) {
+      const {
+        steepness = 1.45,
+        warpFreq = 0.011,
+        warpAmp = 26,
+        ridgeAmp = 0.28,
+        smoothK = 9,
+        terraceStep = 0,
+        terraceStrength = 0.45,
+        mat = null,
+        biome = null,
+        isCliff = false
+      } = opts;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const [px, py] of points) {
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+      const pad = halfWidth + warpAmp + 16;
+      const x0 = Math.max(0, Math.floor((minX - pad) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((maxX + pad) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((minY - pad) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((maxY + pad) / VOX + HALF_GRID));
+
+      for (let my = y0; my <= y1; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        for (let mx = x0; mx <= x1; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const wp = warp2d(wx, wy, warpFreq, warpAmp);
+          let bestD = Infinity;
+          let bestSegH = 0;
+          for (let i = 0; i < points.length - 1; i++) {
+            const [ax, ay] = points[i];
+            const [bx, by] = points[i + 1];
+            const { d, t } = segDistAndT(wp.x, wp.y, ax, ay, bx, by);
+            if (d < bestD) {
+              bestD = d;
+              bestSegH = heights[i] + (heights[i + 1] - heights[i]) * t;
+            }
+          }
+          if (bestD < halfWidth) {
+            const k = Math.cos((bestD / halfWidth) * Math.PI * 0.5);
+            const ridge = ridgedFbm(wp.x * 0.018 + 2.1, wp.y * 0.018 - 6.3, 3);
+            let rawH = bestSegH * Math.pow(Math.max(0, k), steepness) * (1 + (ridge - 0.5) * ridgeAmp);
+            if (terraceStep > 0) rawH = rockTerrace(rawH, terraceStep, terraceStrength, wx, wy);
+            const idx = my * mw + mx;
+            const blended = Math.min(64, Math.round(smax(hmap[idx], rawH, smoothK)));
+            if (blended > hmap[idx]) hmap[idx] = blended;
+            if (biome !== null && bestD < halfWidth * 0.9) biomeMap[idx] = biome;
+            if (mat !== null && rawH > 2) matMap[idx] = mat;
+            if (isCliff && bestD < halfWidth * 0.85) cliffMask[idx] = 1;
+          }
+        }
+      }
+    }
+
+    function carveBenchTrail(points3D, halfWidth = 13, blendWidth = 28, mat = MAT_PATH, biome = null) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const [px, py] of points3D) {
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+      const pad = halfWidth + blendWidth + 16;
+      const x0 = Math.max(0, Math.floor((minX - pad) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((maxX + pad) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((minY - pad) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((maxY + pad) / VOX + HALF_GRID));
+
+      for (let my = y0; my <= y1; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        for (let mx = x0; mx <= x1; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          let bestD = Infinity;
+          let bestZ = 0;
+          for (let i = 0; i < points3D.length - 1; i++) {
+            const [ax, ay, az] = points3D[i];
+            const [bx, by, bz] = points3D[i + 1];
+            const { d, t } = segDistAndT(wx, wy, ax, ay, bx, by);
+            if (d < bestD) {
+              bestD = d;
+              bestZ = az + (bz - az) * t;
+            }
+          }
+          const edgeN = fbm2d(wx * 0.032 + 4.1, wy * 0.032 - 1.9) * 3.0;
+          const innerW = halfWidth + edgeN;
+          const idx = my * mw + mx;
+          if (bestD <= innerW) {
+            hmap[idx] = Math.round(bestZ);
+            matMap[idx] = mat;
+            cliffMask[idx] = 0;
+            if (biome !== null) biomeMap[idx] = biome;
+          } else if (bestD <= innerW + blendWidth) {
+            const t = (bestD - innerW) / blendWidth;
+            const s = t * t * (3 - 2 * t);
+            hmap[idx] = Math.max(0, Math.min(64, Math.round(bestZ * (1 - s) + hmap[idx] * s)));
+            if (biome !== null && t < 0.6) biomeMap[idx] = biome;
+          }
+        }
+      }
+    }
+
     function pullHill(cx, cy, radius, height, steepness = 1.6, noiseAmp = 0.20, mat = null, biome = null, additive = false) {
-      const pad = radius * (1 + noiseAmp) + 8;
+      const pad = radius * (1 + noiseAmp) + 28;
       const x0 = Math.max(0, Math.floor((cx - pad) / VOX + HALF_GRID));
       const x1 = Math.min(mw - 1, Math.ceil((cx + pad) / VOX + HALF_GRID));
       const y0 = Math.max(0, Math.floor((cy - pad) / VOX + HALF_GRID));
@@ -578,11 +734,10 @@
 
       for (let my = y0; my <= y1; my++) {
         const wy = (my - HALF_GRID + 0.5) * VOX;
-        const dy = wy - cy;
         for (let mx = x0; mx <= x1; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          const dx = wx - cx;
-          const d = Math.hypot(dx, dy);
+          const wp = warp2d(wx, wy, 0.013, Math.min(26, radius * 0.22));
+          const d = Math.hypot(wp.x - cx, wp.y - cy);
           const n = fbm2d(wx * 0.016 + 11.3, wy * 0.016 - 5.7);
           const effR = radius * (1 + n * noiseAmp);
           if (d < effR) {
@@ -591,8 +746,9 @@
             const idx = my * mw + mx;
             if (additive) {
               hmap[idx] = Math.min(64, hmap[idx] + val);
-            } else if (val > hmap[idx]) {
-              hmap[idx] = val;
+            } else {
+              const blended = Math.min(64, Math.round(smax(hmap[idx], val, 6)));
+              if (blended > hmap[idx]) hmap[idx] = blended;
             }
             if (biome !== null && d < effR * 0.92) biomeMap[idx] = biome;
             if (mat !== null && val > 1) matMap[idx] = mat;
@@ -601,8 +757,8 @@
       }
     }
 
-    function pullPlateau(cx, cy, rx, ry, height, rimWidth, noiseAmp = 0.12, isCliff = false, mat = null, biome = null, lowerAllowed = false) {
-      const maxR = Math.max(rx, ry) * (1 + noiseAmp) + rimWidth + 8;
+    function pullPlateau(cx, cy, rx, ry, height, rimWidth, noiseAmp = 0.12, isCliff = false, mat = null, biome = null, lowerAllowed = false, useWarp = true) {
+      const maxR = Math.max(rx, ry) * (1 + noiseAmp) + rimWidth + (useWarp ? 28 : 8);
       const x0 = Math.max(0, Math.floor((cx - maxR) / VOX + HALF_GRID));
       const x1 = Math.min(mw - 1, Math.ceil((cx + maxR) / VOX + HALF_GRID));
       const y0 = Math.max(0, Math.floor((cy - maxR) / VOX + HALF_GRID));
@@ -610,10 +766,11 @@
 
       for (let my = y0; my <= y1; my++) {
         const wy = (my - HALF_GRID + 0.5) * VOX;
-        const dy = (wy - cy) / ry;
         for (let mx = x0; mx <= x1; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          const dx = (wx - cx) / rx;
+          const wp = useWarp ? warp2d(wx, wy, 0.012, Math.min(24, Math.min(rx, ry) * 0.16)) : { x: wx, y: wy };
+          const dx = (wp.x - cx) / rx;
+          const dy = (wp.y - cy) / ry;
           const nd = Math.hypot(dx, dy);
           const n = noiseAmp > 0 ? fbm2d(wx * 0.018 - 3.1, wy * 0.018 + 7.9) * noiseAmp : 0;
           const effNd = nd / (1 + n);
@@ -629,8 +786,9 @@
             }
             if (lowerAllowed) {
               hmap[idx] = targetH;
-            } else if (targetH > hmap[idx]) {
-              hmap[idx] = targetH;
+            } else {
+              const blended = !isCliff ? Math.min(64, Math.round(smax(hmap[idx], targetH, 6))) : targetH;
+              if (blended > hmap[idx]) hmap[idx] = blended;
             }
             if (isCliff && effNd <= 1.0 + rimNorm * 0.95) {
               cliffMask[idx] = 1;
@@ -762,6 +920,101 @@
               }
             }
           }
+        }
+      }
+    }
+
+    function thermalAndHydraulicErosion(thermalIters = 5, dropletCount = 260) {
+      const tmp = new Int16Array(mw * mh);
+      for (let it = 0; it < thermalIters; it++) {
+        tmp.set(hmap);
+        for (let my = 1; my < mh - 1; my++) {
+          const row = my * mw;
+          for (let mx = 1; mx < mw - 1; mx++) {
+            const idx = row + mx;
+            const m = matMap[idx];
+            if (cliffMask[idx] || m === MAT_WATER || m === MAT_BRIDGE || m === MAT_LILYPAD) continue;
+            const talus = (m === MAT_STONE) ? 4 : 2;
+            const nbs = [idx - 1, idx + 1, idx - mw, idx + mw];
+            let lowNb = nbs[0];
+            let lowH = hmap[lowNb];
+            for (let k = 1; k < 4; k++) {
+              const nb = nbs[k];
+              if (hmap[nb] < lowH) {
+                lowH = hmap[nb];
+                lowNb = nb;
+              }
+            }
+            if (hmap[idx] - lowH > talus) {
+              const nbMat = matMap[lowNb];
+              if (!cliffMask[lowNb] && nbMat !== MAT_WATER && nbMat !== MAT_BRIDGE && nbMat !== MAT_LILYPAD) {
+                const delta = Math.max(1, Math.round(((hmap[idx] - lowH) - talus) * 0.30));
+                tmp[idx] = Math.max(0, tmp[idx] - delta);
+                tmp[lowNb] = Math.min(64, tmp[lowNb] + delta);
+              }
+            }
+          }
+        }
+        hmap.set(tmp);
+      }
+
+      let seed = 133742;
+      const nextRand = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+
+      for (let d = 0; d < dropletCount; d++) {
+        let mx = 0, my = 0, found = false;
+        for (let tries = 0; tries < 8; tries++) {
+          const tx = 8 + Math.floor(nextRand() * (mw - 16));
+          const ty = 8 + Math.floor(nextRand() * (mh - 16));
+          const tidx = ty * mw + tx;
+          if (hmap[tidx] >= 14 && !cliffMask[tidx] && matMap[tidx] !== MAT_PATH && matMap[tidx] !== MAT_WATER) {
+            mx = tx;
+            my = ty;
+            found = true;
+            break;
+          }
+        }
+        if (!found) continue;
+
+        let sediment = 0;
+        for (let step = 0; step < 24; step++) {
+          if (mx <= 1 || mx >= mw - 2 || my <= 1 || my >= mh - 2) break;
+          const idx = my * mw + mx;
+          const curH = hmap[idx];
+          let lowX = mx, lowY = my, lowNb = idx, lowH = curH;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = mx + dx, ny = my + dy;
+              const nidx = ny * mw + nx;
+              if (hmap[nidx] < lowH) {
+                lowH = hmap[nidx];
+                lowNb = nidx;
+                lowX = nx;
+                lowY = ny;
+              }
+            }
+          }
+          const drop = curH - lowH;
+          const nbMat = matMap[lowNb];
+          if (drop <= 0 || cliffMask[lowNb] || nbMat === MAT_WATER || nbMat === MAT_BRIDGE || nbMat === MAT_LILYPAD) {
+            if (sediment > 0 && !cliffMask[idx] && matMap[idx] !== MAT_PATH) {
+              hmap[idx] = Math.min(64, hmap[idx] + 1);
+            }
+            break;
+          }
+          if (drop >= 2 && drop <= 7 && matMap[idx] !== MAT_PATH) {
+            hmap[idx] = Math.max(0, hmap[idx] - 1);
+            sediment++;
+          } else if (drop === 1 && sediment > 0 && matMap[idx] !== MAT_PATH) {
+            hmap[idx] = Math.min(64, hmap[idx] + 1);
+            sediment--;
+          }
+          mx = lowX;
+          my = lowY;
         }
       }
     }
@@ -953,22 +1206,27 @@
         if (wy > 430) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          const edgeDist = Math.min(wx - WORLD_MIN, WORLD_MAX - wx, wy - WORLD_MIN);
-          if (edgeDist >= 64) continue;
-          const n = fbm2d(wx * 0.014 + 3.7, wy * 0.014 + 1.9) * 16;
-          if (edgeDist < 44 + n) {
-            const t = Math.max(0, Math.min(1, (44 + n - edgeDist) / 28));
+          const rawEdgeDist = Math.min(wx - WORLD_MIN, WORLD_MAX - wx, wy - WORLD_MIN);
+          if (rawEdgeDist >= 88) continue;
+          const wp = warp2d(wx, wy, 0.010, 20);
+          const edgeDist = Math.min(wp.x - WORLD_MIN, WORLD_MAX - wp.x, wp.y - WORLD_MIN);
+          if (edgeDist >= 68) continue;
+          const ridge = ridgedFbm(wp.x * 0.014 + 3.7, wp.y * 0.014 + 1.9, 3);
+          const span = 52 + ridge * 16;
+          if (edgeDist < span) {
+            const t = Math.max(0, Math.min(1, (span - edgeDist) / 36));
+            const peakH = 14 + ridge * 12;
             const idx = my * mw + mx;
-            hmap[idx] = Math.max(hmap[idx], Math.round(22 * t));
+            hmap[idx] = Math.max(hmap[idx], Math.round(peakH * Math.pow(t, 1.15)));
           }
         }
       }
 
       // ---------------------------------------------------------------------
-      // BIOMA 1: CAMPOS DE GIRASSOL (Oeste) — colinas amplas 200-240u
+      // BIOMA 1: CAMPOS DE GIRASSOL (Oeste) — cristas ondulantes orgânicas
       // ---------------------------------------------------------------------
-      pullHill(-550, -50, 120, 14, 1.5, 0.22, MAT_GRASS, 1);
-      pullHill(-540, 164, 104, 8, 1.5, 0.22, MAT_GRASS, 1);
+      pullRidge([[-600, -90], [-550, -50], [-490, -10]], 88, [12, 14, 7], { warpAmp: 22, smoothK: 8, ridgeAmp: 0.24, mat: MAT_GRASS, biome: 1 });
+      pullRidge([[-580, 140], [-540, 164], [-485, 210]], 76, [10, 8, 5], { warpAmp: 18, smoothK: 7, ridgeAmp: 0.22, mat: MAT_GRASS, biome: 1 });
 
       // ---------------------------------------------------------------------
       // BIOMA 0: VILA DA CLAREIRA (Centro-Oeste) — rampa orgânica Z=0..6
@@ -996,30 +1254,36 @@
       // BIOMA 6: BOSQUE DOS COGUMELOS SALTITANTES (Sudeste)
       // ---------------------------------------------------------------------
       // Circuito aéreo de cogumelos: apoio Z=12 e Z=24 para caps Z=16 / 28 / 40
-      pullPlateau(330, 176, 14, 14, 12, 16, 0.12, false, MAT_STONE, 6); // Apoio #2 (cap Z=28)
-      pullPlateau(379, 192, 26, 14, 24, 18, 0.12, false, MAT_GRASS, 6); // Apoio #3 e #4 (caps Z=40)
-      pullPlateau(428, 176, 14, 14, 12, 16, 0.12, false, MAT_STONE, 6); // Apoio #5 (cap Z=28)
-      pullHill(550, 330, 104, 16, 1.6, 0.22, MAT_GRASS, 6);
+      pullPlateau(330, 176, 14, 14, 12, 16, 0.12, false, MAT_STONE, 6, false, false); // Apoio #2 (cap Z=28)
+      pullPlateau(379, 192, 26, 14, 24, 18, 0.12, false, MAT_GRASS, 6, false, false); // Apoio #3 e #4 (caps Z=40)
+      pullPlateau(428, 176, 14, 14, 12, 16, 0.12, false, MAT_STONE, 6, false, false); // Apoio #5 (cap Z=28)
+      pullRidge([[490, 290], [550, 330], [610, 385]], 84, [11, 16, 12], { warpAmp: 22, smoothK: 8, ridgeAmp: 0.25, mat: MAT_GRASS, biome: 6 });
 
       // ---------------------------------------------------------------------
       // BIOMA 7: MONTANHA DO PICO SAKURA (Nordeste, Z=64 topo)
       // ---------------------------------------------------------------------
       // Contraforte Oeste Z=16 onde chega a Ponte Norte (wx=140..210, wy=-230)
-      pullPlateau(192, -220, 64, 44, 16, 24, 0.12, false, MAT_STONE, 7);
+      pullRidge([[148, -230], [192, -220], [244, -184], [292, -242]], 50, [16, 17, 24, 34], { warpAmp: 20, smoothK: 8, ridgeAmp: 0.26, mat: MAT_STONE, biome: 7 });
+      pullPlateau(156, -230, 20, 16, 16, 10, 0.06, false, MAT_STONE, 7, false, false);
       // Paredão escarpado Oeste/Sul (intransponível direto!)
-      pullPlateau(320, -360, 144, 124, 48, 6, 0.14, true, MAT_STONE, 7);
-      // Trilha orgânica larga em curva subindo: 0 -> 14 -> 28 -> 42 -> 54 -> 64
-      paintRampPath(410, -44, 0, 470, -110, 14, 30, MAT_PATH, 7);
-      pullPlateau(470, -110, 64, 52, 14, 28, 0.10, false, MAT_PATH, 7);
-      paintRampPath(470, -110, 14, 550, -210, 28, 28, MAT_PATH, 7);
-      pullPlateau(550, -210, 68, 60, 28, 24, 0.10, false, MAT_PATH, 7);
-      paintRampPath(550, -210, 28, 530, -350, 42, 28, MAT_PATH, 7);
-      pullPlateau(530, -350, 68, 64, 42, 24, 0.10, false, MAT_PATH, 7);
-      paintRampPath(530, -350, 42, 450, -470, 54, 26, MAT_PATH, 7);
-      pullPlateau(450, -470, 72, 56, 54, 20, 0.10, false, MAT_PATH, 7);
-      paintRampPath(450, -470, 54, 355, -390, 64, 24, MAT_PATH, 7);
+      pullPlateau(320, -360, 144, 124, 48, 6, 0.12, true, MAT_STONE, 7, false, true);
+      // Espigões geológicos irradiando da montanha
+      pullRidge([[360, -350], [460, -320], [545, -240], [500, -130], [435, -65]], 92, [58, 48, 34, 20, 6], { warpAmp: 26, ridgeAmp: 0.30, smoothK: 10, terraceStep: 14, terraceStrength: 0.35, mat: MAT_GRASS, biome: 7 });
+      pullRidge([[350, -390], [440, -455], [535, -430], [565, -340]], 82, [58, 52, 42, 34], { warpAmp: 24, ridgeAmp: 0.30, smoothK: 10, terraceStep: 14, terraceStrength: 0.35, mat: MAT_GRASS, biome: 7 });
       // Cume arredondado do Pico Sakura (Z=64)
-      pullPlateau(320, -360, 104, 92, 64, 20, 0.12, false, MAT_PEAK, 7);
+      pullPlateau(320, -360, 102, 90, 64, 22, 0.14, false, MAT_PEAK, 7, false, true);
+      // Trilha contínua escavada em patamar subindo a encosta (Z=0 -> Z=64)
+      carveBenchTrail([
+        [410, -44, 0],
+        [450, -90, 10],
+        [502, -152, 20],
+        [548, -226, 30],
+        [546, -322, 40],
+        [514, -408, 48],
+        [454, -462, 56],
+        [392, -430, 62],
+        [354, -384, 64]
+      ], 13, 28, MAT_PATH, 7);
 
       // ---------------------------------------------------------------------
       // BIOMA 5: RIO SINUOSO & CACHOEIRA ORGÂNICA (largura ~54u)
@@ -1031,8 +1295,8 @@
       carveRiverPath(riverPts, 54, -6);
 
       // Cachoeira Vertical na Falésia Oeste (wy=-330) + Poço + Riacho Plano até o Rio
-      // Parte C1: Riacho plano (Z=-5) ligando o pé da cachoeira (wx=152) ao rio principal (wx=90)
-      carveRiverPath([[152, -330], [124, -326], [90, -324]], 24, -5);
+      // Parte C1: Riacho plano (Z=-5) ligando o pé da cachoeira (wx=144) ao rio principal (wx=90)
+      carveRiverPath([[144, -330], [120, -326], [90, -324]], 24, -5);
 
       // Parte C2: Poço circular com borda rasa arenosa ao pé da falésia (sem corroer a rocha alta h > 10)
       for (let my = 0; my < mh; my++) {
@@ -1040,10 +1304,10 @@
         if (wy < -356 || wy > -304) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          if (wx < 138 || wx > 186) continue;
+          if (wx < 134 || wx > 190) continue;
           const idx = my * mw + mx;
           if (hmap[idx] > 10) continue;
-          const d = Math.hypot(wx - 162, wy + 330) + fbm2d(wx * 0.12, wy * 0.12) * 1.4;
+          const d = Math.hypot(wx - 158, wy + 330) + fbm2d(wx * 0.12, wy * 0.12) * 1.4;
           if (d <= 17) {
             hmap[idx] = -5;
             matMap[idx] = MAT_WATER;
@@ -1063,18 +1327,18 @@
         if (wy < -350 || wy > -310) continue;
         for (let mx = 0; mx < mw; mx++) {
           const wx = (mx - HALF_GRID + 0.5) * VOX;
-          if (wx < 160 || wx > 218) continue;
+          if (wx < 150 || wx > 226) continue;
           const idx = my * mw + mx;
           const curH = hmap[idx];
           const n = fbm2d(wx * 0.05, wy * 0.05) * 4.5;
           if (Math.abs(wy + 330 + n) <= 12.0) {
-            if (wx >= 178 && curH >= 44) {
+            if (wx >= 172 && curH >= 44) {
               // Parte A: Nascente encaixada 2u abaixo da borda Z=48 da montanha
               hmap[idx] = 46;
               matMap[idx] = MAT_WATER;
               biomeMap[idx] = 7;
               cliffMask[idx] = 1;
-            } else if (wx <= 194 && curH >= 1 && curH <= 48) {
+            } else if (wx <= 198 && curH >= 1 && curH <= 48) {
               // Parte B: Cortina vertical acompanhando o relevo real da falésia (zero rampa flutuante)
               matMap[idx] = MAT_WATER;
               biomeMap[idx] = 7;
@@ -1168,10 +1432,10 @@
         }
       }
       // 4 Monolitos Arredondados bem espaçados em wy=330 (rx=26, ry=22, x=-280,-190,-100,-10)
-      pullPlateau(-280, 330, 26, 22, 6,  8.0, 0.06, true, MAT_STONE, 2); // A: Z=6  (sobe andando!)
-      pullPlateau(-190, 330, 26, 22, 16, 2.0, 0.06, true, MAT_STONE, 2); // B: Z=16 (pulo 1H!)
-      pullPlateau(-100, 330, 26, 22, 32, 2.0, 0.06, true, MAT_STONE, 2); // C: Z=32 (pulo 2H máx!)
-      pullPlateau(-10,  330, 26, 22, 48, 2.0, 0.06, true, MAT_STONE, 2); // D: Z=48 (3H bloqueado!)
+      pullPlateau(-280, 330, 26, 22, 6,  8.0, 0.06, true, MAT_STONE, 2, false, false); // A: Z=6  (sobe andando!)
+      pullPlateau(-190, 330, 26, 22, 16, 2.0, 0.06, true, MAT_STONE, 2, false, false); // B: Z=16 (pulo 1H!)
+      pullPlateau(-100, 330, 26, 22, 32, 2.0, 0.06, true, MAT_STONE, 2, false, false); // C: Z=32 (pulo 2H máx!)
+      pullPlateau(-10,  330, 26, 22, 48, 2.0, 0.06, true, MAT_STONE, 2, false, false); // D: Z=48 (3H bloqueado!)
 
       // ---------------------------------------------------------------------
       // TRILHAS ORGÂNICAS CONECTANDO VILA <-> BIOMAS
@@ -1201,8 +1465,9 @@
         }
       }
 
-      // Relaxamento Elástico Pull-Chain: degraus suaves de 1-2px onde cliffMask === 0
-      elasticChainRelax(2);
+      // Erosão térmica + hidráulica determinística, seguida por relaxamento elástico final
+      thermalAndHydraulicErosion(5, 260);
+      elasticChainRelax(1);
       buildStandableMap();
     }
     initOrganicWorld();
@@ -1557,7 +1822,7 @@
       addFish(-550, -550, 'Mirante Zen');                    // #16 Zen (Z=48)
       addFish(330,  176,  'Cogumelo Médio', 16);             // #17 Cogumelos (Z=28)
       addFish(396,  192,  'Cogumelo Alto', 16);              // #18 Cogumelos (Z=40)
-      addFish(530,  -350, 'Patamar da Montanha');            // #19 Montanha (Z=42)
+      addFish(546,  -322, 'Patamar da Montanha');            // #19 Montanha (Z=40)
       addFish(352,  -352, 'Pico Sakura Lendário');           // #20 Montanha (Z=64)
 
       // NPCs: Galinha Popó na Vila + 3 Pintinhos Piu nos Girassóis
@@ -3163,6 +3428,7 @@
       getCellAt: (wx, wy) => getCellAt(wx, wy),
       isStandable: (wx, wy) => { const c = getCellAt(wx, wy); return c ? c.standable : false; },
       getCliffTop: (wx, wy) => { const c = getCellAt(wx, wy); return c ? c.cliffTop : null; },
+      sampleTrail: (pts) => pts.map(([x, y]) => ({ x, y, h: getHeightAt(x, y), standable: (getCellAt(x, y) || {}).standable })),
       getRuinsCoords: () => ({
         approachSouth: { wx: -190, wy: 375, z: getHeightAt(-190, 375) },
         monoliths: [

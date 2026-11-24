@@ -64,9 +64,10 @@ Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo 
 ## 🏔️ Vale Felino 3D — Motor de Terreno Micro-Voxel Orgânico `720×720` ("Pull-Chain" + Tight-Crop Bounded Slices) (`terrain-world.html`)
 
 Mapa aberto contínuo dobrado em **`720×720` micro-voxels (`VOX = 2u` = `1.440×1.440u`, `4×` mais área)**, substituindo blocos quadriculados por relevo orgânico fatiado horizontalmente sobre o motor **Pure HTML5 Canvas 2D**:
-- **Escultura "Pull-Chain" & Proporção Anti-Kaiju**:
+- **Escultura "Pull-Chain" & Kit de 6 Fórmulas Geológicas**:
   - **Colinas Suaves Escaláveis (`pullHill` + `elasticChainRelax`)**: Elevações orgânicas com curva elástica `cos^steepness` e relaxamento em corrente (puxar 1 pixel arrasta vizinhos proporcionalmente enquanto o chão ancora), gerando morros curvos e caminháveis.
-  - **Falésias Rochosas Naturais (`pullPlateau` + `cliffMask` + `fbm2d`)**: Terraços nivelados com paredões rochosos abruptos nas bordas mascaradas e iluminação direcional calculada pelo gradiente local de altura.
+  - **Falésias Rochosas Naturais (`pullPlateau` + `cliffMask` + `fbm2d`)**: Terraços nivelados com paredões rochosos abruptos nas bordas mascaradas e iluminação direcional calculada pelo gradiente local de altura (`useWarp = false` reservado apenas a ruínas/estruturas humanas).
+  - **Kit de 6 Primitivas Geológicas Procedurais**: Combina **Domain Warping 2-Pass (`warp2d`)**, **Smooth Union/Carve (`smax`/`smin`)**, **Espinhas Multifractais (`ridgedFbm` + `pullRidge`)**, **Estratos Rochosos (`rockTerrace`)**, **Trilha Recortada na Encosta (`carveBenchTrail`)** sobre spline 3D e **Erosão Térmica & Gotas Hidráulicas (`thermalAndHydraulicErosion`)** para substituir "panquecas" e círculos uniformes por relevo geológico natural.
   - **Rio Sinuoso (`carveRiverPath`) & Proporção Mundo vs. Personagem (Anti-Kaiju)**: Rios principais largos (`>= 3×` a largura do personagem, `~54u`), trilhas `>= 2×`, lagos `>= 4×` e biomas espaçados em `>= 250–400u` para que construções e paisagens respirem sem encolher o mundo.
 - **8 Biomas Conectados em Escala Ampla**: Vila da Clareira com **2 Cabanas** & Galinha Popó NPC, Campos de Girassol (2 Pintinhos Piu e Fardos de Feno), Circuito das Ruínas Antigas, Praia Dourada (Píer, Vitórias-Régias e Farol), Jardim Zen com Portal Torii (atravessável pelo vão central), Rio Cristalino com 2 Pontes, Bosque com **~60 Pinheiros** e **7 Cogumelos Gigantes** saltitantes (chapéus sólidos até `Z=40`) e Montanha do Pico Sakura (`Z=96`) com cachoeira dupla animada.
 - **Estruturas Monumentais em Escala Real (`1:1` Pixel Density)**: Construções modeladas em voxel real grande sem zoom artificial (`Cabana 52×46×54` `3.4×H`, `Farol 34×34×84` `5.25×H`, `Portal Torii 50×16×54`, `Sakura 54×54×68`, `Pinheiros 28×28×48`, `Pilares 18×18×34`, `Guarda-Sol 28×28×28` e `Barco 34×20×12`).
@@ -133,6 +134,97 @@ Antes de gerar qualquer novo modelo para a engine, siga o questionário de 8 eta
 
 * **3 Slots de Decoração**: Salve e restaure configurações da casa ("Original", "Custom A", "Custom B").
 * **Camada Desacoplada (`DecorStorageService`)**: Persiste instantaneamente via `localStorage` e já conta com ganchos nativos para envio de payloads JSON a backends e sistemas de login.
+
+---
+
+## 🧮 Fórmulas Matemáticas & Engenharia da Engine
+
+Abaixo estão todas as equações centrais que governam a projeção, oclusão, controle, física, renderização micro-voxel e geologia procedural do repositório:
+
+### 1. Projeção 3D Sprite Stacking & Profundidade (`squash = 0.72–0.75`)
+Dado um ponto relativo à câmera $(\Delta x, \Delta y, \Delta z) = (w_x - \text{cam}_x,\, w_y - \text{cam}_y,\, w_z - \text{cam}_z)$ e o ângulo orbital da câmera $\theta = \text{turn}$:
+
+$$r_x = \Delta x \cos\theta - \Delta y \sin\theta, \qquad r_y = \Delta x \sin\theta + \Delta y \cos\theta$$
+
+$$s_x = c_x + r_x, \qquad s_y = c_y + r_y \cdot \text{squash} - \Delta z, \qquad \text{depth} = r_y$$
+
+- `squash` opera em **`0.72`** (`room-3d.html` / `terrain-world.html`) e **`0.75`** no padrão canônico da `SKILL.md` (nunca inferior a `0.60`), enquanto `depth = r_y` ordena entidades *back-to-front*.
+- **Projeção Inversa (`unproject` & `unprojectToGrid`)**: converte coordenadas de tela $(p_x, p_y)$ de volta para o plano do chão (Drag & Drop no diorama) ou para o índice contínuo do grid `720×720` em qualquer fatia $z$ (para calcular a janela visível da câmera):
+
+$$r_x = p_x - c_x, \qquad r_y = \frac{p_y - \big(c_y - (z - \text{cam}_z)\big)}{\text{squash}}$$
+
+$$\Delta x = r_x \cos\theta + r_y \sin\theta, \qquad \Delta y = -r_x \sin\theta + r_y \cos\theta$$
+
+$$g_x = \frac{\text{cam}_x + \Delta x}{\text{VOX}} + \text{HALF\_GRID}, \qquad g_y = \frac{\text{cam}_y + \Delta y}{\text{VOX}} + \text{HALF\_GRID}$$
+
+### 2. Wall Culling Dinâmico & Oclusão Angular de Móveis Ocos
+- **Wall Culling Dinâmico**: para cada parede de normal unitária $(n_x, n_y)$, projeta-se a componente de profundidade da normal após a rotação $\theta$:
+
+$$n_{y,\text{rot}} = n_x \sin\theta + n_y \cos\theta > 0.05$$
+
+  Quando verdadeira, a parede está entre a câmera e o interior do cômodo: colapsa para um rodapé discreto de `3px` (`z = 0..3`) e desativa os hitboxes de cliques nos itens pendurados nela.
+- **Oclusão Angular de Móveis Ocos** (estantes/nichos com frente aberta em `+Y`): avalia-se o ângulo total da câmera relativa ao móvel:
+
+$$\cos(\text{selfAngle} + \theta) > 0.22$$
+
+  Se `> 0.22`, a abertura frontal está visível e o desenho intercala faixas Z de fatias, props internos ordenados por `depth` e redesenho das bordas laterais sólidas (`wallThick`); se `<= 0.22`, as paredes laterais e o fundo sólido do modelo ocluem 100% do interior.
+
+### 3. Controles WASD Relativos à Câmera & Direção Canônica (`+Y` = Frente)
+O vetor de entrada normalizado em tela $(i_x, i_y)$ é convertido para o espaço do mundo pela rotação inversa de `turn` e alinhado à orientação canônica dos modelos (`y = H - 1` = frente):
+
+$$\text{moveWorld}_x = i_x \cos\theta + i_y \sin\theta, \qquad \text{moveWorld}_y = -i_x \sin\theta + i_y \cos\theta$$
+
+$$\text{targetAngle} = \operatorname{atan2}(-\text{moveWorld}_x,\, \text{moveWorld}_y)$$
+
+O ângulo `selfAngle` interpola suavemente até `targetAngle` pelo menor arco em $[-\pi, \pi]$.
+
+### 4. Física Vertical (`H = 16u`), Plataforma Mínima (`standableMap`) & Deslizamento (`±35°`)
+- **Cinemática de Pulo (`CAT_HEIGHT = 16u`, `GRAVITY = 1200`)**:
+
+$$v_0 = \sqrt{2g(2H + \text{margem})} = \sqrt{2 \cdot 1200 \cdot 35.0} \approx 289.8\,\text{u/s}$$
+
+  Atinge ápice de **`~35u`** (supera degraus de `1H = 16u` e `2H = 32u`, bloqueia paredões `3H = 48u`), com **`AUTO_STEP_MAX = 5.5u`** (`~0.35H`) para subir colinas andando, **Coyote Time (`0.11s`)** e **Jump Buffer (`0.13s` teclado / `0.14s` touch)**.
+- **Filtro de Plataforma Mínima (`standableMap` + `cliffTopMap`)**: pré-calcula em janela **`5×5`** quais micro-voxels oferecem apoio real (`nearCount >= 14` de `25` células não-água com $|h_v - h_0| \le 3\text{u}$, equivalente a `~3.7×3.7` micro-voxels), mantendo **guarda de piso de vale** ($h_0 - \min_5 \le 2$) para não bloquear bases côncavas e rejeitando saliências isoladas de falésia (`max3 - h0 > 4 && h0 - min3 > 4`). Um segundo passe grava em `cliffTopMap` o pico local no raio `r = 5` para impedir escalar paredões por micro-degraus de `1–2px`.
+- **Deslizamento Tangencial (`±35°`)**: quando X e Y individuais encontram bloqueio em encostas curvas ou margens de rio, o resolvedor rotaciona o deslocamento $(\mathrm{d}x, \mathrm{d}y)$ em **`±35°`** (fator `0.85`), deslizando organicamente ao redor da curvatura.
+
+### 5. Renderização Slice-by-Slice, Casca Anti-Pinhole (`min8 - 2`), Iluminação por Gradiente & Grama `fbm2d`
+- **Casca Anti-Pinhole (`min8 - 2`)**: para cada micro-voxel de altura $h$, calcula-se $\min_8$ (menor altura entre os 8 vizinhos) e preenche-se a coluna de fatias no intervalo $[\max(Z_{\min}, \min_8 - 2),\, h]$, garantindo zero frestas transparentes em `360°`.
+- **Iluminação Direcional por Gradiente Local**:
+
+$$\nabla_x h = h_R - h_L, \qquad \nabla_y h = h_D - h_U, \qquad \text{sunShade} = \operatorname{clamp}\!\left(\operatorname{round}\big((-\nabla_x h - \nabla_y h)\cdot 1.4\big),\, -22,\, 22\right)$$
+
+  Somado ao realce de quina exposta (`+10` quando $h_L < h$ ou $h_U < h$) para leitura nítida de relevo e sombras.
+- **Tight-Crop Bounded Slices & Skip em $O(1)$**: cada fatia `z` armazena apenas o retângulo ocupado `{ canvas, offX, offY, w, h }` em `Uint32Array`; no loop de render, `unprojectToGrid` nos 4 cantos da tela recorta a sub-região visível e pula fatias fora da janela em $O(1)$, intercalando `entityLayer` com `globalCompositeOperation = 'destination-out'` e contorno único `1px` (`#3B2219`).
+- **Grama em Moitas (`fbm2d > 0.43`)**: distribui lâminas `2–3px` (`noOutline`) quando `fbm2d(mx * 0.14, my * 0.14) + fine01 * 0.42 > 0.43` (`fine01 > 0.18` via hash XOR sem grade), animadas ao vento em **8 FPS** (`floor(t * 8)`).
+- **Upscale Inteiro 1:1 & Hi-Res Overlay Pass**:
+
+$$\text{pixelScale} = \operatorname{clamp}\!\left(\left\lfloor \frac{\min(W, H)}{260} \right\rfloor,\, 2,\, 4\right), \qquad \text{LOW\_W} = \left\lceil \frac{W}{\text{pixelScale}} \right\rceil, \qquad \text{LOW\_H} = \left\lceil \frac{H}{\text{pixelScale}} \right\rceil$$
+
+  O mundo 3D é renderizado no buffer `lowCanvas` com `imageSmoothingEnabled = false`, ampliado para o canvas principal e sobreposto por um **Hi-Res Overlay Pass** vetorial para balões de fala e textos sem pixelização.
+
+### 6. Kit de 6 Fórmulas Geológicas Procedurais
+Substitui formas uniformes ("panquecas" e elipses empilhadas) por geologia natural contínua (reservando `useWarp = false` em `pullPlateau` apenas para estruturas/ruínas humanas):
+
+1. **Domain Warping 2-Pass (`warp2d`)**: distorce o domínio antes de medir distâncias para gerar baías, escarpas e penínsulas assimétricas:
+
+$$\mathbf{p}' = \mathbf{p} + A \cdot \text{fbm}\!\big(\mathbf{p}f + A\,\text{fbm}(\mathbf{p}f_1)\big)$$
+
+2. **Smooth Union / Carve (`smax` / `smin`)**: fusão e escavação polinomial suave de morros e esporões como argila, sem vincos duros:
+
+$$h = \operatorname{clamp}\!\left(0.5 + \frac{0.5(b - a)}{k},\, 0,\, 1\right), \qquad \text{smax}(a, b, k) = a + (b - a)h + k\,h(1 - h)$$
+
+$$\text{smin}(a, b, k) = a + (b - a)h' - k\,h'(1 - h'), \qquad h' = \operatorname{clamp}\!\left(0.5 - \frac{0.5(b - a)}{k},\, 0,\, 1\right)$$
+
+3. **Ridged Multifractal & Espinhas (`ridgedFbm` + `pullRidge`)**: acumula cristas geológicas afiladas ao longo de polilinhas com ramificações naturais:
+
+$$\text{ridgedFbm}(\mathbf{p}) = \sum_i w_i\,\big(1 - |\text{noise}_i(\mathbf{p})|\big)^2$$
+
+4. **Estratos Rochosos Irregulares (`rockTerrace`)**: cria degraus sedimentares orgânicos modulando o passo da camada por ruído coerente:
+
+$$\text{step}_{\text{eff}} = \text{step} \cdot \big(1 + 0.22 \cdot \text{fbm}(\mathbf{p})\big)$$
+
+5. **Trilha Recortada na Encosta (`carveBenchTrail`)**: executada *após* esculpir a montanha inteira, projeta uma spline 3D diretamente na encosta mantendo faixa interna plana `innerW` em `MAT_PATH` e mesclando o talude em `blendWidth` com interpolação *smoothstep* ($3t^2 - 2t^3$).
+6. **Erosão Térmica & Gotas Hidráulicas (`thermalAndHydraulicErosion`)**: relaxa declives acima do ângulo de repouso (`talus = 4` em pedra, `2` em terra) e simula `~260` gotas determinísticas descendo o gradiente para formar sulcos naturais e saias aluviais.
 
 ---
 
