@@ -1303,10 +1303,10 @@ html_template = r"""<!DOCTYPE html>
       { id: 'bookshelf',     name: 'Estante Alta de Livros',icon: '📚', category: 'furniture', model: bookshelfModel, x: -20, y: 112, liftZ: 0,  selfAngle: Math.PI, scale: 1.45, radius: 36, isBookshelf: true, visible: true },
 
       // ACESSÓRIOS MODULARES E MÓVEIS DA ESTANTE (Arrastáveis para qualquer prateleira!)
-      { id: 'bs_enc',        name: 'Coleção de Enciclopédias', icon: '📖', category: 'decor', model: bsEncModel,     x: -9,  y: 112, liftZ: 3.5,  selfAngle: Math.PI, scale: 1.4, radius: 14, isProp: true, surface: 'bookshelf', tier: 1, offX: -11, offY: 0, visible: true },
-      { id: 'bs_stack',      name: 'Livros com Marcador',     icon: '📚', category: 'decor', model: bsStackModel,   x: -31, y: 112, liftZ: 3.5,  selfAngle: Math.PI, scale: 1.4, radius: 12, isProp: true, surface: 'bookshelf', tier: 1, offX: 11,  offY: 0, visible: true },
-      { id: 'bs_plant',      name: 'Vasinho de Hera Pendente', icon: '🪴', category: 'decor', model: bsPlantModel,   x: -9,  y: 112, liftZ: 16.5, selfAngle: Math.PI, scale: 1.4, radius: 12, isProp: true, surface: 'bookshelf', tier: 2, offX: -11, offY: 0, visible: true },
-      { id: 'bs_trophy',     name: 'Troféu PurrModoro Ouro',   icon: '🏆', category: 'decor', model: bsTrophyModel,  x: -31, y: 112, liftZ: 16.5, selfAngle: Math.PI, scale: 1.4, radius: 10, isProp: true, surface: 'bookshelf', tier: 2, offX: 11,  offY: 0, visible: true },
+      { id: 'bs_enc',        name: 'Coleção de Enciclopédias', icon: '📖', category: 'decor', model: bsEncModel,     x: -12, y: 112, liftZ: 3.5,  selfAngle: Math.PI, scale: 1.4, radius: 14, isProp: true, surface: 'bookshelf', tier: 1, offX: -8,  offY: 0, visible: true },
+      { id: 'bs_stack',      name: 'Livros com Marcador',     icon: '📚', category: 'decor', model: bsStackModel,   x: -28, y: 112, liftZ: 3.5,  selfAngle: Math.PI, scale: 1.4, radius: 12, isProp: true, surface: 'bookshelf', tier: 1, offX: 8,   offY: 0, visible: true },
+      { id: 'bs_plant',      name: 'Vasinho de Hera Pendente', icon: '🪴', category: 'decor', model: bsPlantModel,   x: -12, y: 112, liftZ: 16.5, selfAngle: Math.PI, scale: 1.4, radius: 12, isProp: true, surface: 'bookshelf', tier: 2, offX: -8,  offY: 0, visible: true },
+      { id: 'bs_trophy',     name: 'Troféu PurrModoro Ouro',   icon: '🏆', category: 'decor', model: bsTrophyModel,  x: -28, y: 112, liftZ: 16.5, selfAngle: Math.PI, scale: 1.4, radius: 10, isProp: true, surface: 'bookshelf', tier: 2, offX: 8,   offY: 0, visible: true },
       { id: 'bs_crystal',    name: 'Geodo de Ametista',        icon: '💎', category: 'decor', model: bsCrystalModel,x: -20, y: 112, liftZ: 29.5, selfAngle: Math.PI, scale: 1.4, radius: 10, isProp: true, surface: 'bookshelf', tier: 3, offX: 0,   offY: 0, visible: true },
       // Planta Monstera no cantinho entre as duas paredes vazias
       { id: 'plant_living',  name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: -112,y: 105, liftZ: 0,  selfAngle: 0.8,          scale: 1.4,  radius: 20, visible: true },
@@ -3568,7 +3568,7 @@ html_template = r"""<!DOCTYPE html>
     }
 
 
-    // --- RENDERIZADOR ARQUITETÔNICO POR CAMADAS DA ESTANTE (ZERO-CLIPPING) ---
+    // --- RENDERIZADOR ARQUITETÔNICO 100% SÓLIDO COM OCLUSÃO TOTAL (ZERO-CLIPPING & SOLID BACK/SIDES) ---
     function drawModularBookshelf(shelfItem, activeItems) {
       const isSel = (shelfItem === selectedItem);
       const isHov = (shelfItem === hoveredItem && isDecorMode);
@@ -3610,7 +3610,15 @@ html_template = r"""<!DOCTYPE html>
       const originX = Math.floor(w / 2);
       const originY = Math.floor(h / 2);
 
-      // Agrupa props da estante por tier (não desenha o item se estiver sendo arrastado agora pelo mouse)
+      // CÁLCULO DE VISIBILIDADE DO VÃO FRONTAL (Visto de Frente vs de Lado vs de Trás)
+      // Em coordenadas de fatia: o vão frontal aberto fica em +Y (y = h - 1).
+      // Ao girar por totalAngle, o vetor normal frontal tem componente de tela Y = cos(totalAngle).
+      const cosFront = Math.cos(totalAngle);
+      // Se cosFront > 0.22: a abertura frontal da estante está voltada para a câmera (visão frontal/isométrica).
+      // Se cosFront <= 0.22: a câmera está olhando a estante DE LADO ou DE TRÁS! O fundo maciço de madeira e as laterais bloqueiam a visão interna!
+      const isFrontVisible = (cosFront > 0.22);
+
+      // Agrupa props da estante por tier
       const props = activeItems.filter(it => it.surface === 'bookshelf' && !(it === selectedItem && isDraggingItem));
       const t1Props = props.filter(it => (it.tier || 1) === 1);
       const t2Props = props.filter(it => it.tier === 2);
@@ -3628,25 +3636,55 @@ html_template = r"""<!DOCTYPE html>
         }
       }
 
-      // Camada 1: Plinto e Vão Inferior (z = 0 .. 13)
-      drawShelfSlices(0, 13);
-      t1Props.sort((a, b) => a.depth - b.depth);
-      for (const prop of t1Props) renderItem(prop);
+      // Helper para redesenhar as paredes laterais maciças sobre os itens (garante 100% de oclusão lateral em qualquer ângulo)
+      function drawShelfSideWalls(fromZ, toZ) {
+        const wallThick = 5; // 5 pixels de espessura de madeira maciça em cada lateral
+        for (let z = fromZ; z <= toZ && z < count; z++) {
+          lowCtx.save();
+          lowCtx.translate(p.x, Math.round(p.y - z * scale));
+          lowCtx.scale(scale, squash * scale);
+          lowCtx.rotate(totalAngle);
+          // Lateral esquerda (x = 0 .. 4)
+          lowCtx.drawImage(sheet, z * w, 0, wallThick, h, -originX, -originY, wallThick, h);
+          // Lateral direita (x = w - wallThick .. w - 1)
+          lowCtx.drawImage(sheet, z * w + (w - wallThick), 0, wallThick, h, -originX + (w - wallThick), -originY, wallThick, h);
+          lowCtx.restore();
+        }
+      }
 
-      // Camada 2: Prancha 2 e Vão Médio (z = 14 .. 26)
-      drawShelfSlices(14, 26);
-      t2Props.sort((a, b) => a.depth - b.depth);
-      for (const prop of t2Props) renderItem(prop);
+      if (!isFrontVisible) {
+        // === VISÃO DE COSTAS OU DE LADO: ESTANTE 100% SÓLIDA E MACIÇA ===
+        // O fundo de madeira maciça e as laterais cobrem totalmente o interior!
+        // Não desenha os itens das prateleiras 1, 2 e 3 (estão fisicamente dentro da estante oculta).
+        drawShelfSlices(0, count - 1);
+        // Itens apoiados NO TOPO da estante continuam visíveis em 360°!
+        topProps.sort((a, b) => a.depth - b.depth);
+        for (const prop of topProps) renderItem(prop);
+      } else {
+        // === VISÃO FRONTAL OU 3/4: DESENHO EM CAMADAS COM OCLUSÃO LATERAL ===
+        // 1. Plinto e Vão Inferior (z = 0 .. 13)
+        drawShelfSlices(0, 13);
+        t1Props.sort((a, b) => a.depth - b.depth);
+        for (const prop of t1Props) renderItem(prop);
+        drawShelfSideWalls(0, 13); // Paredes laterais cobrem as laterais dos livros!
 
-      // Camada 3: Prancha 3 e Vão Superior (z = 27 .. 39)
-      drawShelfSlices(27, 39);
-      t3Props.sort((a, b) => a.depth - b.depth);
-      for (const prop of t3Props) renderItem(prop);
+        // 2. Prancha da Prateleira 2 e Vão Médio (z = 14 .. 26)
+        drawShelfSlices(14, 26);
+        t2Props.sort((a, b) => a.depth - b.depth);
+        for (const prop of t2Props) renderItem(prop);
+        drawShelfSideWalls(14, 26); // Paredes laterais cobrem as laterais das plantas/troféu!
 
-      // Camada 4: Cornija e Topo Esculpido (z = 40 .. 43)
-      drawShelfSlices(40, count - 1);
-      topProps.sort((a, b) => a.depth - b.depth);
-      for (const prop of topProps) renderItem(prop);
+        // 3. Prancha da Prateleira 3 e Vão Superior (z = 27 .. 39)
+        drawShelfSlices(27, 39);
+        t3Props.sort((a, b) => a.depth - b.depth);
+        for (const prop of t3Props) renderItem(prop);
+        drawShelfSideWalls(27, 39); // Paredes laterais cobrem o cristal!
+
+        // 4. Cornija e Topo Esculpido (z = 40 .. 43)
+        drawShelfSlices(40, count - 1);
+        topProps.sort((a, b) => a.depth - b.depth);
+        for (const prop of topProps) renderItem(prop);
+      }
 
       // Marcador de seleção no Modo Decoração
       if (isSel && isDecorMode) {
