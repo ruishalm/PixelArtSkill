@@ -829,7 +829,7 @@ html_template = r"""<!DOCTYPE html>
     const chickenPal = ['rgba(0,0,0,0)', '#FFFFFF', '#F1F5F9', '#CBD5E1', '#EF4444', '#B91C1C', '#F59E0B', '#D97706', '#0F172A', '#FFFFFF'];
     const chickenModel = createSliceSheet(__CHICKEN_SLICES__, chickenPal, 24, 24);
     // CANVASES SEPARADOS DA GALINHA POPÓ (Patas, Corpo e Cabeça Articulados)
-    function createPartCanvas(sliceGrid, filterFn) {
+    function createPartCanvas(sliceGrid, filterFn, pal = chickenPal) {
       const sc = document.createElement('canvas');
       sc.width = 24; sc.height = 24;
       const sctx = sc.getContext('2d');
@@ -839,7 +839,7 @@ html_template = r"""<!DOCTYPE html>
           const cIdx = sliceGrid[y] ? (sliceGrid[y][x] || 0) : 0;
           if (cIdx > 0) {
             if (filterFn && !filterFn(x, y)) continue;
-            sctx.fillStyle = chickenPal[cIdx] || '#FFFFFF';
+            sctx.fillStyle = pal[cIdx] || '#FFFFFF';
             sctx.fillRect(x, y, 1, 1);
           }
         }
@@ -847,15 +847,24 @@ html_template = r"""<!DOCTYPE html>
       return sc;
     }
 
+    // Paleta Amarelinha Fofa para o Pintinho Piu (Pintinho Amarelinho!)
+    const chickPal = ['rgba(0,0,0,0)', '#FEF08A', '#FACC15', '#EAB308', '#EA580C', '#C2410C', '#F97316', '#D97706', '#0F172A', '#FFFFFF'];
+
     const chickenLegL = [];
     const chickenLegR = [];
+    const chickLegL = [];
+    const chickLegR = [];
     for (let i = 0; i <= 3; i++) {
-      chickenLegL.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y < 12));
-      chickenLegR.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y >= 12));
+      chickenLegL.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y < 12, chickenPal));
+      chickenLegR.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y >= 12, chickenPal));
+      chickLegL.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y < 12, chickPal));
+      chickLegR.push(createPartCanvas(__CHICKEN_SLICES__[i], (x, y) => y >= 12, chickPal));
     }
     const chickenUpper = [];
+    const chickUpper = [];
     for (let i = 4; i < __CHICKEN_SLICES__.length; i++) {
-      chickenUpper.push(createPartCanvas(__CHICKEN_SLICES__[i], null));
+      chickenUpper.push(createPartCanvas(__CHICKEN_SLICES__[i], null, chickenPal));
+      chickUpper.push(createPartCanvas(__CHICKEN_SLICES__[i], null, chickPal));
     }
 
 
@@ -877,6 +886,7 @@ html_template = r"""<!DOCTYPE html>
       { id: 'frame_plant',   name: 'Quadro Botânico',      icon: '🌿', category: 'decor',     isWallItem: true, wall: 'east', x: ROOM_R, y: 28,  liftZ: 54, radius: 18, visible: true },
       { id: 'plant',         name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: 85,  y: 65,  liftZ: 0,  selfAngle: 0.4, scale: 1.4,  radius: 20, visible: true },
       { id: 'chicken',       name: 'Galinha Popó',         icon: '🐔', category: 'pets',      model: chickenModel,   x: -35, y: 35,  liftZ: 0,  selfAngle: 0.6, scale: 1.35, radius: 18, isChicken: true, visible: true, state: 'idle', stateTimer: 120, isWalking: false, walkCycle: 0, animTime: 0, targetX: -35, targetY: 35 },
+      { id: 'chick',         name: 'Pintinho Piu',         icon: '🐥', category: 'pets',      model: chickenModel,   x: -20, y: 48,  liftZ: 0,  selfAngle: 0.2, scale: 0.85, radius: 12, isChicken: true, visible: true, state: 'idle', stateTimer: 80,  isWalking: false, walkCycle: 0, animTime: 0, targetX: -20, targetY: 48 },
 
       // Móveis Principais (category: 'furniture')
       { id: 'door',          name: 'Porta de Madeira',     icon: '🚪', category: 'furniture', isWallItem: true, wall: 'east', x: ROOM_R, y: 60, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false },
@@ -1966,6 +1976,12 @@ html_template = r"""<!DOCTYPE html>
       const isWalking = chk.isWalking && (!isDraggingItem || selectedItem !== chk);
       const isPecking = (chk.state === 'peck') && (!isDraggingItem || selectedItem !== chk);
       const isBrooding = (chk.state === 'brood');
+      const chkAngle = chk.selfAngle + turn;
+
+      const isBabyChick = (chk.id === 'chick');
+      const activeLegL = isBabyChick ? chickLegL : chickenLegL;
+      const activeLegR = isBabyChick ? chickLegR : chickenLegR;
+      const activeUpper = isBabyChick ? chickUpper : chickenUpper;
 
       let legLOffX = 0, legLLiftZ = 0;
       let legROffX = 0, legRLiftZ = 0;
@@ -2023,10 +2039,9 @@ html_template = r"""<!DOCTYPE html>
 
         // Grãozinhos de milho dourado no chão
         const pFloor = project(chk.x, chk.y, baseLiftZ);
-        const rad = chk.selfAngle - turn + Math.PI / 2;
-        const dist = 14 * chk.scale;
-        const seedX = pFloor.x + Math.cos(rad) * dist;
-        const seedY = pFloor.y + Math.sin(rad) * dist * squash;
+        const dist = 11 * chk.scale;
+        const seedX = pFloor.x + Math.cos(chkAngle) * dist;
+        const seedY = pFloor.y + Math.sin(chkAngle) * dist * squash;
         lowCtx.fillStyle = '#F59E0B';
         lowCtx.fillRect(seedX - 2, seedY - 1, 3, 2);
         lowCtx.fillRect(seedX + 3, seedY + 1, 2, 2);
@@ -2040,7 +2055,6 @@ html_template = r"""<!DOCTYPE html>
       const zStep = 1.35 * chk.scale;
       const sw = 24 * chk.scale;
       const sh = 24 * chk.scale;
-      const chkAngle = chk.selfAngle - turn + Math.PI / 2;
 
       // 1. Patas
       if (!isBrooding) {
@@ -2054,7 +2068,7 @@ html_template = r"""<!DOCTYPE html>
           lowCtx.translate(sxL, syL);
           lowCtx.scale(1, squash);
           lowCtx.rotate(chkAngle);
-          lowCtx.drawImage(chickenLegL[i], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.drawImage(activeLegL[i], -sw / 2, -sh / 2, sw, sh);
           lowCtx.restore();
 
           // Pata Direita
@@ -2066,7 +2080,7 @@ html_template = r"""<!DOCTYPE html>
           lowCtx.translate(sxR, syR);
           lowCtx.scale(1, squash);
           lowCtx.rotate(chkAngle);
-          lowCtx.drawImage(chickenLegR[i], -sw / 2, -sh / 2, sw, sh);
+          lowCtx.drawImage(activeLegR[i], -sw / 2, -sh / 2, sw, sh);
           lowCtx.restore();
         }
       }
@@ -2079,7 +2093,7 @@ html_template = r"""<!DOCTYPE html>
         lowCtx.translate(p.x, p.y);
         lowCtx.scale(1, squash);
         lowCtx.rotate(chkAngle + rollWobble);
-        lowCtx.drawImage(chickenUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
+        lowCtx.drawImage(activeUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
         lowCtx.restore();
       }
 
@@ -2093,15 +2107,15 @@ html_template = r"""<!DOCTYPE html>
         lowCtx.translate(sx, sy);
         lowCtx.scale(1, squash);
         lowCtx.rotate(chkAngle + rollWobble);
-        lowCtx.drawImage(chickenUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
+        lowCtx.drawImage(activeUpper[i - 4], -sw / 2, -sh / 2, sw, sh);
         lowCtx.restore();
       }
     }
 
-    // IA Autônoma da Galinha Popó: Passeia rebolando, cisca e descansa
+    // IA Autônoma das Aves (Popó e Pintinho Piu): Passeiam rebolando, ciscam e descansam
     function updateChickenAI() {
-      const chk = items.find(it => it.id === 'chicken');
-      if (!chk || chk.visible === false) return;
+      const chickens = items.filter(it => it.isChicken && it.visible !== false);
+      chickens.forEach(chk => {
 
       chk.animTime = (chk.animTime || 0) + 0.08;
 
@@ -2170,6 +2184,7 @@ html_template = r"""<!DOCTYPE html>
           chk.isWalking = false;
         }
       }
+      });
     }
 
     // IA Autônoma do Gatinho: Passeia pelo quarto, explora e descansa
@@ -2694,11 +2709,19 @@ html_template = r"""<!DOCTYPE html>
       isPressedOnCorkboard = false;
 
       if (!isDecorMode) {
-        // Se clicar no Mural de Post-its, captura o clique sem iniciar rotação do quarto!
+        // Se clicar no Mural de Post-its, calcula o bounding box exato projetado na parede leste!
         const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
-        if (corkboard) {
-          const pBoard = project(corkboard.x, corkboard.y, corkboard.liftZ);
-          if (Math.hypot(sx - pBoard.x, sy - pBoard.y) < 48) {
+        if (corkboard && Math.sin(turn) <= 0.05) {
+          const xWall = ROOM_R;
+          const p1 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ - 16);
+          const p2 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ - 16);
+          const p3 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ + 16);
+          const p4 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ + 16);
+          const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 10;
+          const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 10;
+          const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 10;
+          const maxY = Math.max(p1.y, p2.y, p3.y, p4.y) + 10;
+          if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
             isPressedOnCorkboard = true;
             return;
           }
@@ -2921,10 +2944,18 @@ html_template = r"""<!DOCTYPE html>
 
         // Clique no Mural de Post-its abre o Zoom / Modal de Lembretes!
         const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
-        if (corkboard) {
-          const pBoard = project(corkboard.x, corkboard.y, corkboard.liftZ);
-          const dScreen = Math.hypot(sx - pBoard.x, sy - pBoard.y);
-          if (isPressedOnCorkboard || (moved < 25 && dScreen < 48)) {
+        if (corkboard && Math.sin(turn) <= 0.05) {
+          const xWall = ROOM_R;
+          const p1 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ - 16);
+          const p2 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ - 16);
+          const p3 = project(xWall - 0.5, corkboard.y + 13, corkboard.liftZ + 16);
+          const p4 = project(xWall - 0.5, corkboard.y - 13, corkboard.liftZ + 16);
+          const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 12;
+          const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 12;
+          const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 12;
+          const maxY = Math.max(p1.y, p2.y, p3.y, p4.y) + 12;
+          const isInside = (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY);
+          if (isPressedOnCorkboard || (moved < 25 && isInside)) {
             isPressedOnCorkboard = false;
             openCorkboardModal();
             return;
@@ -3319,11 +3350,40 @@ html_template = r"""<!DOCTYPE html>
       } else if (currentDrawerTab === 'pets') {
         drawerActions.style.display = 'none';
 
-        // 1. Cabeçalho das Pelagens do Gatinho Mochi
-        const hCat = document.createElement('div');
-        hCat.style.cssText = 'font-size:12px; font-weight:800; color:#532F16; margin:6px 0 4px;';
-        hCat.textContent = '🐱 Pelagens do Gatinho Mochi:';
-        assetList.appendChild(hCat);
+        // 1. PRESENÇA DOS BICHINHOS NO QUARTO (Pode ter Gato, Popó e Pintinho juntos ou tirar quem quiser!)
+        const hPetsPresence = document.createElement('div');
+        hPetsPresence.style.cssText = 'font-size:12px; font-weight:800; color:#532F16; margin:6px 0 6px;';
+        hPetsPresence.textContent = '🐾 Companheiros no Quarto (Ative até 3 bichinhos):';
+        assetList.appendChild(hPetsPresence);
+
+        const petItems = items.filter(it => it.id === 'cat' || it.id === 'chicken' || it.id === 'chick');
+        petItems.forEach(pet => {
+          const card = document.createElement('div');
+          card.className = 'asset-card';
+          const isVis = pet.visible !== false;
+          card.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span class="asset-name">${pet.icon || '🐾'} ${pet.name}</span>
+              <span style="font-size:10px; color:#8C6A54;">${pet.id === 'cat' ? 'Gatinho companheiro de estudos' : (pet.id === 'chicken' ? 'Galinha que cisca e passeia rebolando' : 'Filhotinho fofo da Popó')}</span>
+            </div>
+            <button class="btn-toggle ${isVis ? 'on' : 'off'}">
+              ${isVis ? '✓ No Quarto' : '+ Chamar'}
+            </button>
+          `;
+          card.querySelector('.btn-toggle').addEventListener('click', () => {
+            pet.visible = !isVis;
+            if (pet.id === 'cat') playMeowSound();
+            else playChickenSound();
+            renderAssetList();
+          });
+          assetList.appendChild(card);
+        });
+
+        // 2. PELAGENS DO GATINHO MOCHI
+        const hCatSkins = document.createElement('div');
+        hCatSkins.style.cssText = 'font-size:12px; font-weight:800; color:#532F16; margin:16px 0 6px;';
+        hCatSkins.textContent = '🎨 Escolha a Pelagem do Gatinho:';
+        assetList.appendChild(hCatSkins);
 
         for (const [key, skin] of Object.entries(CAT_SKINS)) {
           const card = document.createElement('div');
@@ -3340,35 +3400,9 @@ html_template = r"""<!DOCTYPE html>
           `;
           card.querySelector('.btn-toggle').addEventListener('click', () => {
             currentCatSkin = key;
+            const cat = items.find(it => it.id === 'cat');
+            if (cat) cat.visible = true; // Ativa o gatinho se escolher uma pelagem
             playMeowSound();
-            renderAssetList();
-          });
-          assetList.appendChild(card);
-        }
-
-        // 2. Cabeçalho de Outros Pets
-        const hOther = document.createElement('div');
-        hOther.style.cssText = 'font-size:12px; font-weight:800; color:#532F16; margin:14px 0 4px;';
-        hOther.textContent = '🐔 Outros Companheiros:';
-        assetList.appendChild(hOther);
-
-        const chk = items.find(it => it.id === 'chicken');
-        if (chk) {
-          const card = document.createElement('div');
-          card.className = 'asset-card';
-          const isVis = chk.visible !== false;
-          card.innerHTML = `
-            <div style="display:flex; flex-direction:column; gap:2px;">
-              <span class="asset-name">🐔 Galinha Popó</span>
-              <span style="font-size:10px; color:#8C6A54;">Galinha rechonchuda que passeia rebolando e cisca pelo quarto</span>
-            </div>
-            <button class="btn-toggle ${isVis ? 'on' : 'off'}">
-              ${isVis ? '✓ No Quarto' : '+ Chamar'}
-            </button>
-          `;
-          card.querySelector('.btn-toggle').addEventListener('click', () => {
-            chk.visible = !isVis;
-            playChickenSound();
             renderAssetList();
           });
           assetList.appendChild(card);
