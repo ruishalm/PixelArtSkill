@@ -735,7 +735,47 @@ interface RoomDecorSlot {
 
 ## 10. Motor de Terreno Voxel 3D com Relevo, Colisão por Altura e Controle WASD + Pulo
 
-Arquitetura oficial para mapas externos, ilhas, plataformas e exploração em relevo sobre o mesmo motor **Pure HTML5 Canvas 2D** (`squash = 0.75`, `turn` livre 360°).
+> [!IMPORTANT]
+> **Padrão Preferencial para Paisagens Naturais:** Utilize a **Seção 10B (Terreno Micro-Voxel Orgânico em Fatias "Pull-Chain" `360×360`)** sempre que criar mapas externos naturais, colinas contínuas, rios sinuosos e falésias orgânicas. A **Seção 10A** abaixo fica preservada como referência para terrenos discretos em blocos geométricos (`16×16`).
+
+### 10B. Terreno Micro-Voxel Orgânico em Fatias ("Pull-Chain" — Padrão Preferencial para Paisagens Naturais)
+
+Arquitetura de relevo contínuo sobre **Pure HTML5 Canvas 2D** (`squash = 0.75`, rotação orbital 360°), substituindo cubões quadriculados de `16×16` por um **heightfield fino `360 × 360` com micro-voxel `VOX = 2u`** (`720 × 720u` de mundo contínuo) fatiado horizontalmente em pixel art orgânica.
+
+#### 1. Heightfield Fino `360 × 360` (`VOX = 2u`) & Escultura "Pull-Chain"
+Em vez de degraus cúbicos rígidos por tile, o solo é esculpido sobre uma grade densa `Float32Array(360 * 360)` com resolução espacial de `2u` por micro-célula através de operadores geológicos em corrente elástica:
+
+- **`fbm2d(x, y, octaves, ...)`**: Ruído fractal multi-oitava (*Fractional Brownian Motion*) aplicado para micro-ondulação orgânica de planícies, bordas de praia, textura de solo e variação natural de declives.
+- **`pullHill(cx, cy, radius, height, steepness)`**: Puxa uma colina orgânica usando curva elástica **`cos^steepness`** a partir do raio normalizado, produzindo cumes arredondados e transições suaves sem cantos quadrados.
+- **`pullPlateau(cx, cy, radius, height, cliffMask)`**: Eleva platôs e terraços de topo nivelado; quando `cliffMask` está ativo na borda selecionada, mantém encosta abrupta de **falésia rochosa**, enquanto nas demais direções decai suavemente para rampa caminhável.
+- **`carveRiverPath(waypoints, width, depth)`**: Escava o leito de rios sinuosos ao longo de curvas contínuas, moldando **margens em degraus suaves** para leitura em pixel art e entrada gradual na água.
+- **`elasticChainRelax(iterations)`**: Relaxamento em corrente elástica ("Pull-Chain"): **puxar 1 pixel arrasta os vizinhos em corrente proporcionalmente enquanto o chão ancora e segura a base**, eliminando picos isolados e serrilhados de escultura sem destruir falésias mascaradas.
+
+#### 2. Pré-Bake em Fatias (`terrainSlices[z]` via `Uint32Array`) & Grama `2–3px`
+Em tempo de inicialização, o heightfield `360 × 360` é convertido em fatias horizontais pré-renderizadas:
+- **Buffers `terrainSlices[z]` via `Uint32Array`**: Cada nível `z` escreve pixels ABGR diretamente em `ImageData` via `Uint32Array` para máxima performance e precisão de paleta.
+- **Casca com Espessura `min8 - 2` (Zero Pinholes em 360°)**: Para cada micro-voxel `(gx, gy)` de altura `h`, em vez de preencher apenas a superfície `z = h`, calcula-se `min8` (a menor altura entre os 8 vizinhos imediatos) e preenche-se a coluna da casca de `Math.max(0, min8 - 2)` até `h`. Isso garante **zero pinholes** (zero frestas transparentes entre fatias) em qualquer ângulo de câmera `360°`.
+- **Iluminação Direcional por Gradiente Local**: A cor de cada micro-voxel em `terrainSlices[z]` consulta o gradiente local $(\nabla_x h, \nabla_y h)$ para aplicar destaque ensolarado nas faces voltadas à luz, tom base nos platôs e sombreamento frio/terroso nas contra-encostas e falésias rochosas.
+- **Lâminas de Grama `2–3px` (`grassTipSlices`)**: Pontas de grama de `2–3px` de altura são pré-bakeadas em fatias dedicadas com **`noOutline: true`** (sem contorno `#3B2219`, evitando engrossar lâminas finas) e animadas em **8 FPS** (3 frames de deslocamento lateral de vento + *rustle* ao pisar).
+
+#### 3. Renderização Unificada Slice-by-Slice + `entityLayer` (`destination-out` + Silhueta Única 1px `#3B2219`)
+Para que personagens e props gigantes convivam com morros curvos, pontes e arcos (ex.: Portal Torii) sem *clipping* nem ordenação quebrada:
+1. **Recorte Visível (`srcRect`)**: Em cada fatia `z`, calcula-se apenas a sub-região visível `srcRect` da fatia rotacionada dentro do `lowCanvas`, evitando blitar os `360 × 360` inteiros fora da tela e mantendo 60 FPS estáveis.
+2. **Passagem Unificada Slice-by-Slice + `entityLayer`**:
+   - Renderiza-se o mundo verticalmente fatia por fatia (`z = 0 .. MAX_Z`), alternando `terrainSlices[z]` + `grassTipSlices` com o buffer auxiliar **`entityLayer`** (onde entidades e estruturas `1:1` são compostas na faixa Z correspondente).
+   - As fatias superiores do terreno/arcos aplicam **`globalCompositeOperation = 'destination-out'`** sobre o `entityLayer` para recortar com precisão sub-voxel qualquer parte de entidade oculta atrás de um morro, penhasco ou pilar.
+   - Em seguida, aplica-se a **Silhueta Única 1px `#3B2219`** ao contorno externo composto e desenha-se sobre o `lowCanvas`, garantindo **100% de oclusão real atrás de morros e sob arcos**.
+
+#### 4. Física Contínua (`AUTO_STEP_MAX = 5.5`) & Deslizamento Tangencial (`±35°`)
+- **Amostragem Contínua**: A altura do solo `getGroundHeight(wx, wy)` interpola o heightfield `360 × 360` (`VOX = 2u`) continuamente.
+- **Escalabilidade Orgânica (`AUTO_STEP_MAX = 5.5`)**: Subidas suaves com $\Delta Z \le \text{AUTO\_STEP\_MAX}$ (`5.5u`) são escaladas continuamente andando, permitindo subir colinas curvas e margens em degraus suaves com fluidez.
+- **Deslizamento Tangencial (`±35°`) em Encostas Curvas**: Quando o movimento esbarra em uma falésia (`ΔZ > AUTO_STEP_MAX`), borda de rio profundo ou collider sólido, em vez de testar apenas desvios rígidos nos eixos X/Y (que travam em encostas diagonais/curvas), o resolvedor testa rotações incrementais do vetor de movimento em até **`±35°`** ao longo da tangente da curva, deslizando organicamente ao redor de morros e rochedos.
+
+---
+
+### 10A. Referência de Terrenos em Blocos Geométricos (Grid Discreto)
+
+Arquitetura clássica para ilhas modulares, escadas em degraus rígidos e tabuleiros em grid (`16×16u` por tile) sobre o mesmo motor **Pure HTML5 Canvas 2D** (`squash = 0.75`, `turn` livre 360°).
 
 ### 1. Traversão Back-to-Front em 360° sem `Array.sort` no Grid
 Na projeção oficial, a profundidade de uma célula cresce ao longo do vetor da câmera:
@@ -863,5 +903,5 @@ REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
 2. MODELAGEM PYTHON -> JSON: Gere cada modelo com make_grid(w, h, fill=0), fill_box(...) e to_strings(slices) retornando list[list[str]] (NUNCA concatene todas as linhas de uma fatia em uma única string). Suporte base-36 ('0'..'9','a'..'z'), '0' transparente, y=0 TRASEIRA e y=H-1 FRENTE.
 3. RENDER & SILHUETA: Use squash = 0.75, drawStackObject com totalAngle = selfAngle + turn, e contorno único 1px (#3B2219 ou #3B2A20) via canvas offscreen após empilhar todas as fatias (PROIBIDO contornar fatias individuais).
 4. PAREDES & MÓVEIS OCOS: Use Wall Culling dinâmico (nyRot = nx*sin(turn) + ny*cos(turn) > 0.05 -> rodapé 3px + desativar hitbox) e oclusão angular em estantes/nichos (fundo + laterais sólidas + redesenho de paredes laterais por tier quando cosFront > 0.22).
-5. TERRENO & FÍSICA (se aplicável): Traversão back-to-front O(W*H) via stepX/stepY (sin/cos de turn), cell-bucketing + promoção de ledge no pulo, face culling das 2 faces visíveis até minNeighborZ, colisão calibrada pela altura H do personagem (<= 0.4*H auto-step; <= 2*H pulo com Coyote 0.11s e Buffer 0.12s; > 2*H ou água bloqueio com slide X/Y) e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
+5. TERRENO & FÍSICA (se aplicável): Para paisagens naturais, prefira o Motor Micro-Voxel Orgânico 360x360 ("Pull-Chain", VOX=2u): escultura via fbm2d/pullHill(cos^steepness)/pullPlateau(cliffMask)/carveRiverPath/elasticChainRelax, pré-bake em terrainSlices[z] (Uint32Array) com casca min8-2 + iluminação por gradiente + grassTipSlices (2-3px, noOutline, 8 FPS), render slice-by-slice com recorte srcRect + entityLayer (destination-out + silhueta única 1px #3B2219) e física contínua (AUTO_STEP_MAX=5.5 + deslizamento tangencial ±35° em encostas curvas). Para terrenos em blocos discretos (16x16), use traversão back-to-front O(W*H) via stepX/stepY, cell-bucketing, face culling até minNeighborZ e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
 ```

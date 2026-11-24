@@ -21,7 +21,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="icon" href="data:," />
-  <title>Vale Felino 3D v2 — Mapa 56×56, Grama Voxel & Pulo 2×H</title>
+  <title>Vale Felino 3D — Terreno Micro-Voxel Orgânico 360×360</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     body {
@@ -494,310 +494,727 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const sfxMeow = () => playTone(660, 490, 0.16, 'sine', 0.07);
 
     // =========================================================================
-    // 4. MAPA AMPLIADO 56×56 TILES (8 Biomas Conectados + Relevo Calibrado)
+    // 4. HEIGHTFIELD MICRO-VOXEL 360×360 & ESCULTURA ORGÂNICA "PULL-CHAIN"
     // =========================================================================
-    const GRID_SIZE = 56;
-    const TILE = 16;
-    const HALF_GRID = GRID_SIZE / 2; // 28
-    const WORLD_MIN = -HALF_GRID * TILE; // -448
-    const WORLD_MAX = HALF_GRID * TILE;  // +448
-    const SKIRT_BOTTOM = -22;
+    const STARTUP_T0 = performance.now();
+    const mw = 360;
+    const mh = 360;
+    const VOX = 2;
+    const HALF_GRID = 180;
+    const HALF_WORLD = 360;
+    const WORLD_MIN = -360;
+    const WORLD_MAX = 360;
+
+    const Z_MIN = -6;
+    const TERRAIN_Z_MAX = 66;
+    const Z_GRASS_MAX = 70;
 
     const CAT_HEIGHT = 16;
-    const AUTO_STEP_MAX = 6.5; // ~0.4 * CAT_HEIGHT
+    const AUTO_STEP_MAX = 5.5; // ~0.35H, sobe colinas orgânicas suavemente andando
     const GRAVITY = 1200;
-    const JUMP_VEL = Math.sqrt(2 * GRAVITY * 35.0); // Pico ~35u (vence 32u = 2xH, bloqueia em 48u = 3xH)
+    const JUMP_VEL = Math.sqrt(2 * GRAVITY * 35.0); // ~35u apex (vence 16u e 32u, bloqueia 48u)
 
-    const BIOME_NAMES = {
-      vila:       'Vila da Clareira',
-      girassol:   'Campos de Girassol',
-      ruinas:     'Ruínas Antigas',
-      praia:      'Praia & Farol',
-      zen:        'Jardim Zen & Torii',
-      rio:        'Rio Cristalino',
-      cogumelos:  'Bosque Cogumelos',
-      montanha:   'Pico Sakura'
-    };
+    const BIOME_KEYS = ['vila', 'girassol', 'ruinas', 'praia', 'zen', 'rio', 'cogumelos', 'montanha'];
+    const BIOME_NAMES = [
+      'Vila da Clareira',
+      'Campos de Girassol',
+      'Ruínas Orgânicas',
+      'Praia & Farol',
+      'Jardim Zen & Torii',
+      'Rio & Cachoeira',
+      'Bosque Cogumelos',
+      'Pico Sakura'
+    ];
+    // Materiais: 0: grass, 1: path, 2: sand, 3: stone, 4: water, 5: bridge, 6: peak, 7: lilypad
+    const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
+          MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7;
 
-    const grid = [];
-    function initTerrainGrid() {
-      for (let gy = 0; gy < GRID_SIZE; gy++) {
-        const row = [];
-        for (let gx = 0; gx < GRID_SIZE; gx++) {
-          row.push({ gx, gy, h: 0, type: 'grass', biomeKey: 'vila', biome: BIOME_NAMES.vila });
-        }
-        grid.push(row);
-      }
+    const hmap = new Int16Array(mw * mh);
+    const biomeMap = new Uint8Array(mw * mh);
+    const matMap = new Uint8Array(mw * mh);
+    const cliffMask = new Uint8Array(mw * mh);
+    const shadowMask = new Uint8Array(mw * mh); // 0..100 escurecimento de sombra estática
+    const noGrassMask = new Uint8Array(mw * mh);
 
-      const setTile = (gx, gy, h, type = null, biomeKey = null) => {
-        if (gx < 0 || gy < 0 || gx >= GRID_SIZE || gy >= GRID_SIZE) return;
-        grid[gy][gx].h = h;
-        if (type) grid[gy][gx].type = type;
-        if (biomeKey) {
-          grid[gy][gx].biomeKey = biomeKey;
-          grid[gy][gx].biome = BIOME_NAMES[biomeKey] || biomeKey;
-        }
+    function worldToGrid(wx, wy) {
+      return {
+        mx: Math.floor(wx / VOX + HALF_GRID),
+        my: Math.floor(wy / VOX + HALF_GRID)
       };
+    }
 
-      const fillRect = (x0, y0, x1, y1, h, type = null, biomeKey = null) => {
-        for (let y = y0; y <= y1; y++) {
-          for (let x = x0; x <= x1; x++) {
-            setTile(x, y, h, type, biomeKey);
+    function gridToWorld(mx, my) {
+      return {
+        wx: (mx - HALF_GRID + 0.5) * VOX,
+        wy: (my - HALF_GRID + 0.5) * VOX
+      };
+    }
+
+    // Ruído 2D determinístico (3 oitavas suaves) para contornos orgânicos
+    function hash2i(ix, iy) {
+      let n = (ix * 374761393 + iy * 668265263) | 0;
+      n = (n ^ (n >>> 13)) * 1274126177;
+      return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+    }
+
+    function valueNoise2d(x, y) {
+      const ix = Math.floor(x);
+      const iy = Math.floor(y);
+      const fx = x - ix;
+      const fy = y - iy;
+      const u = fx * fx * (3 - 2 * fx);
+      const v = fy * fy * (3 - 2 * fy);
+      const a = hash2i(ix, iy);
+      const b = hash2i(ix + 1, iy);
+      const c = hash2i(ix, iy + 1);
+      const d = hash2i(ix + 1, iy + 1);
+      return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1;
+    }
+
+    function fbm2d(x, y) {
+      let sum = 0;
+      let amp = 0.55;
+      let freq = 1.0;
+      for (let i = 0; i < 3; i++) {
+        sum += amp * valueNoise2d(x * freq, y * freq);
+        freq *= 2.05;
+        amp *= 0.45;
+      }
+      return sum;
+    }
+
+    function pullHill(cx, cy, radius, height, steepness = 1.6, noiseAmp = 0.20, mat = null, biome = null, additive = false) {
+      const pad = radius * (1 + noiseAmp) + 4;
+      const x0 = Math.max(0, Math.floor((cx - pad) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((cx + pad) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((cy - pad) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((cy + pad) / VOX + HALF_GRID));
+
+      for (let my = y0; my <= y1; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        const dy = wy - cy;
+        for (let mx = x0; mx <= x1; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const dx = wx - cx;
+          const d = Math.hypot(dx, dy);
+          const n = fbm2d(wx * 0.032 + 11.3, wy * 0.032 - 5.7);
+          const effR = radius * (1 + n * noiseAmp);
+          if (d < effR) {
+            const k = Math.cos((d / effR) * Math.PI * 0.5);
+            const val = Math.round(height * Math.pow(Math.max(0, k), steepness));
+            const idx = my * mw + mx;
+            if (additive) {
+              hmap[idx] = Math.min(64, hmap[idx] + val);
+            } else if (val > hmap[idx]) {
+              hmap[idx] = val;
+            }
+            if (biome !== null && d < effR * 0.92) biomeMap[idx] = biome;
+            if (mat !== null && val > 1) matMap[idx] = mat;
           }
         }
-      };
+      }
+    }
 
-      // Moldura natural arborizada (Oeste, Norte e Leste; Sul fica aberto para o mar da Praia!)
-      fillRect(0, 0, 55, 1, 24, 'grass', 'zen');
-      fillRect(0, 0, 1, 47, 24, 'grass', 'girassol');
-      fillRect(54, 0, 55, 47, 24, 'grass', 'cogumelos');
-      fillRect(32, 0, 55, 1, 24, 'grass', 'montanha');
+    function pullPlateau(cx, cy, rx, ry, height, rimWidth, noiseAmp = 0.12, isCliff = false, mat = null, biome = null, lowerAllowed = false) {
+      const maxR = Math.max(rx, ry) * (1 + noiseAmp) + rimWidth + 4;
+      const x0 = Math.max(0, Math.floor((cx - maxR) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((cx + maxR) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((cy - maxR) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((cy + maxR) / VOX + HALF_GRID));
 
-      // 1. VILA DA CLAREIRA & CABANA (Spawn em gx=19, gy=29)
-      fillRect(13, 21, 25, 35, 0, 'grass', 'vila');
-      // Trilhas limpas ligando Vila -> Ponte Leste, Girassóis Oeste, Ruínas Sul, Jardim Zen Norte
-      fillRect(19, 27, 25, 29, 0, 'path', 'vila');
-      fillRect(13, 25, 19, 26, 0, 'path', 'vila');
-      fillRect(18, 29, 19, 36, 0, 'path', 'vila');
-      fillRect(16, 18, 17, 25, 0, 'path', 'vila');
-      // Rampas suaves de demonstração Z=6 (<= 0.4H, sobe andando!)
-      fillRect(21, 24, 23, 25, 6, 'grass', 'vila');
-      fillRect(14, 21, 15, 22, 6, 'path', 'vila');
+      for (let my = y0; my <= y1; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        const dy = (wy - cy) / ry;
+        for (let mx = x0; mx <= x1; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const dx = (wx - cx) / rx;
+          const nd = Math.hypot(dx, dy);
+          const n = noiseAmp > 0 ? fbm2d(wx * 0.035 - 3.1, wy * 0.035 + 7.9) * noiseAmp : 0;
+          const effNd = nd / (1 + n);
+          const rimNorm = rimWidth / Math.max(1, Math.min(rx, ry));
 
-      // 2. CAMPOS DE GIRASSOL & FARDOS (Oeste: gx=2..12, gy=18..34)
-      fillRect(2, 18, 12, 34, 0, 'grass', 'girassol');
-      fillRect(9, 25, 12, 26, 0, 'path', 'girassol');
-      fillRect(3, 19, 11, 24, 6, 'grass', 'girassol');
-      fillRect(4, 19, 8, 22, 16, 'grass', 'girassol');
-      // Segunda colina dourada ao sul dos girassóis
-      fillRect(3, 29, 8, 33, 6, 'grass', 'girassol');
-
-      // 3. CIRCUITO DAS RUÍNAS ANTIGAS (Centro-Sul: gx=6..21, gy=36..44)
-      fillRect(6, 36, 21, 44, 0, 'grass', 'ruinas');
-      // Pátio plano Z=0 em volta de todo o circuito (gy=37..38 e gy=41..43 livres!)
-      fillRect(7, 37, 19, 43, 0, 'path', 'ruinas');
-      // 4 Plataformas de calibração 2x2 lado a lado em gy=39..40:
-      fillRect(8,  39, 9,  40, 6,  'stone', 'ruinas'); // 0.4H andando
-      fillRect(10, 39, 11, 40, 16, 'stone', 'ruinas'); // 1.0H pulo fácil
-      fillRect(12, 39, 13, 40, 32, 'stone', 'ruinas'); // 2.0H pulo máx direto do chão!
-      fillRect(14, 39, 15, 40, 48, 'stone', 'ruinas'); // 3.0H intransponível do chão!
-      // Pedestais de pilares laterais (afastados das rotas)
-      fillRect(6, 37, 6, 37, 16, 'stone', 'ruinas');
-      fillRect(17, 37, 17, 37, 16, 'stone', 'ruinas');
-      // Caminho conectando Ruínas até a Praia Dourada
-      fillRect(18, 43, 19, 46, 0, 'path', 'ruinas');
-
-      // 4. PRAIA DOURADA, PÍER, VITÓRIAS-RÉGIAS & FAROL (Sul: gx=0..55, gy=45..55)
-      fillRect(2, 45, 53, 48, 0, 'sand', 'praia');
-      fillRect(0, 49, 55, 55, -8, 'water', 'praia');
-      // Caminho arenoso ligando Rio e Píer
-      fillRect(18, 45, 19, 47, 0, 'sand', 'praia');
-      // Píer de madeira avançando mar adentro (Z=2)
-      fillRect(18, 48, 19, 52, 2, 'bridge', 'praia');
-      // Vitórias-régias escaláveis (Z=0 sobre a água!) para ir pulando pelo mar até a ilhota leste
-      setTile(21, 50, 0, 'lilypad', 'praia');
-      setTile(23, 51, 0, 'lilypad', 'praia');
-      setTile(25, 50, 0, 'lilypad', 'praia');
-      setTile(27, 51, 0, 'lilypad', 'praia');
-      setTile(29, 50, 0, 'lilypad', 'praia');
-      // Ilhota arenosa leste do mar sul com tesouro!
-      fillRect(31, 49, 34, 52, 0, 'sand', 'praia');
-
-      // Promontório rochoso do Farol (Sudoeste marítimo: gx=5..11, gy=48..53)
-      fillRect(11, 47, 12, 49, 6, 'sand', 'praia');   // Rampa de acesso andando!
-      fillRect(5,  48, 10, 53, 16, 'stone', 'praia'); // Platô do Farol (Z=16)
-
-      // 5. JARDIM ZEN & PORTAL TORII (Noroeste: gx=3..24, gy=2..17)
-      fillRect(3, 3, 24, 17, 16, 'grass', 'zen');
-      // Acesso por degraus largos pela vila (Z=6 em gx=15..18, gy=17..18 -> Z=16)
-      fillRect(15, 17, 18, 18, 6, 'path', 'zen');
-      // Alameda Zen passando por baixo do Portal Torii (gx=16..17, gy=8..16)
-      fillRect(15, 7, 17, 16, 16, 'path', 'zen');
-      // Laguinho Zen contemplativo em Z=10
-      fillRect(8, 9, 11, 12, 10, 'water', 'zen');
-      // Segundo terraço Zen (Z=32) e Mirante Oeste (Z=48)
-      fillRect(3, 3, 11, 7, 32, 'grass', 'zen');
-      fillRect(3, 3, 6, 5, 48, 'stone', 'zen');
-
-      // 6. RIO CRISTALINO & PONTES (Norte-Sul: gx=26..29, gy=2..48)
-      for (let y = 2; y <= 48; y++) {
-        for (let x = 26; x <= 29; x++) {
-          setTile(x, y, -8, 'water', 'rio');
+          if (effNd <= 1.0 + rimNorm) {
+            const idx = my * mw + mx;
+            let targetH = height;
+            if (effNd > 1.0) {
+              const t = 1.0 - (effNd - 1.0) / rimNorm;
+              const s = t * t * (3 - 2 * t);
+              targetH = Math.round(height * s);
+            }
+            if (lowerAllowed) {
+              hmap[idx] = targetH;
+            } else if (targetH > hmap[idx]) {
+              hmap[idx] = targetH;
+            }
+            if (isCliff && effNd <= 1.0 + rimNorm * 0.95) {
+              cliffMask[idx] = 1;
+            }
+            if (biome !== null && effNd <= 1.0 + rimNorm * 0.6) biomeMap[idx] = biome;
+            if (mat !== null && (effNd <= 1.0 || targetH >= 2)) matMap[idx] = mat;
+          }
         }
       }
-      // Margens arenosas ao longo do rio baixo
-      for (let y = 20; y <= 44; y++) {
-        if (grid[y][25].h === 0) grid[y][25].type = 'sand';
-        if (grid[y][30].h === 0) grid[y][30].type = 'sand';
+    }
+
+    function distToSegmentSq(px, py, ax, ay, bx, by) {
+      const vx = bx - ax, vy = by - ay;
+      const wx = px - ax, wy = py - ay;
+      const lenSq = vx * vx + vy * vy;
+      const t = lenSq > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / lenSq)) : 0;
+      const cx = ax + vx * t, cy = ay + vy * t;
+      return (px - cx) * (px - cx) + (py - cy) * (py - cy);
+    }
+
+    function paintOrganicPath(points, halfWidth, mat = MAT_PATH, biome = null, forceFlatZ = null) {
+      for (let i = 0; i < points.length - 1; i++) {
+        const [ax, ay] = points[i];
+        const [bx, by] = points[i + 1];
+        const pad = halfWidth + 6;
+        const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - pad) / VOX + HALF_GRID));
+        const x1 = Math.min(mw - 1, Math.ceil((Math.max(ax, bx) + pad) / VOX + HALF_GRID));
+        const y0 = Math.max(0, Math.floor((Math.min(ay, by) - pad) / VOX + HALF_GRID));
+        const y1 = Math.min(mh - 1, Math.ceil((Math.max(ay, by) + pad) / VOX + HALF_GRID));
+
+        for (let my = y0; my <= y1; my++) {
+          const wy = (my - HALF_GRID + 0.5) * VOX;
+          for (let mx = x0; mx <= x1; mx++) {
+            const wx = (mx - HALF_GRID + 0.5) * VOX;
+            const d = Math.sqrt(distToSegmentSq(wx, wy, ax, ay, bx, by));
+            const n = fbm2d(wx * 0.055 + 4.2, wy * 0.055 - 2.1) * 2.6;
+            if (d <= halfWidth + n) {
+              const idx = my * mw + mx;
+              if (matMap[idx] !== MAT_WATER && matMap[idx] !== MAT_BRIDGE) {
+                matMap[idx] = mat;
+              }
+              if (biome !== null) biomeMap[idx] = biome;
+              if (forceFlatZ !== null) hmap[idx] = forceFlatZ;
+            }
+          }
+        }
       }
-      // Ponte Central de Madeira (Z=2)
-      fillRect(25, 28, 30, 29, 2, 'bridge', 'rio');
-      // Ponte Norte de Pedra ligando Jardim Zen (Z=16) ao Contraforte da Montanha (Z=16)
-      fillRect(24, 14, 31, 15, 16, 'bridge', 'rio');
-      // Pedras de travessia ao sul em gy=39 (Z=2, pulo sobre a água!)
-      setTile(26, 39, 2, 'stone', 'rio');
-      setTile(28, 39, 2, 'stone', 'rio');
-
-      // 7. BOSQUE ENCANTADO DOS COGUMELOS (Sudeste: gx=31..53, gy=27..45)
-      fillRect(31, 27, 53, 44, 0, 'grass', 'cogumelos');
-      fillRect(31, 28, 36, 30, 0, 'path', 'cogumelos');
-      // Clareiras elevadas dentro do bosque
-      fillRect(39, 32, 41, 35, 12, 'stone', 'cogumelos'); // Apoio Cogumelo #2 (topo Z=28!)
-      fillRect(42, 35, 45, 38, 24, 'grass', 'cogumelos'); // Apoio Cogumelo #3 (topo Z=40!)
-      fillRect(46, 38, 52, 43, 6,  'grass', 'cogumelos');
-      fillRect(48, 39, 51, 42, 16, 'grass', 'cogumelos');
-
-      // 8. MONTANHA DO PICO SAKURA & CACHOEIRA DUPLA (Nordeste: gx=31..53, gy=2..26)
-      fillRect(31, 3, 53, 26, 0, 'grass', 'montanha');
-      // Contraforte Oeste Z=16 onde chega a Ponte Norte (gx=31..33, gy=14..16)
-      fillRect(31, 14, 33, 17, 16, 'stone', 'montanha');
-
-      // Maciço do Paredão Íngreme (Oeste/Sul da Montanha: Z=48..80 intransponível direto!)
-      fillRect(32, 8, 47, 20, 48, 'stone', 'montanha');
-      fillRect(34, 7, 45, 18, 64, 'stone', 'montanha');
-
-      // Cachoeira Dupla despejando no Rio (gy=10..11 e gy=18..19)
-      fillRect(30, 10, 34, 11, 64, 'water', 'montanha');
-      fillRect(29, 10, 29, 11, 32, 'water', 'rio');
-      fillRect(30, 18, 33, 19, 48, 'water', 'montanha');
-      fillRect(29, 18, 29, 19, 20, 'water', 'rio');
-
-      // TRILHA EM ESPIRAL AMPLA (3 tiles de largura, 100% LIVRE DE OBSTÁCULOS!)
-      // Degraus regulares de +16u (<= 2.0H): 0 -> 16 -> 32 -> 48 -> 64 -> 80 -> 96!
-      fillRect(45, 23, 51, 25, 16, 'path', 'montanha'); // Patamar 1 (Z=16)
-      fillRect(48, 18, 52, 22, 32, 'path', 'montanha'); // Patamar 2 (Z=32)
-      fillRect(48, 12, 52, 17, 48, 'path', 'montanha'); // Patamar 3 (Z=48)
-      fillRect(46, 5,  52, 11, 64, 'path', 'montanha'); // Patamar 4 (Z=64)
-      fillRect(39, 3,  45, 7,  80, 'path', 'montanha'); // Patamar 5 (Z=80)
-
-      // CUME MONUMENTAL DO PICO SAKURA (Z=96!)
-      fillRect(35, 8, 43, 14, 96, 'peak', 'montanha');
-      // Degrau de entrada Z=80 conectando Patamar 5 ao Cume
-      fillRect(38, 6, 42, 7, 80, 'stone', 'montanha');
-    }
-    initTerrainGrid();
-
-    function getTile(gx, gy) {
-      if (gx < 0 || gy < 0 || gx >= GRID_SIZE || gy >= GRID_SIZE) return null;
-      return grid[gy][gx];
     }
 
-    function worldToTileCoords(wx, wy) {
+    function paintRampPath(ax, ay, az, bx, by, bz, halfWidth, mat = MAT_PATH, biome = null) {
+      const pad = halfWidth + 8;
+      const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - pad) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((Math.max(ax, bx) + pad) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((Math.min(ay, by) - pad) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((Math.max(ay, by) + pad) / VOX + HALF_GRID));
+      const vx = bx - ax, vy = by - ay;
+      const lenSq = vx * vx + vy * vy || 1;
+
+      for (let my = y0; my <= y1; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        for (let mx = x0; mx <= x1; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const t = Math.max(0, Math.min(1, ((wx - ax) * vx + (wy - ay) * vy) / lenSq));
+          const px = ax + vx * t, py = ay + vy * t;
+          const d = Math.hypot(wx - px, wy - py);
+          const n = fbm2d(wx * 0.05, wy * 0.05) * 2.2;
+          const effR = halfWidth + n;
+          if (d <= effR + 6) {
+            const idx = my * mw + mx;
+            const targetH = Math.round(az + (bz - az) * t);
+            if (d <= effR) {
+              hmap[idx] = Math.max(hmap[idx], targetH);
+              matMap[idx] = mat;
+              if (biome !== null) biomeMap[idx] = biome;
+            } else {
+              const s = 1 - (d - effR) / 6;
+              hmap[idx] = Math.max(hmap[idx], Math.round(targetH * s * s));
+              if (biome !== null) biomeMap[idx] = biome;
+            }
+          }
+        }
+      }
+    }
+
+    function carveRiverPath(points, width, depth = -6) {
+      const halfW = width * 0.5;
+      const bankW = halfW + 10;
+      for (let i = 0; i < points.length - 1; i++) {
+        const [ax, ay] = points[i];
+        const [bx, by] = points[i + 1];
+        const pad = bankW + 8;
+        const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - pad) / VOX + HALF_GRID));
+        const x1 = Math.min(mw - 1, Math.ceil((Math.max(ax, bx) + pad) / VOX + HALF_GRID));
+        const y0 = Math.max(0, Math.floor((Math.min(ay, by) - pad) / VOX + HALF_GRID));
+        const y1 = Math.min(mh - 1, Math.ceil((Math.max(ay, by) + pad) / VOX + HALF_GRID));
+
+        for (let my = y0; my <= y1; my++) {
+          const wy = (my - HALF_GRID + 0.5) * VOX;
+          for (let mx = x0; mx <= x1; mx++) {
+            const wx = (mx - HALF_GRID + 0.5) * VOX;
+            const d = Math.sqrt(distToSegmentSq(wx, wy, ax, ay, bx, by));
+            const wobble = fbm2d(wx * 0.03 + 9.2, wy * 0.03 - 4.4) * 5.0;
+            const effD = d + wobble;
+            const idx = my * mw + mx;
+            if (effD <= halfW) {
+              hmap[idx] = depth;
+              matMap[idx] = MAT_WATER;
+              biomeMap[idx] = 5;
+            } else if (effD <= halfW + 3.2) {
+              if (matMap[idx] !== MAT_WATER) {
+                hmap[idx] = Math.min(hmap[idx], -4);
+                matMap[idx] = MAT_WATER;
+                biomeMap[idx] = 5;
+              }
+            } else if (effD <= halfW + 6.5) {
+              if (matMap[idx] !== MAT_WATER) {
+                hmap[idx] = Math.min(hmap[idx], -1);
+                matMap[idx] = MAT_SAND;
+                biomeMap[idx] = 5;
+              }
+            } else if (effD <= bankW) {
+              if (matMap[idx] !== MAT_WATER) {
+                hmap[idx] = Math.min(hmap[idx], 0);
+                matMap[idx] = MAT_SAND;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function elasticChainRelax(iterations = 2) {
+      const tmp = new Int16Array(mw * mh);
+      for (let it = 0; it < iterations; it++) {
+        tmp.set(hmap);
+        for (let my = 1; my < mh - 1; my++) {
+          const row = my * mw;
+          for (let mx = 1; mx < mw - 1; mx++) {
+            const idx = row + mx;
+            if (cliffMask[idx] || matMap[idx] === MAT_WATER || matMap[idx] === MAT_BRIDGE || matMap[idx] === MAT_LILYPAD) {
+              continue;
+            }
+            const hC = hmap[idx];
+            const hL = hmap[idx - 1];
+            const hR = hmap[idx + 1];
+            const hU = hmap[idx - mw];
+            const hD = hmap[idx + mw];
+            const avg = (hL + hR + hU + hD) * 0.25;
+            const maxNb = Math.max(hL, hR, hU, hD);
+            const minNb = Math.min(hL, hR, hU, hD);
+            let next = hC;
+            if (maxNb - hC > 3) {
+              next = Math.round(hC + (avg - hC) * 0.55);
+              if (maxNb - next > 2) next = Math.max(next, maxNb - 2);
+            } else if (hC - minNb > 3) {
+              next = Math.round(hC + (avg - hC) * 0.45);
+            }
+            tmp[idx] = Math.max(Z_MIN, Math.min(64, next));
+          }
+        }
+        hmap.set(tmp);
+      }
+    }
+
+    function setCirclePatch(cx, cy, radius, height, mat, biome, isCliff = true) {
+      const x0 = Math.max(0, Math.floor((cx - radius - 2) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((cx + radius + 2) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((cy - radius - 2) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((cy + radius + 2) / VOX + HALF_GRID));
+      for (let my = y0; my <= y1; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        for (let mx = x0; mx <= x1; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const n = fbm2d(wx * 0.14, wy * 0.14) * 1.1;
+          if (Math.hypot(wx - cx, wy - cy) <= radius + n) {
+            const idx = my * mw + mx;
+            hmap[idx] = height;
+            matMap[idx] = mat;
+            if (biome !== null) biomeMap[idx] = biome;
+            if (isCliff) cliffMask[idx] = 1;
+          }
+        }
+      }
+    }
+
+    function setBridgeRect(xMin, xMax, yMin, yMax, z, mat = MAT_BRIDGE, biome = 5) {
+      const gx0 = Math.max(0, Math.floor(xMin / VOX + HALF_GRID));
+      const gx1 = Math.min(mw - 1, Math.floor(xMax / VOX + HALF_GRID));
+      const gy0 = Math.max(0, Math.floor(yMin / VOX + HALF_GRID));
+      const gy1 = Math.min(mh - 1, Math.floor(yMax / VOX + HALF_GRID));
+      for (let my = gy0; my <= gy1; my++) {
+        for (let mx = gx0; mx <= gx1; mx++) {
+          const idx = my * mw + mx;
+          hmap[idx] = z;
+          matMap[idx] = mat;
+          biomeMap[idx] = biome;
+          cliffMask[idx] = 1;
+        }
+      }
+    }
+
+    // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 360×360
+    function initOrganicWorld() {
+      // Base inicial: plano verde Z=0
+      hmap.fill(0);
+      matMap.fill(MAT_GRASS);
+      biomeMap.fill(0);
+
+      // Divisão orgânica inicial dos biomas por região
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const idx = my * mw + mx;
+          const wNoise = fbm2d(wx * 0.015, wy * 0.015) * 18;
+          if (wy + wNoise > 215) biomeMap[idx] = 3; // Praia Sul
+          else if (wx + wNoise > 42 && wy + wNoise < -5) biomeMap[idx] = 7; // Montanha NE
+          else if (wx + wNoise > 42 && wy + wNoise >= -5) biomeMap[idx] = 6; // Bosque SE
+          else if (wy + wNoise < -85 && wx + wNoise < 35) biomeMap[idx] = 4; // Jardim Zen NW
+          else if (wx + wNoise < -200 && wy + wNoise >= -85) biomeMap[idx] = 1; // Girassóis W
+          else if (wy + wNoise >= 120 && wx + wNoise < 30) biomeMap[idx] = 2; // Ruínas
+          else biomeMap[idx] = 0; // Vila
+        }
+      }
+
+      // Moldura natural elevada nas bordas Oeste, Norte e Leste (Sul aberto para o mar!)
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        if (wy > 215) continue;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const edgeDist = Math.min(wx - WORLD_MIN, WORLD_MAX - wx, wy - WORLD_MIN);
+          const n = fbm2d(wx * 0.028 + 3.7, wy * 0.028 + 1.9) * 8;
+          if (edgeDist < 22 + n) {
+            const t = Math.max(0, Math.min(1, (22 + n - edgeDist) / 14));
+            const idx = my * mw + mx;
+            hmap[idx] = Math.max(hmap[idx], Math.round(22 * t));
+          }
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // BIOMA 1: CAMPOS DE GIRASSOL (Oeste)
+      // ---------------------------------------------------------------------
+      pullHill(-275, -25, 60, 14, 1.5, 0.22, MAT_GRASS, 1);
+      pullHill(-270, 82, 52, 8, 1.5, 0.22, MAT_GRASS, 1);
+
+      // ---------------------------------------------------------------------
+      // BIOMA 0: VILA DA CLAREIRA (Centro-Oeste) — rampa orgânica Z=0..6
+      // ---------------------------------------------------------------------
+      pullHill(-95, -22, 24, 6, 1.35, 0.16, MAT_GRASS, 0);
+
+      // ---------------------------------------------------------------------
+      // BIOMA 4: JARDIM ZEN & PORTAL TORII (Noroeste)
+      // ---------------------------------------------------------------------
+      pullPlateau(-160, -170, 114, 90, 16, 16, 0.14, false, MAT_GRASS, 4);
+      // Extensão Leste até Ponte Norte (wx=14, wy=-115)
+      pullPlateau(-32, -118, 52, 26, 16, 14, 0.10, false, MAT_GRASS, 4);
+      // Rampa larga da Vila (-145, -75) -> Jardim Zen (-145, -108)
+      paintRampPath(-145, -55, 0, -145, -108, 16, 13, MAT_PATH, 4);
+      // Terraço Superior Zen (Z=32 -> Z=48)
+      pullPlateau(-255, -255, 48, 38, 32, 8, 0.12, false, MAT_GRASS, 4);
+      pullPlateau(-275, -275, 24, 20, 48, 4, 0.10, true, MAT_STONE, 4);
+      // Alameda Zen passando sob o Torii (-145, -135)
+      paintOrganicPath([[-145, -105], [-145, -205]], 10, MAT_PATH, 4, 16);
+      // Lago Zen em (-230, -195)
+      setCirclePatch(-230, -195, 24, 16, MAT_SAND, 4, true);
+      setCirclePatch(-230, -195, 20, 13, MAT_WATER, 4, true);
+
+      // ---------------------------------------------------------------------
+      // BIOMA 6: BOSQUE DOS COGUMELOS SALTITANTES (Sudeste)
+      // ---------------------------------------------------------------------
+      pullHill(174, 96, 30, 12, 1.4, 0.18, MAT_STONE, 6);  // Apoio Cogumelo #2 (cap Z=28)
+      pullHill(200, 112, 34, 24, 1.4, 0.18, MAT_GRASS, 6); // Apoio Cogumelo #3 (cap Z=40)
+      pullHill(275, 165, 52, 16, 1.6, 0.22, MAT_GRASS, 6);
+
+      // ---------------------------------------------------------------------
+      // BIOMA 7: MONTANHA DO PICO SAKURA (Nordeste, Z=64 topo)
+      // ---------------------------------------------------------------------
+      // Contraforte Oeste Z=16 onde chega a Ponte Norte (wx=70..105, wy=-115)
+      pullPlateau(96, -110, 32, 22, 16, 12, 0.12, false, MAT_STONE, 7);
+      // Paredão escarpado Oeste/Sul (intransponível direto!)
+      pullPlateau(160, -180, 72, 62, 48, 3, 0.14, true, MAT_STONE, 7);
+      // Trilha orgânica larga em curva subindo: 0 -> 14 -> 28 -> 42 -> 54 -> 64
+      paintRampPath(205, -22, 0, 235, -55, 14, 16, MAT_PATH, 7);
+      pullPlateau(235, -55, 32, 26, 14, 14, 0.10, false, MAT_PATH, 7);
+      pullPlateau(275, -105, 34, 30, 28, 12, 0.10, false, MAT_PATH, 7);
+      pullPlateau(265, -175, 34, 32, 42, 12, 0.10, false, MAT_PATH, 7);
+      pullPlateau(225, -235, 36, 28, 54, 10, 0.10, false, MAT_PATH, 7);
+      // Cume arredondado do Pico Sakura (Z=64)
+      pullPlateau(160, -180, 52, 46, 64, 10, 0.12, false, MAT_PEAK, 7);
+
+      // ---------------------------------------------------------------------
+      // BIOMA 5: RIO SINUOSO & CACHOEIRA ORGÂNICA
+      // ---------------------------------------------------------------------
+      const riverPts = [
+        [40, -358], [52, -265], [44, -152], [28, -55],
+        [38, 40], [48, 145], [34, 245], [38, 310]
+      ];
+      carveRiverPath(riverPts, 28, -6);
+
+      // Cachoeira Orgânica descendo do paredão oeste da Montanha (wx=105 -> 48, wy=-152)
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        if (wy < -168 || wy > -136) continue;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          if (wx < 44 || wx > 110) continue;
+          const n = fbm2d(wx * 0.08, wy * 0.08) * 3.5;
+          if (Math.abs(wy + 152 + n * 0.6) <= 9.5) {
+            const idx = my * mw + mx;
+            const t = Math.max(0, Math.min(1, (wx - 46) / 62));
+            const fallZ = t < 0.15 ? -2 : Math.round(52 * Math.pow(t, 1.35));
+            hmap[idx] = Math.max(fallZ, -2);
+            matMap[idx] = MAT_WATER;
+            biomeMap[idx] = t > 0.3 ? 7 : 5;
+            cliffMask[idx] = 1;
+          }
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // BIOMA 3: PRAIA DOURADA, BAÍA SUL, PÍER, VITÓRIAS-RÉGIAS & FAROL
+      // ---------------------------------------------------------------------
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        if (wy < 205) continue;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          const idx = my * mw + mx;
+          const wave = fbm2d(wx * 0.014 + 2.5, 1.2) * 14;
+          const shoreY = 252 + wave;
+          const sandStart = 212 + wave * 0.7;
+
+          if (wy >= shoreY + 4) {
+            hmap[idx] = -6;
+            matMap[idx] = MAT_WATER;
+            biomeMap[idx] = 3;
+          } else if (wy >= shoreY) {
+            hmap[idx] = -4;
+            matMap[idx] = MAT_WATER;
+            biomeMap[idx] = 3;
+          } else if (wy >= shoreY - 5) {
+            if (matMap[idx] !== MAT_WATER) {
+              hmap[idx] = -1;
+              matMap[idx] = MAT_SAND;
+              biomeMap[idx] = 3;
+            }
+          } else if (wy >= sandStart) {
+            if (matMap[idx] !== MAT_WATER) {
+              hmap[idx] = Math.max(0, hmap[idx]);
+              matMap[idx] = MAT_SAND;
+              biomeMap[idx] = 3;
+            }
+          }
+        }
+      }
+
+      // Ilhota Arenosa Leste no Mar Sul
+      pullPlateau(66, 286, 24, 20, 1, 5, 0.14, true, MAT_SAND, 3, true);
+      // Promontório Rochoso do Farol (Sudoeste) + Rampa de Acesso
+      paintRampPath(-185, 238, 0, -212, 256, 14, 10, MAT_SAND, 3);
+      pullPlateau(-230, 270, 44, 36, 14, 5, 0.14, true, MAT_STONE, 3);
+
+      // Píer de Madeira (Z=2)
+      setBridgeRect(-66, -54, 230, 295, 2, MAT_BRIDGE, 3);
+      // 4 Vitórias-Régias saltáveis sobre a água até a ilhota!
+      for (const [lx, ly] of [[-34, 282], [-10, 292], [14, 282], [38, 292]]) {
+        setCirclePatch(lx, ly, 8.5, 0, MAT_LILYPAD, 3, true);
+      }
+
+      // ---------------------------------------------------------------------
+      // PONTES SOBRE O RIO & PEDRAS DE TRAVESSIA
+      // ---------------------------------------------------------------------
+      // Ponte Central de Madeira (Z=2, Vila <-> Bosque)
+      setBridgeRect(8, 68, 28, 44, 2, MAT_BRIDGE, 5);
+      // Ponte Norte de Pedra (Z=16, Jardim Zen <-> Contraforte da Montanha)
+      setBridgeRect(12, 72, -123, -107, 16, MAT_BRIDGE, 5);
+      // Pedras de Travessia ao Sul (Z=2)
+      setCirclePatch(32, 165, 8.0, 2, MAT_STONE, 5, true);
+      setCirclePatch(54, 165, 8.0, 2, MAT_STONE, 5, true);
+
+      // ---------------------------------------------------------------------
+      // BIOMA 2: RUÍNAS ORGÂNICAS & 4 MONOLITOS DE TESTE (cliffMask=1)
+      // ---------------------------------------------------------------------
+      // Pátio plano Z=0 em volta de wy=150..205 garantindo base limpa para os testes
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        if (wy < 126 || wy > 210) continue;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          if (wx < -186 || wx > 18) continue;
+          const idx = my * mw + mx;
+          if (matMap[idx] !== MAT_WATER) {
+            hmap[idx] = 0;
+            biomeMap[idx] = 2;
+            cliffMask[idx] = 1;
+            if (wy >= 136 && wy <= 202 && wx >= -166 && wx <= 14) {
+              matMap[idx] = MAT_PATH;
+            }
+          }
+        }
+      }
+      // 4 Monolitos Arredondados lado a lado em wy=165 (espaçamento 45u!)
+      pullPlateau(-140, 165, 16, 14, 6,  4.5, 0.06, true, MAT_STONE, 2); // A: Z=6  (sobe andando!)
+      pullPlateau(-95,  165, 16, 14, 16, 2.0, 0.06, true, MAT_STONE, 2); // B: Z=16 (pulo 1H!)
+      pullPlateau(-50,  165, 16, 14, 32, 2.0, 0.06, true, MAT_STONE, 2); // C: Z=32 (pulo 2H máx!)
+      pullPlateau(-5,   165, 16, 14, 48, 2.0, 0.06, true, MAT_STONE, 2); // D: Z=48 (3H bloqueado!)
+
+      // ---------------------------------------------------------------------
+      // TRILHAS ORGÂNICAS CONECTANDO VILA <-> BIOMAS
+      // ---------------------------------------------------------------------
+      paintOrganicPath([[-110, 30], [8, 36]], 9, MAT_PATH, 0, 0);         // Vila -> Ponte Central
+      paintOrganicPath([[68, 36], [125, 55], [190, 30], [208, -20]], 8, MAT_PATH, 6); // Ponte -> Bosque / Base Montanha
+      paintOrganicPath([[-110, 30], [-210, 30]], 8, MAT_PATH, 0, 0);     // Vila -> Girassóis
+      paintOrganicPath([[-110, 30], [-110, 135]], 9, MAT_PATH, 0, 0);    // Vila -> Ruínas
+      paintOrganicPath([[-110, 30], [-145, -55]], 8, MAT_PATH, 0, 0);    // Vila -> Rampa Zen
+      paintOrganicPath([[-72, 195], [-60, 230]], 8, MAT_PATH, 2, 0);     // Ruínas -> Píer
+
+      // Garante platô plano Z=0 sob a Cabana em (-175, 45)
+      for (let my = 0; my < mh; my++) {
+        const wy = (my - HALF_GRID + 0.5) * VOX;
+        if (wy < 15 || wy > 80) continue;
+        for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
+          if (wx < -208 || wx > -140) continue;
+          const idx = my * mw + mx;
+          hmap[idx] = 0;
+          cliffMask[idx] = 1;
+        }
+      }
+
+      // Relaxamento Elástico Pull-Chain: degraus suaves de 1-2px onde cliffMask === 0
+      elasticChainRelax(2);
+    }
+    initOrganicWorld();
+
+    function getCellAt(wx, wy) {
+      const mx = Math.floor(wx / VOX + HALF_GRID);
+      const my = Math.floor(wy / VOX + HALF_GRID);
+      if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+      const idx = my * mw + mx;
+      const b = biomeMap[idx];
       return {
-        gx: Math.floor(wx / TILE + HALF_GRID),
-        gy: Math.floor(wy / TILE + HALF_GRID)
+        mx, my, idx,
+        h: hmap[idx],
+        mat: matMap[idx],
+        biomeId: b,
+        biomeKey: BIOME_KEYS[b],
+        biome: BIOME_NAMES[b],
+        isCliff: cliffMask[idx] === 1
       };
     }
 
-    function tileCenter(gx, gy) {
-      return {
-        wx: (gx - HALF_GRID + 0.5) * TILE,
-        wy: (gy - HALF_GRID + 0.5) * TILE
-      };
+    function getHeightAt(wx, wy) {
+      const mx = Math.floor(wx / VOX + HALF_GRID);
+      const my = Math.floor(wy / VOX + HALF_GRID);
+      if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+      return hmap[my * mw + mx];
     }
 
     // =========================================================================
-    // 5. SISTEMA DE COLISÃO UNIFICADO PARA PROPS (4 Modos) & ANTI-BLOQUEIO
+    // 5. SISTEMA DE COLISÃO UNIFICADO (5 Modos) & POPULAÇÃO DOS 23 MODELOS
     // =========================================================================
-    // Modos:
-    // - 'solid': cilindro bloqueante até (baseZ + h)
-    // - 'box': caixa retangular bloqueante até (baseZ + h) para edificações/barcos
-    // - 'platform': bloqueia abaixo do topo e fornece apoio escalável em (baseZ + h)
-    // - 'arch': 2 pilares laterais deixando vão central 100% passável!
-    // - 'none': atravessável
     const PROP_COLLIDER_META = {
-      pine_tree:       { mode: 'solid',    r: 5.0,  h: 48 },
-      sakura_oak:      { mode: 'solid',    r: 9.5,  h: 68 },
-      cozy_cabin:      { mode: 'box',      halfW: 23.5, halfD: 20.5, h: 54 },
-      lighthouse:      { mode: 'solid',    r: 14.5, h: 84 },
-      campfire:        { mode: 'solid',    r: 5.2,  h: 9 },
+      pine_tree:       { mode: 'solid',    r: 5.0,  h: 48, shadowR: 13 },
+      sakura_oak:      { mode: 'solid',    r: 9.5,  h: 68, shadowR: 25 },
+      cozy_cabin:      { mode: 'box',      halfW: 23.5, halfD: 20.5, h: 54, shadowR: 28 },
+      lighthouse:      { mode: 'solid',    r: 14.5, h: 84, shadowR: 20 },
+      campfire:        { mode: 'solid',    r: 5.2,  h: 9,  shadowR: 6 },
       wood_sign:       { mode: 'solid',    r: 3.6,  h: 14 },
-      ruin_pillar:     { mode: 'solid',    r: 7.5,  h: 34 },
-      stone_lantern:   { mode: 'solid',    r: 5.5,  h: 24 },
-      beach_umbrella:  { mode: 'solid',    r: 2.5,  h: 28 },
-      wood_boat:       { mode: 'box',      halfW: 15.0, halfD: 8.5,  h: 12 },
-      bush_berry:      { mode: 'solid',    r: 4.8,  h: 9 },
+      ruin_pillar:     { mode: 'solid',    r: 7.5,  h: 34, shadowR: 11 },
+      stone_lantern:   { mode: 'solid',    r: 5.5,  h: 24, shadowR: 8 },
+      beach_umbrella:  { mode: 'solid',    r: 2.5,  h: 28, shadowR: 12 },
+      wood_boat:       { mode: 'box',      halfW: 15.0, halfD: 8.5,  h: 12, shadowR: 14 },
+      bush_berry:      { mode: 'solid',    r: 4.8,  h: 9,  shadowR: 6 },
       sunflower:       { mode: 'solid',    r: 3.2,  h: 15 },
       pumpkin_patch:   { mode: 'solid',    r: 5.8,  h: 8 },
-      mushroom_giant:  { mode: 'platform', r: 7.8,  h: 16 },
-      boulder_large:   { mode: 'platform', r: 6.2,  h: 12 },
-      hay_bale:        { mode: 'platform', r: 6.8,  h: 10 },
-      tree_stump:      { mode: 'platform', r: 6.5,  h: 10 },
-      torii_gate:      { mode: 'arch',     offset: 16.5, r: 3.8, h: 54 },
+      mushroom_giant:  { mode: 'platform', r: 7.8,  h: 16, shadowR: 10 },
+      boulder_large:   { mode: 'platform', r: 6.2,  h: 12, shadowR: 8 },
+      hay_bale:        { mode: 'platform', r: 6.8,  h: 10, shadowR: 8 },
+      tree_stump:      { mode: 'platform', r: 6.5,  h: 10, shadowR: 8 },
+      torii_gate:      { mode: 'arch',     offset: 16.5, r: 3.8, h: 54, shadowR: 18 },
       flower_tuft:     { mode: 'none' },
       grass_tuft_short:{ mode: 'none' },
       grass_tuft_tall: { mode: 'none' }
     };
 
     const props = [];
-    const propColliders = [];     // Cilindros sólidos, caixas ('box') e pilares de arco ('arch')
-    const platformColliders = []; // Tops escaláveis (cogumelos, pedras, fardos, tocos)
+    const propColliders = [];
+    const platformColliders = [];
     const fishes = [];
     const npcs = [];
 
-    function addProp(modelKey, gx, gy, options = {}) {
-      const t = getTile(gx, gy);
-      if (!t || !propModels[modelKey]) return;
+    function stampPropShadowAndClearGrass(wx, wy, shadowR, footprintR) {
+      const rMax = Math.max(shadowR || 0, footprintR || 0);
+      if (rMax <= 0) return;
+      const x0 = Math.max(0, Math.floor((wx - rMax) / VOX + HALF_GRID));
+      const x1 = Math.min(mw - 1, Math.ceil((wx + rMax) / VOX + HALF_GRID));
+      const y0 = Math.max(0, Math.floor((wy - rMax) / VOX + HALF_GRID));
+      const y1 = Math.min(mh - 1, Math.ceil((wy + rMax) / VOX + HALF_GRID));
+      for (let my = y0; my <= y1; my++) {
+        const gy = (my - HALF_GRID + 0.5) * VOX;
+        for (let mx = x0; mx <= x1; mx++) {
+          const gx = (mx - HALF_GRID + 0.5) * VOX;
+          const d = Math.hypot(gx - wx, gy - wy);
+          const idx = my * mw + mx;
+          if (footprintR && d <= footprintR + 1.5) noGrassMask[idx] = 1;
+          if (shadowR && d <= shadowR) {
+            const strength = Math.round((1 - d / shadowR) * 42);
+            if (strength > shadowMask[idx]) shadowMask[idx] = strength;
+          }
+        }
+      }
+    }
+
+    function addProp(modelKey, wx, wy, options = {}) {
+      const c = getCellAt(wx, wy);
+      if (!c || !propModels[modelKey]) return;
       const meta = PROP_COLLIDER_META[modelKey] || { mode: 'none' };
 
-      // Validador explícito: nunca obstruir trilhas, pontes ou água com props sólidos/plataformas!
       if (!options.allowOnPath && meta.mode !== 'none' && meta.mode !== 'arch') {
-        if (t.type === 'path' || t.type === 'bridge' || t.type === 'water' || t.type === 'lilypad') {
+        if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || c.mat === MAT_WATER || c.mat === MAT_LILYPAD) {
           return;
         }
       }
 
-      const c = tileCenter(gx, gy);
       const scale = options.scale || 1.0;
-      const liftZ = options.liftZ !== undefined ? options.liftZ : t.h;
+      const liftZ = options.liftZ !== undefined ? options.liftZ : c.h;
       const angle = options.angle || 0;
-      const wx = c.wx + (options.ox || 0);
-      const wy = c.wy + (options.oy || 0);
+      const model = propModels[modelKey];
+      const baseZ = Math.round(liftZ);
+      const topZ = baseZ + Math.ceil(model.count * scale);
 
       const item = {
-        id: `${modelKey}_${gx}_${gy}_${props.length}`,
+        id: `${modelKey}_${props.length}`,
         modelKey,
-        model: propModels[modelKey],
-        gx, gy,
+        model,
         wx, wy,
         wz: liftZ,
+        baseZ,
+        topZ,
         selfAngle: angle,
         scale,
-        radius: options.radius || 7,
         isFire: modelKey === 'campfire' || modelKey === 'stone_lantern',
         isPlatform: meta.mode === 'platform',
-        topZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ,
-        promoteWide: (modelKey === 'sakura_oak' || modelKey === 'cozy_cabin' || modelKey === 'lighthouse' || modelKey === 'wood_boat')
+        platTopZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ
       };
       props.push(item);
 
+      const footR = meta.mode === 'box'
+        ? Math.max(meta.halfW, meta.halfD) * scale
+        : (meta.r || 4) * scale;
+      stampPropShadowAndClearGrass(wx, wy, (meta.shadowR || 0) * scale, meta.mode !== 'none' ? footR : 0);
+
       if (meta.mode === 'solid') {
         propColliders.push({
-          shape: 'circle',
-          wx, wy,
-          r: meta.r * scale,
-          baseZ: liftZ,
-          colH: meta.h * scale,
-          modelKey
+          shape: 'circle', wx, wy,
+          r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey
         });
       } else if (meta.mode === 'box') {
         propColliders.push({
-          shape: 'box',
-          wx, wy,
-          halfW: meta.halfW * scale,
-          halfD: meta.halfD * scale,
-          angle,
-          baseZ: liftZ,
-          colH: meta.h * scale,
-          modelKey
+          shape: 'box', wx, wy,
+          halfW: meta.halfW * scale, halfD: meta.halfD * scale,
+          angle, baseZ: liftZ, colH: meta.h * scale, modelKey
         });
       } else if (meta.mode === 'platform') {
         platformColliders.push({
-          wx, wy,
-          r: meta.r * scale,
-          baseZ: liftZ,
-          topZ: liftZ + meta.h * scale,
-          modelKey
+          wx, wy, r: meta.r * scale,
+          baseZ: liftZ, topZ: liftZ + meta.h * scale, modelKey
         });
       } else if (meta.mode === 'arch') {
         const cosA = Math.cos(angle);
@@ -816,138 +1233,140 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     }
 
-    function addFish(gx, gy, label, extraZ = 0) {
-      const t = getTile(gx, gy);
-      if (!t) return;
-      const c = tileCenter(gx, gy);
+    function addFish(wx, wy, label, extraZ = 0) {
+      const c = getCellAt(wx, wy);
+      const baseH = c ? c.h : 0;
       fishes.push({
         id: `fish_${fishes.length}`,
-        gx, gy, label,
-        wx: c.wx,
-        wy: c.wy,
-        baseZ: t.h + extraZ,
+        label,
+        wx, wy,
+        baseZ: baseH + extraZ,
         collected: false
       });
     }
 
     function populateWorldObjects() {
-      // 1. Vila da Clareira
-      addProp('cozy_cabin', 15, 31, { radius: 22 });
-      addProp('campfire', 22, 27);
-      addProp('wood_sign', 23, 30, { angle: 0.2 });
-      addProp('pumpkin_patch', 15, 34);
-      addProp('tree_stump', 23, 32);
-      addProp('flower_tuft', 17, 33);
-      addProp('flower_tuft', 21, 31);
-      addProp('pine_tree', 14, 23, { radius: 10 });
-      addProp('pine_tree', 24, 23, { radius: 10 });
-      addProp('bush_berry', 24, 34);
+      // 0. Vila da Clareira
+      addProp('cozy_cabin', -175, 45);
+      addProp('campfire', -95, 10);
+      addProp('wood_sign', -90, 48, { angle: 0.22 });
+      addProp('pumpkin_patch', -155, 84);
+      addProp('tree_stump', -88, 72);
+      addProp('flower_tuft', -132, 58);
+      addProp('flower_tuft', -116, 12);
+      addProp('pine_tree', -195, -18);
+      addProp('pine_tree', -62, -25);
+      addProp('pine_tree', -190, 96);
+      addProp('bush_berry', -68, 88);
 
-      // 2. Campos de Girassol
-      for (const [tx, ty] of [[5, 27], [7, 26], [6, 28], [4, 24], [8, 23], [10, 21], [5, 20], [7, 21], [5, 31], [7, 32]]) {
+      // 1. Campos de Girassol
+      for (const [tx, ty] of [
+        [-275, 10], [-255, 32], [-288, -10], [-248, -42], [-292, -45],
+        [-258, 72], [-285, 88], [-240, 108], [-302, 42], [-235, -12]
+      ]) {
         addProp('sunflower', tx, ty);
       }
-      addProp('hay_bale', 11, 28);
-      addProp('hay_bale', 8, 29);
-      addProp('tree_stump', 10, 32);
-      addProp('flower_tuft', 4, 29);
+      addProp('hay_bale', -225, 62);
+      addProp('hay_bale', -255, 52);
+      addProp('tree_stump', -232, 104);
+      addProp('flower_tuft', -290, 62);
 
-      // 3. Circuito das Ruínas
-      addProp('ruin_pillar', 6, 37, { radius: 8 });
-      addProp('ruin_pillar', 17, 37, { radius: 8 });
-      addProp('stone_lantern', 6, 41);
-      addProp('stone_lantern', 17, 41);
-      addProp('boulder_large', 20, 41);
-      addProp('flower_tuft', 8, 43);
+      // 2. Ruínas Orgânicas
+      addProp('ruin_pillar', -172, 138, { allowOnPath: true });
+      addProp('ruin_pillar', 16, 138, { allowOnPath: true });
+      addProp('stone_lantern', -172, 192, { allowOnPath: true });
+      addProp('stone_lantern', 16, 192, { allowOnPath: true });
+      addProp('boulder_large', -168, 165, { allowOnPath: true });
+      addProp('flower_tuft', -120, 202);
 
-      // 4. Praia Dourada, Píer & Farol Monumental
-      addProp('lighthouse', 7, 50, { ox: 8, oy: 8, radius: 16 });
-      addProp('stone_lantern', 10, 48);
-      addProp('beach_umbrella', 15, 47, { radius: 9 });
-      addProp('beach_umbrella', 23, 47, { radius: 9 });
-      addProp('wood_boat', 33, 47, { angle: 0.15, radius: 15 });
-      addProp('boulder_large', 33, 51);
+      // 3. Praia Dourada, Enseada & Farol
+      addProp('lighthouse', -238, 274);
+      addProp('stone_lantern', -202, 258);
+      addProp('beach_umbrella', -105, 234);
+      addProp('beach_umbrella', -16, 236);
+      addProp('wood_boat', 115, 240, { angle: 0.16 });
+      addProp('boulder_large', 78, 290);
 
-      // 5. Jardim Zen & Portal Torii Gigante (Centralizado em gx=16; pilares em 15 e 17, vão livre de 25.4u!)
-      addProp('torii_gate', 16, 13, { ox: 0, angle: 0, radius: 18, allowOnPath: true });
-      addProp('stone_lantern', 13, 15);
-      addProp('stone_lantern', 19, 15);
-      addProp('stone_lantern', 13, 10);
-      addProp('bush_berry', 21, 9);
-      addProp('flower_tuft', 14, 7);
-      addProp('boulder_large', 7, 5);
-      addProp('ruin_pillar', 4, 4, { radius: 8 });
-      addProp('pine_tree', 21, 5, { radius: 10 });
+      // 4. Jardim Zen & Portal Torii Gigante
+      addProp('torii_gate', -145, -135, { angle: 0, allowOnPath: true });
+      addProp('stone_lantern', -182, -135);
+      addProp('stone_lantern', -108, -135);
+      addProp('stone_lantern', -192, -190);
+      addProp('bush_berry', -92, -195);
+      addProp('flower_tuft', -158, -210);
+      addProp('boulder_large', -235, -245);
+      addProp('ruin_pillar', -254, -248);
+      addProp('pine_tree', -84, -225);
 
-      // 6. Bosque dos Cogumelos Saltitantes (Sudeste)
-      addProp('mushroom_giant', 37, 34); // Cap Z=16
-      addProp('mushroom_giant', 40, 34); // Em Z=12 -> Cap Z=28!
-      addProp('mushroom_giant', 43, 36); // Em Z=24 -> Cap Z=40!
-      addProp('mushroom_giant', 45, 31); // Cap Z=16
-      addProp('mushroom_giant', 36, 40); // Cap Z=16
-      for (const [tx, ty] of [[33, 32], [35, 37], [38, 42], [44, 41], [47, 33], [51, 35], [49, 41], [33, 43], [52, 43]]) {
-        addProp('pine_tree', tx, ty, { radius: 10 });
+      // 6. Bosque dos Cogumelos Saltitantes
+      addProp('mushroom_giant', 148, 82);   // Cap Z=16
+      addProp('mushroom_giant', 174, 96);   // Em Z=12 -> Cap Z=28!
+      addProp('mushroom_giant', 200, 112);  // Em Z=24 -> Cap Z=40!
+      addProp('mushroom_giant', 235, 68);   // Cap Z=16
+      addProp('mushroom_giant', 128, 145);  // Cap Z=16
+      for (const [tx, ty] of [
+        [105, 76], [118, 115], [160, 175], [228, 172], [255, 92],
+        [295, 110], [290, 185], [102, 182], [308, 145]
+      ]) {
+        addProp('pine_tree', tx, ty);
       }
-      addProp('tree_stump', 34, 34);
-      addProp('hay_bale', 49, 40);
-      addProp('boulder_large', 47, 29);
-      addProp('bush_berry', 39, 37);
-      addProp('flower_tuft', 35, 32);
-      addProp('flower_tuft', 44, 32);
+      addProp('tree_stump', 126, 86);
+      addProp('hay_bale', 268, 158);
+      addProp('boulder_large', 248, 42);
+      addProp('bush_berry', 180, 142);
+      addProp('flower_tuft', 136, 72);
+      addProp('flower_tuft', 220, 80);
 
-      // 7. Montanha & Pico Sakura Monumental (Trilha em espiral mantida 100% livre!)
-      addProp('sakura_oak', 38, 10, { scale: 1.0, radius: 18 });
-      addProp('stone_lantern', 42, 13);
-      addProp('stone_lantern', 36, 13);
-      addProp('flower_tuft', 37, 13);
-      addProp('flower_tuft', 41, 9);
-      addProp('boulder_large', 34, 21);
-      addProp('pine_tree', 36, 22, { radius: 10 });
+      // 7. Montanha & Pico Sakura (Trilha mantida 100% livre!)
+      addProp('sakura_oak', 150, -192);
+      addProp('stone_lantern', 186, -162, { allowOnPath: true });
+      addProp('stone_lantern', 136, -158, { allowOnPath: true });
+      addProp('flower_tuft', 146, -158);
+      addProp('flower_tuft', 182, -192);
+      addProp('boulder_large', 112, -96);
+      addProp('pine_tree', 142, -55);
 
-      // Pinheiros altos nas bordas arborizadas (fora de caminhos/água/mar)
-      for (let gx = 1; gx <= 54; gx += 7) {
-        addProp('pine_tree', gx, 1, { radius: 10 });
+      // Pinheiros nas bordas arborizadas (Norte, Oeste, Leste)
+      for (let wx = -320; wx <= 320; wx += 64) {
+        if (Math.abs(wx - 44) < 35) continue;
+        addProp('pine_tree', wx, -342);
       }
-      for (let gy = 4; gy <= 44; gy += 6) {
-        addProp('pine_tree', 1, gy, { radius: 10 });
-        addProp('pine_tree', 54, gy, { radius: 10 });
+      for (let wy = -290; wy <= 190; wy += 64) {
+        addProp('pine_tree', -342, wy);
+        addProp('pine_tree', 342, wy);
       }
 
-      // 16 PEIXES DOURADOS COLECIONÁVEIS distribuídos pelos 8 biomas!
-      addFish(21, 24, 'Rampa da Vila');                  // #1 (Z=6, sobe andando)
-      addFish(11, 28, 'Fardo dos Girassóis', 10);        // #2 (Z=10 no topo do fardo!)
-      addFish(5,  20, 'Colina dos Girassóis');           // #3 (Z=16)
-      addFish(14, 39, 'Torre das Ruínas');               // #4 (Z=48)
-      addFish(18, 52, 'Ponta do Píer');                  // #5 (Z=2)
-      addFish(9,  52, 'Mirante do Farol');               // #6 (Z=16 bem visível frente ao Farol!)
-      addFish(32, 50, 'Ilhota das Vitórias-Régias');     // #7 (Z=0 pós pulos)
-      addFish(27, 28, 'Ponte Central');                  // #8 (Z=2)
-      addFish(27, 39, 'Pedra do Rio', 0);
-      fishes[fishes.length - 1].gx = 28;
-      fishes[fishes.length - 1].wx = tileCenter(28, 39).wx;
-      fishes[fishes.length - 1].baseZ = 2;               // #9 (Z=2 pedra do rio)
-      addFish(16, 8,  'Alameda Pós-Torii');              // #10 (Z=16)
-      addFish(4,  3,  'Mirante Zen');                    // #11 (Z=48)
-      addFish(27, 14, 'Ponte Norte');                    // #12 (Z=16)
-      addFish(40, 34, 'Cogumelo Médio', 16);             // #13 (Z=28 topo do cogumelo!)
-      addFish(43, 36, 'Cogumelo Alto', 16);              // #14 (Z=40 topo do cogumelo!)
-      addFish(50, 14, 'Patamar da Montanha');            // #15 (Z=48 trilha)
-      addFish(41, 12, 'Pico Sakura Lendário');           // #16 (Z=96 no cume!)
+      // 16 PEIXES DOURADOS COLECIONÁVEIS
+      addFish(-95,  -22, 'Rampa da Vila');                  // #1  (Z=6)
+      addFish(-225, 62,  'Fardo dos Girassóis', 10);        // #2  (Z=10)
+      addFish(-275, -25, 'Colina dos Girassóis');           // #3  (Z=14)
+      addFish(-5,   165, 'Torre das Ruínas');               // #4  (Z=48)
+      addFish(-60,  290, 'Ponta do Píer');                  // #5  (Z=2)
+      addFish(-205, 282, 'Mirante do Farol');               // #6  (Z=14)
+      addFish(66,   286, 'Ilhota das Vitórias-Régias');     // #7  (Z=1)
+      addFish(38,   36,  'Ponte Central');                  // #8  (Z=2)
+      addFish(54,   165, 'Pedra do Rio');                   // #9  (Z=2)
+      addFish(-145, -195,'Alameda Pós-Torii');              // #10 (Z=16)
+      addFish(-275, -275,'Mirante Zen');                    // #11 (Z=48)
+      addFish(42,   -115,'Ponte Norte');                    // #12 (Z=16)
+      addFish(174,  96,  'Cogumelo Médio', 16);             // #13 (Z=28)
+      addFish(200,  112, 'Cogumelo Alto', 16);              // #14 (Z=40)
+      addFish(265,  -175,'Patamar da Montanha');            // #15 (Z=42)
+      addFish(176,  -176,'Pico Sakura Lendário');           // #16 (Z=64)
 
-      // NPCs VIVOS (Popó na Vila + 2 Pintinhos nos Girassóis!)
-      const p1 = tileCenter(20, 30);
+      // NPCs: Galinha Popó na Vila + 2 Pintinhos Piu nos Girassóis
+      const popoCell = getCellAt(-108, 56);
       npcs.push({
         kind: 'chicken', name: 'Popó', model: chickenModel, scale: 0.72,
-        x: p1.wx, y: p1.wy, z: 0, homeX: p1.wx, homeY: p1.wy, roamR: 48,
-        selfAngle: 0, walkPhase: 0, timer: 1.5, moving: true, dirX: 1, dirY: 0,
+        x: -108, y: 56, z: popoCell ? popoCell.h : 0, homeX: -108, homeY: 56, roamR: 34,
+        selfAngle: 0, walkPhase: 0, timer: 1.4, moving: true, dirX: 1, dirY: 0,
         speech: null
       });
-      for (const [cx, cy] of [[6, 26], [8, 22]]) {
-        const tc = tileCenter(cx, cy);
-        const t = getTile(cx, cy);
+      for (const [cx, cy] of [[-260, 20], [-265, -15]]) {
+        const c = getCellAt(cx, cy);
         npcs.push({
           kind: 'chick', name: 'Piu', model: propModels.baby_chick, scale: 0.95,
-          x: tc.wx, y: tc.wy, z: t ? t.h : 0, homeX: tc.wx, homeY: tc.wy, roamR: 30,
+          x: cx, y: cy, z: c ? c.h : 0, homeX: cx, homeY: cy, roamR: 26,
           selfAngle: 0, walkPhase: 0, timer: 0.8 + Math.random(), moving: true, dirX: -1, dirY: 0.5,
           speech: null
         });
@@ -956,15 +1375,231 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     populateWorldObjects();
 
     // =========================================================================
-    // 6. ESTADO DO GATO, FÍSICA DE PULO 2×H & TRAVEL LANDMARKS
+    // 6. PRÉ-BAKE DAS FATIAS HORIZONTAIS (terrainSlices + grassTipSlices)
     // =========================================================================
-    const spawnCenter = tileCenter(19, 29);
+    const IS_LE = (new Uint8Array(new Uint32Array([0x11223344]).buffer))[0] === 0x44;
+    function packRGBA(r, g, b, a = 255) {
+      if (IS_LE) return ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+      return ((r & 255) << 24) | ((g & 255) << 16) | ((b & 255) << 8) | (a & 255);
+    }
+
+    function shadePack(rgb, delta, shadowPct = 0) {
+      const f = 1 - shadowPct * 0.01;
+      const r = Math.max(0, Math.min(255, Math.round((rgb[0] + delta) * f)));
+      const g = Math.max(0, Math.min(255, Math.round((rgb[1] + delta) * f)));
+      const b = Math.max(0, Math.min(255, Math.round((rgb[2] + delta) * f)));
+      return packRGBA(r, g, b, 255);
+    }
+
+    const PAL_GRASS_BASE = [
+      [88, 178, 78], [80, 168, 72], [96, 188, 84], [108, 198, 90]
+    ];
+    const PAL_PATH = [[223, 182, 132], [211, 166, 115]];
+    const PAL_SAND = [[243, 221, 169], [234, 208, 148]];
+    const PAL_STONE = [[180, 186, 196], [163, 170, 181]];
+    const PAL_BRIDGE = [[185, 122, 74], [166, 106, 62]];
+    const PAL_PEAK = [[249, 168, 212], [123, 201, 111]];
+    const PAL_LILYPAD = [[74, 222, 128], [34, 197, 94]];
+
+    const COL_GRASS_TIP_BASE = packRGBA(45, 120, 41, 255);   // #2D7829
+    const COL_GRASS_TIP_MID  = packRGBA(82, 193, 75, 255);   // #52C14B
+    const COL_GRASS_TIP_HIGH = packRGBA(139, 232, 101, 255); // #8BE865
+
+    const terrainSlices = {};
+    const grassTipSlices = {};
+
+    function bakeTerrainSlices() {
+      const nTerrain = TERRAIN_Z_MAX - Z_MIN + 1;
+      const terrainBufs = new Array(nTerrain);
+      const terrainUsed = new Uint8Array(nTerrain);
+      for (let i = 0; i < nTerrain; i++) terrainBufs[i] = new Uint32Array(mw * mh);
+
+      const nGrass = Z_GRASS_MAX - Z_MIN + 1;
+      const grassBufs = new Array(nGrass);
+      const grassUsed = new Uint8Array(nGrass);
+      for (let i = 0; i < nGrass; i++) grassBufs[i] = new Uint32Array(mw * mh);
+
+      for (let my = 0; my < mh; my++) {
+        const row = my * mw;
+        const onBorder = (mx0, my0) => mx0 === 0 || my0 === 0 || mx0 === mw - 1 || my0 === mh - 1;
+        for (let mx = 0; mx < mw; mx++) {
+          const idx = row + mx;
+          const h = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX - 1, hmap[idx]));
+          const mat = matMap[idx];
+          const sh = shadowMask[idx];
+
+          // Menor altura entre os 8 vizinhos (borda externa = -8 formando saia da ilha)
+          let min8 = 999;
+          if (onBorder(mx, my)) {
+            min8 = -8;
+          } else {
+            for (let oy = -1; oy <= 1; oy++) {
+              const nrow = (my + oy) * mw;
+              for (let ox = -1; ox <= 1; ox++) {
+                if (ox === 0 && oy === 0) continue;
+                const nh = hmap[nrow + mx + ox];
+                if (nh < min8) min8 = nh;
+              }
+            }
+          }
+          const zStart = Math.max(Z_MIN, min8 - 2);
+          const nHash = ((mx * 73856093) ^ (my * 19349663)) >>> 0;
+          const microTex = ((nHash & 7) - 3) * 2;
+
+          // Caso Água (rio/baía em h < 0 ou lago zen/cachoeira em h >= 0)
+          if (mat === MAT_WATER) {
+            if (h < 0) {
+              // Leito escuro em -6..-4
+              for (let z = Z_MIN; z <= Math.min(-4, h + 1); z++) {
+                const si = z - Z_MIN;
+                terrainBufs[si][idx] = packRGBA(28, 66, 108, 255);
+                terrainUsed[si] = 1;
+              }
+              // Superfície da água visível em z = -2
+              const siSurf = -2 - Z_MIN;
+              const isShallow = h > -6;
+              const colWater = isShallow
+                ? ((nHash & 1) ? packRGBA(72, 202, 245, 225) : packRGBA(95, 215, 250, 225))
+                : ((nHash & 3) === 0 ? packRGBA(56, 189, 248, 235) : packRGBA(42, 172, 236, 235));
+              terrainBufs[siSurf][idx] = colWater;
+              terrainUsed[siSurf] = 1;
+            } else {
+              // Cachoeira / Lago Zen elevado
+              const zFrom = Math.max(Z_MIN, Math.min(h - 1, min8 - 2));
+              for (let z = zFrom; z <= h; z++) {
+                const si = z - Z_MIN;
+                const isFoam = (z < h && ((mx + my + z) % 5 === 0));
+                terrainBufs[si][idx] = isFoam
+                  ? packRGBA(224, 242, 254, 255)
+                  : ((z === h) ? packRGBA(56, 189, 248, 235) : packRGBA(14, 138, 206, 255));
+                terrainUsed[si] = 1;
+              }
+            }
+            continue;
+          }
+
+          // Gradiente local para iluminação direcional das encostas (Sol vindo de Noroeste)
+          const hL = mx > 0 ? hmap[idx - 1] : h;
+          const hR = mx < mw - 1 ? hmap[idx + 1] : h;
+          const hU = my > 0 ? hmap[idx - mw] : h;
+          const hD = my < mh - 1 ? hmap[idx + mw] : h;
+          const gx = hR - hL;
+          const gy = hD - hU;
+          const sunShade = Math.max(-22, Math.min(22, Math.round((-gx - gy) * 1.4)));
+          const exposedEdge = (hL < h || hU < h) ? 10 : 0;
+
+          for (let z = zStart; z <= h; z++) {
+            const si = z - Z_MIN;
+            let col;
+            if (z === h) {
+              // Topo do terreno
+              let baseRGB;
+              if (mat === MAT_PATH) baseRGB = PAL_PATH[nHash & 1];
+              else if (mat === MAT_SAND) baseRGB = PAL_SAND[nHash & 1];
+              else if (mat === MAT_STONE) baseRGB = PAL_STONE[nHash & 1];
+              else if (mat === MAT_BRIDGE) {
+                const plank = ((mx >> 1) + (my >> 2)) & 1;
+                baseRGB = PAL_BRIDGE[plank];
+              } else if (mat === MAT_PEAK) {
+                baseRGB = (nHash % 5 === 0) ? PAL_PEAK[0] : PAL_PEAK[1];
+              } else if (mat === MAT_LILYPAD) {
+                baseRGB = PAL_LILYPAD[nHash & 1];
+              } else {
+                const tier = h >= 42 ? 3 : (h >= 24 ? 2 : (h >= 10 ? 1 : 0));
+                baseRGB = PAL_GRASS_BASE[tier];
+              }
+              const altLift = Math.min(14, Math.max(-6, Math.round(h * 0.16)));
+              col = shadePack(baseRGB, microTex + altLift + exposedEdge, sh);
+            } else {
+              // Parede / Encosta estratificada
+              const d = h - z;
+              if (mat === MAT_BRIDGE) {
+                col = shadePack([118, 72, 42], sunShade, sh * 0.5);
+              } else if (mat === MAT_LILYPAD) {
+                col = shadePack([22, 130, 58], sunShade, 0);
+              } else if (mat === MAT_SAND && d <= 5) {
+                col = shadePack([196, 168, 112], sunShade, sh * 0.5);
+              } else if (d <= 3 && mat !== MAT_STONE) {
+                // Musgo / grama pendurada
+                const moss = (nHash & 1) ? [58, 143, 56] : [41, 107, 39];
+                col = shadePack(moss, sunShade, sh * 0.6);
+              } else if (d <= 12 && mat !== MAT_STONE) {
+                // Terra quente estratificada
+                const strata = (z & 2) ? 6 : -5;
+                const earth = (nHash & 1) ? [156, 102, 68] : [128, 79, 50];
+                col = shadePack(earth, sunShade + strata, sh * 0.4);
+              } else {
+                // Rocha ardósia com listras horizontais geológicas
+                const strata = ((z >> 1) & 1) ? 9 : -8;
+                const rock = (nHash & 1) ? [109, 118, 132] : [86, 95, 108];
+                col = shadePack(rock, sunShade + strata, sh * 0.3);
+              }
+            }
+            terrainBufs[si][idx] = col;
+            terrainUsed[si] = 1;
+          }
+
+          // Lâminas de Grama Voxel (2-3px) em ~52% dos pixels grass/peak livres
+          if ((mat === MAT_GRASS || mat === MAT_PEAK) && !noGrassMask[idx]) {
+            const maxNb = Math.max(hL, hR, hU, hD);
+            if (maxNb <= h) {
+              const gHash = ((mx * 1619 + my * 31337) >>> 0) % 100;
+              if (gHash < 52) {
+                if (h + 1 <= TERRAIN_Z_MAX) {
+                  const si1 = (h + 1) - Z_MIN;
+                  terrainBufs[si1][idx] = COL_GRASS_TIP_BASE;
+                  terrainUsed[si1] = 1;
+                }
+                if (h + 2 <= Z_GRASS_MAX) {
+                  const gi2 = (h + 2) - Z_MIN;
+                  grassBufs[gi2][idx] = COL_GRASS_TIP_MID;
+                  grassUsed[gi2] = 1;
+                }
+                if (gHash < 28 && h + 3 <= Z_GRASS_MAX) {
+                  const gi3 = (h + 3) - Z_MIN;
+                  grassBufs[gi3][idx] = COL_GRASS_TIP_HIGH;
+                  grassUsed[gi3] = 1;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const uploadSlices = (bufs, used, targetMap, zMax) => {
+        for (let z = Z_MIN; z <= zMax; z++) {
+          const i = z - Z_MIN;
+          if (!used[i]) continue;
+          const cv = document.createElement('canvas');
+          cv.width = mw;
+          cv.height = mh;
+          const cx = cv.getContext('2d');
+          const img = cx.createImageData(mw, mh);
+          new Uint32Array(img.data.buffer).set(bufs[i]);
+          cx.putImageData(img, 0, 0);
+          targetMap[z] = cv;
+        }
+      };
+
+      uploadSlices(terrainBufs, terrainUsed, terrainSlices, TERRAIN_Z_MAX);
+      uploadSlices(grassBufs, grassUsed, grassTipSlices, Z_GRASS_MAX);
+    }
+    bakeTerrainSlices();
+    const STARTUP_MS = Math.round((performance.now() - STARTUP_T0) * 10) / 10;
+
+    // =========================================================================
+    // 7. ESTADO DO GATO, FÍSICA CONTÍNUA EM MICRO-VOXELS & TRAVEL
+    // =========================================================================
+    const SPAWN_X = -110;
+    const SPAWN_Y = 30;
+    const spawnH = getHeightAt(SPAWN_X, SPAWN_Y) || 0;
+
     const cat = {
-      x: spawnCenter.wx,
-      y: spawnCenter.wy,
-      z: 0,
+      x: SPAWN_X,
+      y: SPAWN_Y,
+      z: spawnH,
       vz: 0,
-      groundZ: 0,
+      groundZ: spawnH,
       onGround: true,
       coyoteTimer: 0,
       jumpBuffer: 0,
@@ -975,23 +1610,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       scale: 1.0,
       skinIdx: 0,
       hatIdx: 0,
-      speech: { text: 'Miau! Bora explorar o Vale! 🐾', timer: 190 },
-      lastSafeX: spawnCenter.wx,
-      lastSafeY: spawnCenter.wy,
-      lastSafeZ: 0,
-      maxJumpReached: 0,
+      speech: { text: 'Miau! Vale Orgânico 360×360! 🐾', timer: 190 },
+      lastSafeX: SPAWN_X,
+      lastSafeY: SPAWN_Y,
+      lastSafeZ: spawnH,
+      maxJumpReached: spawnH,
       obstacleHint: 'ok',
       obstacleLabel: '✅ Caminho Livre'
     };
 
     const TRAVEL_SPOTS = [
-      { gx: 19, gy: 29, label: '🏡 Vila da Clareira' },
-      { gx: 11, gy: 42, label: '🏛️ Ruínas Antigas' },
-      { gx: 16, gy: 47, label: '🏖️ Praia & Farol' },
-      { gx: 16, gy: 15, label: '⛩️ Jardim Zen & Torii' },
-      { gx: 36, gy: 34, label: '🍄 Bosque Cogumelos' },
-      { gx: 47, gy: 24, label: '🥾 Base da Montanha' },
-      { gx: 40, gy: 12, label: '🌸 Pico Sakura (Z=96)' }
+      { wx: -110, wy: 30,   label: '🏡 Vila da Clareira' },
+      { wx: -72,  wy: 195,  label: '🏛️ Ruínas Orgânicas' },
+      { wx: -60,  wy: 228,  label: '🏖️ Praia & Farol' },
+      { wx: -145, wy: -105, label: '⛩️ Jardim Zen & Torii' },
+      { wx: 142,  wy: 76,   label: '🍄 Bosque Cogumelos' },
+      { wx: 205,  wy: -22,  label: '🥾 Base da Montanha' },
+      { wx: 160,  wy: -165, label: '🌸 Pico Sakura (Z=64)' }
     ];
     let travelIdx = 0;
 
@@ -1026,37 +1661,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       cat.speech = { text, timer };
     }
 
+    function waterSurfZ(cell) {
+      return cell.h < 0 ? -2 : cell.h;
+    }
+
     function evaluateSupport(wx, wy, currentZ, onGround) {
-      const r = 2.6;
+      const r = 2.4;
       const samples = [
         [wx, wy],
         [wx - r, wy], [wx + r, wy],
         [wx, wy - r], [wx, wy + r]
       ];
       let bestH = -999;
-      let centerTile = null;
-      const ct = worldToTileCoords(wx, wy);
-      centerTile = getTile(ct.gx, ct.gy);
+      const centerCell = getCellAt(wx, wy);
 
       for (const [sx, sy] of samples) {
-        const tc = worldToTileCoords(sx, sy);
-        const t = getTile(tc.gx, tc.gy);
-        if (!t || t.type === 'water') continue;
-        if (t.h <= currentZ + AUTO_STEP_MAX + 0.5) {
-          if (t.h > bestH) bestH = t.h;
+        const c = getCellAt(sx, sy);
+        if (!c || c.mat === MAT_WATER) continue;
+        if (c.h <= currentZ + AUTO_STEP_MAX + 0.5) {
+          if (c.h > bestH) bestH = c.h;
         }
       }
 
       for (const pc of platformColliders) {
         const d = Math.hypot(wx - pc.wx, wy - pc.wy);
-        // Só apoia no topo da plataforma se o gato estiver acima dela ou num passo <= 4u!
         const climbAllowed = onGround ? 4.0 : 1.5;
         if (d <= pc.r && pc.topZ <= currentZ + climbAllowed) {
           if (pc.topZ > bestH) bestH = pc.topZ;
         }
       }
 
-      return { bestH, centerTile };
+      return { bestH, centerCell };
     }
 
     function isPointInPropCollider(px, py, sc, pad = 3.0) {
@@ -1077,13 +1712,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         return { blocked: true, reason: 'high', maxStepH: 999 };
       }
 
-      const ct = worldToTileCoords(nx, ny);
-      const centerTile = getTile(ct.gx, ct.gy);
-      if (centerTile && centerTile.type === 'water' && (onGround || catZ <= 1.2)) {
-        return { blocked: true, reason: 'water', maxStepH: -8 };
+      const centerCell = getCellAt(nx, ny);
+      if (centerCell && centerCell.mat === MAT_WATER && (onGround || catZ <= waterSurfZ(centerCell) + 1.5)) {
+        return { blocked: true, reason: 'water', maxStepH: waterSurfZ(centerCell) };
       }
 
-      const r = 2.8;
+      const r = 2.6;
       const pts = [
         [nx, ny],
         [nx - r, ny - r], [nx + r, ny - r],
@@ -1095,23 +1729,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       let maxBlockingH = -999;
       let propBlocked = false;
 
-      // 1. Terreno (altura dos tiles)
       for (const [px, py] of pts) {
-        const tc = worldToTileCoords(px, py);
-        const t = getTile(tc.gx, tc.gy);
-        if (!t) {
+        const c = getCellAt(px, py);
+        if (!c) {
           blocked = true;
           maxBlockingH = 999;
           continue;
         }
-        if (t.type === 'water') continue;
-        if (t.h > catZ + allowedClimb) {
+        if (c.mat === MAT_WATER) continue;
+        if (c.h > catZ + allowedClimb) {
           blocked = true;
-          if (t.h > maxBlockingH) maxBlockingH = t.h;
+          if (c.h > maxBlockingH) maxBlockingH = c.h;
         }
       }
 
-      // 2. Props Sólidos, Caixas ('box' como cabana/barco) e Pilares de Arco ('arch' Torii)
       for (const sc of propColliders) {
         if (catZ >= sc.baseZ - 2 && catZ < sc.baseZ + sc.colH - 1.5) {
           if (isPointInPropCollider(nx, ny, sc, 3.0)) {
@@ -1123,7 +1754,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      // 3. Props-Plataforma (cogumelos, fardos, tocos, pedras) — bloqueia abaixo do topo!
       for (const pc of platformColliders) {
         const d = Math.hypot(nx - pc.wx, ny - pc.wy);
         if (d < pc.r + 1.2 && catZ < pc.topZ - 2.0 && catZ >= pc.baseZ - 4.0) {
@@ -1151,15 +1781,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const fy = dirX !== 0 || dirY !== 0 ? dirY : Math.cos(cat.selfAngle);
       const probeX = cat.x + fx * 11;
       const probeY = cat.y + fy * 11;
-      const tc = worldToTileCoords(probeX, probeY);
-      const t = getTile(tc.gx, tc.gy);
+      const c = getCellAt(probeX, probeY);
 
-      if (!t) {
+      if (!c) {
         cat.obstacleHint = 'high';
         cat.obstacleLabel = '⛔ Limite do Vale';
         return;
       }
-      if (t.type === 'water') {
+      if (c.mat === MAT_WATER) {
         cat.obstacleHint = 'water';
         cat.obstacleLabel = '💧 Água Intransponível';
         return;
@@ -1173,7 +1802,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      let targetH = t.h;
+      let targetH = c.h;
       for (const pc of platformColliders) {
         if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 && pc.topZ > targetH) {
           targetH = pc.topZ;
@@ -1183,7 +1812,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const dz = targetH - cat.groundZ;
       if (dz <= AUTO_STEP_MAX) {
         cat.obstacleHint = 'ok';
-        cat.obstacleLabel = dz > 0.5 ? '✅ Rampa Suave (≤0.4H)' : '✅ Caminho Livre';
+        cat.obstacleLabel = dz > 0.5 ? '✅ Rampa Suave (≤0.35H)' : '✅ Caminho Livre';
       } else if (dz <= CAT_HEIGHT * 2.0 + 0.5) {
         cat.obstacleHint = 'jump';
         cat.obstacleLabel = `🦘 Degrau ${Math.round(dz)}u — Espaço p/ Pular!`;
@@ -1194,7 +1823,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     // =========================================================================
-    // 7. CONTROLES, TOUCH & VIEWPORT RESPONSIVO 1:1 (ZERO DISTORÇÃO!)
+    // 8. CONTROLES, TOUCH & VIEWPORT RESPONSIVO 1:1
     // =========================================================================
     const keys = {};
     let turn = -Math.PI * 0.25;
@@ -1205,11 +1834,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     let camZ = cat.z;
     let blockedCooldown = 0;
 
-    // Responsividade 1:1 — `lowCanvas` adapta dimensões exatas à janela para pixels 100% quadrados!
     const canvas = document.getElementById('viewport');
     const ctx = canvas.getContext('2d');
     const lowCanvas = document.createElement('canvas');
     const lowCtx = lowCanvas.getContext('2d');
+    const entityCanvas = document.createElement('canvas');
+    const entityCtx = entityCanvas.getContext('2d');
+    const entitySilCanvas = document.createElement('canvas');
+    const entitySilCtx = entitySilCanvas.getContext('2d');
+
     let LOW_W = 480;
     let LOW_H = 300;
     let pixelScale = 3;
@@ -1224,9 +1857,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       pixelScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2));
       LOW_W = Math.ceil(viewW / pixelScale);
       LOW_H = Math.ceil(viewH / pixelScale);
-      lowCanvas.width = LOW_W;
-      lowCanvas.height = LOW_H;
-      lowCtx.imageSmoothingEnabled = false;
+
+      for (const [cv, cx] of [[lowCanvas, lowCtx], [entityCanvas, entityCtx], [entitySilCanvas, entitySilCtx]]) {
+        cv.width = LOW_W;
+        cv.height = LOW_H;
+        cx.imageSmoothingEnabled = false;
+      }
 
       canvas.width = Math.round(viewW * dpr);
       canvas.height = Math.round(viewH * dpr);
@@ -1254,7 +1890,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       keys[e.code] = false;
     });
 
-    // Touch D-Pad + Jump
     document.querySelectorAll('.touch-btn[data-key]').forEach(btn => {
       const k = btn.dataset.key;
       btn.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[k] = true; });
@@ -1277,18 +1912,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     }
 
-    function teleportToTile(gx, gy, msg = null) {
-      const t = getTile(gx, gy);
-      const c = tileCenter(gx, gy);
-      cat.x = c.wx;
-      cat.y = c.wy;
-      const gz = t ? t.h : 0;
+    function teleportToWorld(wx, wy, msg = null, zOverride = null) {
+      const c = getCellAt(wx, wy);
+      cat.x = wx;
+      cat.y = wy;
+      const gz = zOverride !== null ? zOverride : (c ? c.h : 0);
       cat.z = gz;
       cat.vz = 0;
       cat.groundZ = gz;
       cat.onGround = true;
-      cat.lastSafeX = c.wx;
-      cat.lastSafeY = c.wy;
+      cat.lastSafeX = wx;
+      cat.lastSafeY = wy;
       cat.lastSafeZ = gz;
       cat.maxJumpReached = gz;
       camX = cat.x;
@@ -1298,7 +1932,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function resetCatToSpawn() {
-      teleportToTile(19, 29, 'De volta à Vila! 🏡');
+      teleportToWorld(SPAWN_X, SPAWN_Y, 'De volta à Vila! 🏡');
     }
 
     let isDraggingCam = false;
@@ -1337,12 +1971,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     document.getElementById('btnTravel').addEventListener('click', () => {
       travelIdx = (travelIdx + 1) % TRAVEL_SPOTS.length;
       const spot = TRAVEL_SPOTS[travelIdx];
-      teleportToTile(spot.gx, spot.gy, spot.label);
+      teleportToWorld(spot.wx, spot.wy, spot.label);
       sfxBiome();
     });
 
     // =========================================================================
-    // 8. UPDATE FÍSICO, NPCS & GRAMA RUSTLE
+    // 9. UPDATE FÍSICO, DESLIZAMENTO TANGENCIAL (±35°) & NPCS
     // =========================================================================
     function updateNPCs(dt) {
       for (const npc of npcs) {
@@ -1364,9 +1998,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const sp = npc.kind === 'chicken' ? 20 : 25;
           const nx = npc.x + npc.dirX * sp * dt;
           const ny = npc.y + npc.dirY * sp * dt;
-          const tc = worldToTileCoords(nx, ny);
-          const t = getTile(tc.gx, tc.gy);
-          if (t && t.type !== 'water' && Math.abs(t.h - npc.z) <= 6.5) {
+          const c = getCellAt(nx, ny);
+          if (c && c.mat !== MAT_WATER && Math.abs(c.h - npc.z) <= 5.5) {
             let hitProp = false;
             for (const sc of propColliders) {
               if (isPointInPropCollider(nx, ny, sc, 3.5)) { hitProp = true; break; }
@@ -1374,7 +2007,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (!hitProp) {
               npc.x = nx;
               npc.y = ny;
-              npc.z = t.h;
+              npc.z = c.h;
             } else {
               npc.dirX = -npc.dirX;
               npc.dirY = -npc.dirY;
@@ -1383,7 +2016,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             npc.dirX = -npc.dirX;
             npc.dirY = -npc.dirY;
           }
-          // Popó (chicken_slices.json) olha para +X -> atan2(dy, dx). Pintinho olha para +Y -> atan2(-dx, dy).
           const desired = npc.kind === 'chicken'
             ? Math.atan2(npc.dirY, npc.dirX)
             : Math.atan2(-npc.dirX, npc.dirY);
@@ -1397,7 +2029,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     }
 
-    let lastRustleTile = -1;
+    let lastRustleCell = -1;
     function updatePhysics(dt) {
       cat.idleTimer += dt;
       if (blockedCooldown > 0) blockedCooldown -= dt;
@@ -1438,20 +2070,44 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       if (ilen > 0) {
         const dx = moveWorldX * speed * dt;
         const dy = moveWorldY * speed * dt;
+        let moved = false;
         let blockedNow = null;
 
-        if (dx !== 0) {
-          const checkX = checkCollisionAt(cat.x + dx, cat.y, cat.z, cat.onGround);
-          if (!checkX.blocked) cat.x += dx;
-          else blockedNow = checkX;
-        }
-        if (dy !== 0) {
-          const checkY = checkCollisionAt(cat.x, cat.y + dy, cat.z, cat.onGround);
-          if (!checkY.blocked) cat.y += dy;
-          else blockedNow = checkY;
+        const checkX = dx !== 0 ? checkCollisionAt(cat.x + dx, cat.y, cat.z, cat.onGround) : { blocked: false };
+        if (dx !== 0 && !checkX.blocked) {
+          cat.x += dx;
+          moved = true;
+        } else if (dx !== 0) {
+          blockedNow = checkX;
         }
 
-        if (blockedNow && blockedCooldown <= 0) {
+        const checkY = dy !== 0 ? checkCollisionAt(cat.x, cat.y + dy, cat.z, cat.onGround) : { blocked: false };
+        if (dy !== 0 && !checkY.blocked) {
+          cat.y += dy;
+          moved = true;
+        } else if (dy !== 0) {
+          blockedNow = checkY;
+        }
+
+        // Micro-desvio tangencial (±35°) para deslizar suavemente por rochas e margens curvas
+        if (!moved) {
+          const deg35 = 35 * Math.PI / 180;
+          for (const ang of [deg35, -deg35]) {
+            const c = Math.cos(ang), s = Math.sin(ang);
+            const sdx = (dx * c - dy * s) * 0.85;
+            const sdy = (dx * s + dy * c) * 0.85;
+            const checkSlide = checkCollisionAt(cat.x + sdx, cat.y + sdy, cat.z, cat.onGround);
+            if (!checkSlide.blocked) {
+              cat.x += sdx;
+              cat.y += sdy;
+              moved = true;
+              blockedNow = null;
+              break;
+            }
+          }
+        }
+
+        if (!moved && blockedNow && blockedCooldown <= 0) {
           if (blockedNow.reason === 'water') {
             catSpeak('Miau! Água não! 💦', 95);
             sfxBlocked();
@@ -1505,7 +2161,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           cat.lastSafeX = cat.x;
           cat.lastSafeY = cat.y;
           cat.lastSafeZ = cat.z;
-        } else if (wasOnGround && sup.bestH < cat.z && cat.z - sup.bestH <= 4) {
+        } else if (wasOnGround && sup.bestH < cat.z && cat.z - sup.bestH <= 4.5) {
           cat.z = sup.bestH;
           cat.vz = 0;
           cat.onGround = true;
@@ -1513,9 +2169,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           cat.onGround = false;
         }
       } else {
-        cat.groundZ = -8;
+        cat.groundZ = -6;
         cat.onGround = false;
-        if (cat.z < -2) {
+        if (cat.z < -2.5) {
           cat.x = cat.lastSafeX;
           cat.y = cat.lastSafeY;
           cat.z = cat.lastSafeZ + 2;
@@ -1531,25 +2187,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         cat.walkPhase += dt * 11;
       }
 
-      // Grama rustle ao entrar num tile verde
-      const curTile = sup.centerTile;
-      if (curTile) {
-        const tidx = curTile.gy * GRID_SIZE + curTile.gx;
-        if (cat.onGround && curTile.type === 'grass' && cat.isWalking && tidx !== lastRustleTile) {
-          lastRustleTile = tidx;
-          if ((curTile.gx * 73 + curTile.gy * 37) % 10 < 7 && Math.random() < 0.45) {
+      // Grama rustle & descoberta de bioma
+      const curCell = sup.centerCell;
+      if (curCell) {
+        if (cat.onGround && (curCell.mat === MAT_GRASS || curCell.mat === MAT_PEAK) && cat.isWalking && curCell.idx !== lastRustleCell) {
+          lastRustleCell = curCell.idx;
+          if ((curCell.mx * 73 + curCell.my * 37) % 10 < 3 && Math.random() < 0.35) {
             spawnParticles(cat.x, cat.y, cat.z + 2, 2, ['#4DB848', '#8BE064'], 14);
           }
         }
-        // Descoberta de Bioma!
-        if (!visitedBiomes.has(curTile.biomeKey)) {
-          visitedBiomes.add(curTile.biomeKey);
+        if (!visitedBiomes.has(curCell.biomeKey)) {
+          visitedBiomes.add(curCell.biomeKey);
           sfxBiome();
-          showBiomeToast(curTile.biome);
+          showBiomeToast(curCell.biome);
         }
       }
 
-      // Coleta de Peixes Dourados (16)
+      // Coleta dos 16 Peixes Dourados
       let collectedCount = 0;
       for (const f of fishes) {
         if (f.collected) {
@@ -1559,7 +2213,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const dx = cat.x - f.wx;
         const dy = cat.y - f.wy;
         const dz = Math.abs(cat.z - f.baseZ);
-        if (Math.hypot(dx, dy) < 12 && dz < 14) {
+        if (Math.hypot(dx, dy) < 13 && dz < 14) {
           f.collected = true;
           collectedCount++;
           sfxFish();
@@ -1571,7 +2225,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       document.getElementById('biomeCounter').textContent = `🗺️ ${visitedBiomes.size} / 8`;
 
       updateObstacleSensor(moveWorldX, moveWorldY);
-      document.getElementById('biomeLabel').textContent = curTile ? curTile.biome : 'Vale Felino';
+      document.getElementById('biomeLabel').textContent = curCell ? curCell.biome : 'Vale Felino';
       document.getElementById('statElev').textContent = `Chão: Z=${Math.round(cat.groundZ)} | Gato: Z=${Math.round(cat.z)}`;
       const obsEl = document.getElementById('statObstacle');
       obsEl.textContent = cat.obstacleLabel;
@@ -1594,24 +2248,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     // =========================================================================
-    // 9. RENDERIZAÇÃO VOXEL 3D + GRAMA EM LÂMINAS + BALÕES HI-RES
+    // 10. RENDERIZAÇÃO UNIFICADA SLICE-BY-SLICE + entityLayer + HI-RES OVERLAYS
     // =========================================================================
-    let cachedTurnAngle = null;
-    const propOutlineCache = {};
-    const grassWindCache = {};
-
-    const scratchCanvas = document.createElement('canvas');
-    scratchCanvas.width = 72;
-    scratchCanvas.height = 72;
-    const scratchCtx = scratchCanvas.getContext('2d');
-    scratchCtx.imageSmoothingEnabled = false;
-
-    const silCanvas = document.createElement('canvas');
-    silCanvas.width = 72;
-    silCanvas.height = 72;
-    const silCtx = silCanvas.getContext('2d');
-    silCtx.imageSmoothingEnabled = false;
-
     function project(wx, wy, wz) {
       const cosA = Math.cos(turn);
       const sinA = Math.sin(turn);
@@ -1621,399 +2259,51 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const rx = dx * cosA - dy * sinA;
       const ry = dx * sinA + dy * cosA;
       return {
-        x: Math.round(LOW_W / 2 + rx),
-        y: Math.round(LOW_H / 2 + 16 + ry * squash - dz),
+        x: LOW_W / 2 + rx,
+        y: LOW_H / 2 + 16 + ry * squash - dz,
         depth: ry
       };
     }
 
-    function drawQuad(p1, p2, p3, p4, fillStyle) {
-      lowCtx.beginPath();
-      lowCtx.moveTo(p1.x, p1.y);
-      lowCtx.lineTo(p2.x, p2.y);
-      lowCtx.lineTo(p3.x, p3.y);
-      lowCtx.lineTo(p4.x, p4.y);
-      lowCtx.closePath();
-      lowCtx.fillStyle = fillStyle;
-      lowCtx.fill();
-      lowCtx.strokeStyle = fillStyle;
-      lowCtx.lineWidth = 0.75;
-      lowCtx.stroke();
+    function unprojectToGrid(px, py, z, cosA, sinA) {
+      const rx = px - LOW_W / 2;
+      const ry = (py - (LOW_H / 2 + 16 - (z - camZ))) / squash;
+      const dx = rx * cosA + ry * sinA;
+      const dy = -rx * sinA + ry * cosA;
+      return {
+        gx: (camX + dx) / VOX + HALF_GRID,
+        gy: (camY + dy) / VOX + HALF_GRID
+      };
     }
 
-    function getTopColor(t, animTick) {
-      const n = ((t.gx * 73856093) ^ (t.gy * 19349663)) & 3;
-      if (t.type === 'water') {
-        const wave = ((t.gx + t.gy + animTick) % 6 === 0);
-        return wave ? '#7DD3FC' : (n === 0 ? '#38BDF8' : '#2EB5F0');
-      }
-      if (t.type === 'lilypad') return n % 2 === 0 ? '#4ADE80' : '#22C55E';
-      if (t.type === 'bridge') return n % 2 === 0 ? '#B97A4A' : '#A66A3E';
-      if (t.type === 'stone') {
-        if (t.h >= 48) return n % 2 === 0 ? '#9CA3AF' : '#8E96A4';
-        return n % 2 === 0 ? '#B4BAC4' : '#A3AAB5';
-      }
-      if (t.type === 'path') return n % 2 === 0 ? '#DFB684' : '#D3A673';
-      if (t.type === 'sand') return n % 2 === 0 ? '#F3DDA9' : '#EAD094';
-      if (t.type === 'peak') return n % 2 === 0 ? '#F9A8D4' : '#7BC96F';
-      if (t.h >= 32) return n === 0 ? '#78D064' : (n === 1 ? '#6EC45B' : '#65BA53');
-      if (t.h >= 12) return n === 0 ? '#69C257' : (n === 1 ? '#5EB74D' : '#56AE45');
-      return n === 0 ? '#5CB852' : (n === 1 ? '#53AD49' : '#4BA242');
+    function drawTerrainSliceTo(targetCtx, sliceCanvas, z, sx, sy, sw, sh, camGx, camGy, windOffX = 0) {
+      targetCtx.save();
+      targetCtx.translate(LOW_W / 2 + windOffX, LOW_H / 2 + 16 - (z - camZ));
+      targetCtx.scale(1, squash);
+      targetCtx.rotate(turn);
+      targetCtx.scale(VOX, VOX);
+      targetCtx.drawImage(sliceCanvas, sx, sy, sw, sh, sx - camGx, sy - camGy, sw, sh);
+      targetCtx.restore();
     }
 
-    function invalidateAngleCachesIfNeeded() {
-      const qAngle = Math.round((turn * 180 / Math.PI) / 3) * 3;
-      if (cachedTurnAngle !== qAngle) {
-        cachedTurnAngle = qAngle;
-        for (const k in propOutlineCache) delete propOutlineCache[k];
-        for (const k in grassWindCache) delete grassWindCache[k];
-      }
+    function stampModelSlice(targetCtx, model, sz, wx, wy, wz, selfAngle, scale, cosA, sinA) {
+      const dx = wx - camX;
+      const dy = wy - camY;
+      const rx = dx * cosA - dy * sinA;
+      const ry = dx * sinA + dy * cosA;
+      const sx = Math.round(LOW_W / 2 + rx);
+      const sy = Math.round(LOW_H / 2 + 16 + ry * squash - (wz - camZ));
+      const ox = Math.floor(model.w / 2);
+      const oy = Math.floor(model.h / 2);
+
+      targetCtx.save();
+      targetCtx.translate(sx, sy);
+      targetCtx.scale(scale, squash * scale);
+      targetCtx.rotate(turn + selfAngle);
+      targetCtx.drawImage(model.sheet, sz * model.w, 0, model.w, model.h, -ox, -oy, model.w, model.h);
+      targetCtx.restore();
     }
 
-    function getOutlinedPropSprite(modelKey, model, extraAngle = 0) {
-      invalidateAngleCachesIfNeeded();
-      const cacheKey = extraAngle === 0 ? modelKey : `${modelKey}_${Math.round(extraAngle * 100)}`;
-      if (propOutlineCache[cacheKey]) return propOutlineCache[cacheKey];
-
-      const pad = 6;
-      const bw = Math.ceil(model.w * 1.6) + pad * 2;
-      const bh = Math.ceil(model.h * 1.4 + model.count) + pad * 2;
-
-      const tmp = document.createElement('canvas');
-      tmp.width = bw;
-      tmp.height = bh;
-      const tctx = tmp.getContext('2d');
-      tctx.imageSmoothingEnabled = false;
-
-      const ox = Math.floor(bw / 2);
-      const oy = bh - Math.floor(model.h / 2) - pad;
-      const originX = Math.floor(model.w / 2);
-      const originY = Math.floor(model.h / 2);
-
-      for (let z = 0; z < model.count; z++) {
-        tctx.save();
-        tctx.translate(ox, Math.round(oy - z));
-        tctx.scale(1, squash);
-        tctx.rotate(turn + extraAngle);
-        tctx.drawImage(model.sheet, z * model.w, 0, model.w, model.h, -originX, -originY, model.w, model.h);
-        tctx.restore();
-      }
-
-      const out = document.createElement('canvas');
-      out.width = bw;
-      out.height = bh;
-      const octx = out.getContext('2d');
-      octx.imageSmoothingEnabled = false;
-
-      const sil = document.createElement('canvas');
-      sil.width = bw;
-      sil.height = bh;
-      const sctx = sil.getContext('2d');
-      sctx.drawImage(tmp, 0, 0);
-      sctx.globalCompositeOperation = 'source-in';
-      sctx.fillStyle = '#3B2219';
-      sctx.fillRect(0, 0, bw, bh);
-
-      octx.drawImage(sil, -1, 0);
-      octx.drawImage(sil,  1, 0);
-      octx.drawImage(sil,  0, -1);
-      octx.drawImage(sil,  0,  1);
-      octx.drawImage(tmp,  0,  0);
-
-      const entry = { canvas: out, ox, oy };
-      propOutlineCache[cacheKey] = entry;
-      return entry;
-    }
-
-    // Sistema de Lâminas de Grama Voxel 2–3px (noOutline: true, 3 frames de vento a 8 FPS!)
-    function getGrassBladeSprite(modelKey, windFrame) {
-      invalidateAngleCachesIfNeeded();
-      const cacheKey = `${modelKey}_w${windFrame}`;
-      if (grassWindCache[cacheKey]) return grassWindCache[cacheKey];
-
-      const model = propModels[modelKey];
-      const bw = 24;
-      const bh = 24;
-      const cv = document.createElement('canvas');
-      cv.width = bw;
-      cv.height = bh;
-      const cx = cv.getContext('2d');
-      cx.imageSmoothingEnabled = false;
-
-      const ox = 12;
-      const oy = 14;
-      const originX = Math.floor(model.w / 2);
-      const originY = Math.floor(model.h / 2);
-
-      for (let z = 0; z < model.count; z++) {
-        const swayX = z * 0.55 * windFrame; // desloca suavemente pontinhas sem borrar!
-        cx.save();
-        cx.translate(Math.round(ox + swayX), Math.round(oy - z));
-        cx.scale(1, squash);
-        cx.rotate(turn);
-        cx.drawImage(model.sheet, z * model.w, 0, model.w, model.h, -originX, -originY, model.w, model.h);
-        cx.restore();
-      }
-
-      const entry = { canvas: cv, ox, oy };
-      grassWindCache[cacheKey] = entry;
-      return entry;
-    }
-
-    function drawStaticProp(p) {
-      const proj = project(p.wx, p.wy, p.wz);
-      const spr = getOutlinedPropSprite(p.modelKey, p.model, p.selfAngle);
-      const dw = Math.round(spr.canvas.width * p.scale);
-      const dh = Math.round(spr.canvas.height * p.scale);
-      const dx = Math.round(proj.x - spr.ox * p.scale);
-      const dy = Math.round(proj.y - spr.oy * p.scale);
-      lowCtx.drawImage(spr.canvas, dx, dy, dw, dh);
-
-      if (p.isFire) {
-        const flick = Math.sin(cat.idleTimer * 12) * 1.5;
-        lowCtx.fillStyle = 'rgba(255, 210, 80, 0.34)';
-        lowCtx.beginPath();
-        lowCtx.arc(proj.x, proj.y - (p.modelKey === 'stone_lantern' ? 11 : 6), 6 + flick * 0.4, 0, Math.PI * 2);
-        lowCtx.fill();
-      }
-    }
-
-    function drawDynamicStackWithOutline(drawFn, centerWorldX, centerWorldY, centerWorldZ) {
-      scratchCtx.clearRect(0, 0, 72, 72);
-      const anchorX = 36;
-      const anchorY = 48;
-
-      function stampSlice(model, wx, wy, wz, selfAngle, scale) {
-        const dx = wx - centerWorldX;
-        const dy = wy - centerWorldY;
-        const dz = wz - centerWorldZ;
-        const cosA = Math.cos(turn);
-        const sinA = Math.sin(turn);
-        const rx = dx * cosA - dy * sinA;
-        const ry = dx * sinA + dy * cosA;
-        const sx = Math.round(anchorX + rx);
-        const sy = Math.round(anchorY + ry * squash - dz);
-        const totalAngle = selfAngle + turn;
-        const ox = Math.floor(model.w / 2);
-        const oy = Math.floor(model.h / 2);
-        for (let z = 0; z < model.count; z++) {
-          scratchCtx.save();
-          scratchCtx.translate(sx, Math.round(sy - z * scale));
-          scratchCtx.scale(scale, squash * scale);
-          scratchCtx.rotate(totalAngle);
-          scratchCtx.drawImage(model.sheet, z * model.w, 0, model.w, model.h, -ox, -oy, model.w, model.h);
-          scratchCtx.restore();
-        }
-      }
-
-      drawFn(stampSlice);
-
-      silCtx.clearRect(0, 0, 72, 72);
-      silCtx.globalCompositeOperation = 'source-over';
-      silCtx.drawImage(scratchCanvas, 0, 0);
-      silCtx.globalCompositeOperation = 'source-in';
-      silCtx.fillStyle = '#3B2219';
-      silCtx.fillRect(0, 0, 72, 72);
-
-      const p = project(centerWorldX, centerWorldY, centerWorldZ);
-      const bx = p.x - anchorX;
-      const by = p.y - anchorY;
-      lowCtx.drawImage(silCanvas, bx - 1, by);
-      lowCtx.drawImage(silCanvas, bx + 1, by);
-      lowCtx.drawImage(silCanvas, bx, by - 1);
-      lowCtx.drawImage(silCanvas, bx, by + 1);
-      lowCtx.drawImage(scratchCanvas, bx, by);
-    }
-
-    function drawCatShadow(x, y, groundZ, z) {
-      const shP = project(x, y, Math.max(groundZ, -5) + 0.3);
-      const hAbove = Math.max(0, z - groundZ);
-      const shrink = Math.max(0.45, 1.0 - hAbove / 55);
-      lowCtx.fillStyle = `rgba(38, 22, 14, ${0.32 * shrink})`;
-      lowCtx.beginPath();
-      lowCtx.ellipse(shP.x, shP.y, 6.2 * shrink, 4.0 * shrink, 0, 0, Math.PI * 2);
-      lowCtx.fill();
-    }
-
-    function drawCatEntity(speechQueue) {
-      const sk = catSkinModels[cat.skinIdx];
-      const hatPreset = HAT_PRESETS[cat.hatIdx];
-      const hatModel = hatPreset.id !== 'none' ? hatModels[hatPreset.id] : null;
-      const cosC = Math.cos(cat.selfAngle);
-      const sinC = Math.sin(cat.selfAngle);
-      const t = cat.walkPhase;
-      const inAir = !cat.onGround;
-
-      drawDynamicStackWithOutline((stamp) => {
-        function paw(lx, ly, lift, stride) {
-          const wx = cat.x + lx * cosC - (ly + stride) * sinC;
-          const wy = cat.y + lx * sinC + (ly + stride) * cosC;
-          stamp(sk.paw, wx, wy, cat.z + lift, cat.selfAngle, cat.scale);
-        }
-
-        const liftFL = inAir ? 0.5 : (cat.isWalking ? Math.max(0, Math.sin(t) * 3.0) : 0);
-        const strideFL = inAir ? 2.2 : (cat.isWalking ? -Math.cos(t) * 2.3 : 0);
-        const liftBR = inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.0) : 0);
-        const strideBR = inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + 0.3) * 2.3 : 0);
-        const liftFR = inAir ? 0.5 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.0) : 0);
-        const strideFR = inAir ? 2.2 : (cat.isWalking ? -Math.cos(t + Math.PI) * 2.3 : 0);
-        const liftBL = inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.0) : 0);
-        const strideBL = inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.3 : 0);
-
-        const bob = inAir ? 0 : (cat.isWalking ? Math.abs(Math.sin(t * 2)) * 0.7 : Math.sin(cat.idleTimer * 2.4) * 0.35);
-
-        paw(-4.5, -7.5, liftBL, strideBL);
-        paw( 3.5, -7.5, liftBR, strideBR);
-        paw(-4.5,  3.5, liftFL, strideFL);
-        paw( 3.5,  3.5, liftFR, strideFR);
-
-        stamp(sk.body, cat.x, cat.y, cat.z + 1.5 + bob, cat.selfAngle, cat.scale);
-
-        if (hatModel) {
-          const hx = cat.x - 4.5 * sinC;
-          const hy = cat.y + 4.5 * cosC;
-          const hz = cat.z + (15.0 + bob - 2.8) * cat.scale;
-          stamp(hatModel, hx, hy, hz, cat.selfAngle, cat.scale);
-        }
-      }, cat.x, cat.y, cat.z);
-
-      if (cat.speech && cat.speech.timer > 0) {
-        cat.speech.timer--;
-        const sp = project(cat.x, cat.y, cat.z + 24);
-        speechQueue.push({ lowX: sp.x, lowY: sp.y, text: cat.speech.text });
-      }
-    }
-
-    function drawNpcEntity(npc, speechQueue) {
-      drawCatShadow(npc.x, npc.y, npc.z, npc.z);
-      const bob = npc.moving ? Math.abs(Math.sin(npc.walkPhase * 2)) * 0.8 : Math.sin(cat.idleTimer * 2.5) * 0.3;
-      drawDynamicStackWithOutline((stamp) => {
-        stamp(npc.model, npc.x, npc.y, npc.z + bob, npc.selfAngle, npc.scale);
-      }, npc.x, npc.y, npc.z);
-
-      if (npc.speech && npc.speech.timer > 0) {
-        const sp = project(npc.x, npc.y, npc.z + 18);
-        speechQueue.push({ lowX: sp.x, lowY: sp.y, text: npc.speech.text });
-      }
-    }
-
-    function drawFishCollectible(f) {
-      const bob = Math.sin(cat.idleTimer * 3.5 + f.gx) * 2.2;
-      const wz = f.baseZ + 4 + bob;
-      const spinAngle = cat.idleTimer * 2.5 + f.gx;
-
-      const sp = project(f.wx, f.wy, f.baseZ + 0.3);
-      lowCtx.fillStyle = 'rgba(180, 120, 20, 0.25)';
-      lowCtx.beginPath();
-      lowCtx.ellipse(sp.x, sp.y, 5, 3, 0, 0, Math.PI * 2);
-      lowCtx.fill();
-
-      drawDynamicStackWithOutline((stamp) => {
-        stamp(propModels.golden_fish, f.wx, f.wy, wz, spinAngle, 1.0);
-      }, f.wx, f.wy, wz);
-    }
-
-    function drawColumnSideFace(xA, yA, xB, yB, topZ, bottomZ, isXFace, tile, animTick) {
-      if (topZ <= bottomZ) return;
-
-      if (tile.type === 'water' && topZ > 0) {
-        const pTopA = project(xA, yA, topZ);
-        const pTopB = project(xB, yB, topZ);
-        const pBotA = project(xA, yA, bottomZ);
-        const pBotB = project(xB, yB, bottomZ);
-        drawQuad(pTopA, pTopB, pBotB, pBotA, isXFace ? '#38BDF8' : '#0284C7');
-        const fallOffset = (animTick % 4) * 3;
-        lowCtx.strokeStyle = '#E0F2FE';
-        lowCtx.lineWidth = 1;
-        for (let t = 0.22; t <= 0.85; t += 0.28) {
-          const mx = pTopA.x + (pTopB.x - pTopA.x) * t;
-          const myTop = pTopA.y + (pTopB.y - pTopA.y) * t + fallOffset;
-          const myBot = pBotA.y + (pBotB.y - pBotA.y) * t;
-          if (myTop < myBot - 2) {
-            lowCtx.beginPath();
-            lowCtx.moveTo(mx, myTop);
-            lowCtx.lineTo(mx, Math.min(myBot, myTop + 9));
-            lowCtx.stroke();
-          }
-        }
-        return;
-      }
-
-      const grassLipCol = isXFace ? '#3D8C37' : '#2C6B28';
-      const dirtCol     = isXFace ? '#9B6542' : '#73482E';
-      const rockCol     = isXFace ? '#646E7A' : '#48515C';
-      const darkRockCol = isXFace ? '#4D5560' : '#353C45';
-
-      const lipZ = Math.max(bottomZ, topZ - (tile.type === 'stone' || tile.type === 'peak' ? 4 : 3.2));
-      const pTopA = project(xA, yA, topZ);
-      const pTopB = project(xB, yB, topZ);
-      const pLipA = project(xA, yA, lipZ);
-      const pLipB = project(xB, yB, lipZ);
-
-      let lipColor = grassLipCol;
-      if (tile.type === 'stone') lipColor = isXFace ? '#7C8591' : '#5D6570';
-      else if (tile.type === 'bridge') lipColor = isXFace ? '#85522F' : '#633B20';
-      else if (tile.type === 'sand') lipColor = isXFace ? '#CBAE75' : '#A68B58';
-      else if (tile.type === 'path') lipColor = dirtCol;
-      else if (tile.type === 'lilypad') lipColor = isXFace ? '#16A34A' : '#15803D';
-      drawQuad(pTopA, pTopB, pLipB, pLipA, lipColor);
-
-      if (lipZ <= bottomZ) return;
-
-      if (tile.type === 'stone' || tile.h >= 32) {
-        const midZ = Math.max(bottomZ, lipZ - 16);
-        const pMidA = project(xA, yA, midZ);
-        const pMidB = project(xB, yB, midZ);
-        drawQuad(pLipA, pLipB, pMidB, pMidA, tile.type === 'stone' ? rockCol : dirtCol);
-        if (midZ > bottomZ) {
-          const pBotA = project(xA, yA, bottomZ);
-          const pBotB = project(xB, yB, bottomZ);
-          drawQuad(pMidA, pMidB, pBotB, pBotA, darkRockCol);
-        }
-      } else {
-        const pBotA = project(xA, yA, bottomZ);
-        const pBotB = project(xB, yB, bottomZ);
-        drawQuad(pLipA, pLipB, pBotB, pBotA, tile.type === 'lilypad' ? '#166534' : dirtCol);
-      }
-    }
-
-    // Bucket cuidadoso: gato só promove para vizinho se t.h <= wz + 1.2 (não puxa atrás de degraus altos!)
-    function pickCatBucketCell(wx, wy, wz, radius, sinA, cosA) {
-      let bestGx = null, bestGy = null, bestDepth = -Infinity;
-      const gMinX = Math.max(0, Math.floor((wx - radius) / TILE + HALF_GRID));
-      const gMaxX = Math.min(GRID_SIZE - 1, Math.floor((wx + radius) / TILE + HALF_GRID));
-      const gMinY = Math.max(0, Math.floor((wy - radius) / TILE + HALF_GRID));
-      const gMaxY = Math.min(GRID_SIZE - 1, Math.floor((wy + radius) / TILE + HALF_GRID));
-
-      for (let gy = gMinY; gy <= gMaxY; gy++) {
-        for (let gx = gMinX; gx <= gMaxX; gx++) {
-          const t = grid[gy][gx];
-          if (t.h <= wz + 1.2) {
-            const d = (gx - HALF_GRID + 0.5) * sinA + (gy - HALF_GRID + 0.5) * cosA;
-            if (d > bestDepth) {
-              bestDepth = d;
-              bestGx = gx;
-              bestGy = gy;
-            }
-          }
-        }
-      }
-      if (bestGx === null) {
-        const tc = worldToTileCoords(wx, wy);
-        bestGx = Math.max(0, Math.min(GRID_SIZE - 1, tc.gx));
-        bestGy = Math.max(0, Math.min(GRID_SIZE - 1, tc.gy));
-      }
-      return bestGy * GRID_SIZE + bestGx;
-    }
-
-    function pickPropBucketCell(p, sinA, cosA) {
-      if (!p.promoteWide) {
-        return p.gy * GRID_SIZE + p.gx;
-      }
-      return pickCatBucketCell(p.wx, p.wy, p.wz, p.radius, sinA, cosA);
-    }
-
-    // Desenho Hi-Res de Balões de Fala DIRETAMENTE no ctx principal após o upscale!
     function drawSpeechOverlaysHiRes(speechQueue) {
       if (speechQueue.length === 0) return;
       ctx.save();
@@ -2030,13 +2320,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const bx = Math.max(8, Math.min(viewW - bw - 8, Math.round(sx - bw / 2)));
         const by = Math.max(8, sy - bh);
 
-        // Sombra suave
         ctx.fillStyle = 'rgba(59, 34, 25, 0.16)';
         ctx.beginPath();
         ctx.roundRect(bx + 2, by + 3, bw, bh, 10);
         ctx.fill();
 
-        // Corpo do balão
         ctx.fillStyle = '#FFFDF8';
         ctx.strokeStyle = '#3B2219';
         ctx.lineWidth = 2;
@@ -2045,7 +2333,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         ctx.fill();
         ctx.stroke();
 
-        // Rabicho apontando pro personagem
         const tailX = Math.max(bx + 12, Math.min(bx + bw - 12, sx));
         ctx.fillStyle = '#FFFDF8';
         ctx.beginPath();
@@ -2061,7 +2348,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         ctx.lineTo(tailX + 5, by + bh);
         ctx.stroke();
 
-        // Texto vetorial super nítido!
         ctx.fillStyle = '#3B2219';
         ctx.fillText(item.text, bx + padX, by + bh / 2 + 0.5);
       }
@@ -2069,6 +2355,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function renderScene() {
+      // 1. Céu + Nuvens
       const skyGrad = lowCtx.createLinearGradient(0, 0, 0, LOW_H);
       skyGrad.addColorStop(0, '#78C8F2');
       skyGrad.addColorStop(0.6, '#BEE8FB');
@@ -2084,196 +2371,365 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         lowCtx.fillRect(Math.round(xPos + 8), cy0 - 5, w0 - 16, 6);
       }
 
-      const sinA = Math.sin(turn);
       const cosA = Math.cos(turn);
-      const animTick = Math.floor(cat.idleTimer * 8); // 8 FPS stepped animation!
-      const windWaveCycle = [0, 1, 2, 1];
+      const sinA = Math.sin(turn);
+      const animTick = Math.floor(cat.idleTimer * 8); // 8 FPS stepped animation
+      const windOff = Math.round(Math.sin(animTick * 0.65) * 1.0);
       const speechQueue = [];
 
-      const buckets = new Map();
-      const pushToBucket = (cellIdx, fn, depthKey) => {
-        if (!buckets.has(cellIdx)) buckets.set(cellIdx, []);
-        buckets.get(cellIdx).push({ fn, depthKey });
+      // 2. Bounding box visível no grid 360×360 (culling exato por viewport!)
+      let minGx = 999, maxGx = -999, minGy = 999, maxGy = -999;
+      for (const zTest of [Z_MIN, TERRAIN_Z_MAX]) {
+        for (const [cx, cy] of [[0, 0], [LOW_W, 0], [0, LOW_H], [LOW_W, LOW_H]]) {
+          const g = unprojectToGrid(cx, cy, zTest, cosA, sinA);
+          if (g.gx < minGx) minGx = g.gx;
+          if (g.gx > maxGx) maxGx = g.gx;
+          if (g.gy < minGy) minGy = g.gy;
+          if (g.gy > maxGy) maxGy = g.gy;
+        }
+      }
+      const sx = Math.max(0, Math.floor(minGx) - 4);
+      const sy = Math.max(0, Math.floor(minGy) - 4);
+      const ex = Math.min(mw, Math.ceil(maxGx) + 4);
+      const ey = Math.min(mh, Math.ceil(maxGy) + 4);
+      const sw = Math.max(0, ex - sx);
+      const sh = Math.max(0, ey - sy);
+      const camGx = camX / VOX + HALF_GRID;
+      const camGy = camY / VOX + HALF_GRID;
+
+      const minVisWx = (sx - HALF_GRID) * VOX - 36;
+      const maxVisWx = (ex - HALF_GRID) * VOX + 36;
+      const minVisWy = (sy - HALF_GRID) * VOX - 36;
+      const maxVisWy = (ey - HALF_GRID) * VOX + 36;
+
+      // 3. Coleta de todas as entidades visíveis [baseZ, topZ) para o loop unificado
+      const activeDrawables = [];
+      const shadowsByZ = new Map();
+      const firesByZ = new Map();
+      let maxEntityTopZ = TERRAIN_Z_MAX;
+
+      const registerShadow = (x, y, groundZ, z, radiusX, radiusY, alpha) => {
+        const gz = Math.max(Z_MIN, Math.round(groundZ));
+        if (!shadowsByZ.has(gz)) shadowsByZ.set(gz, []);
+        shadowsByZ.get(gz).push({ x, y, groundZ, z, radiusX, radiusY, alpha });
       };
 
-      // 1. Props Estáticos
+      // Props estáticos visíveis
       for (const p of props) {
-        const cIdx = pickPropBucketCell(p, sinA, cosA);
+        if (p.wx < minVisWx || p.wx > maxVisWx || p.wy < minVisWy || p.wy > maxVisWy) continue;
         const dp = (p.wx - camX) * sinA + (p.wy - camY) * cosA;
-        pushToBucket(cIdx, () => drawStaticProp(p), dp);
+        activeDrawables.push({
+          baseZ: p.baseZ,
+          topZ: p.topZ,
+          depth: dp,
+          drawSlice: (z) => {
+            const sz = Math.min(p.model.count - 1, Math.floor((z - p.baseZ) / p.scale));
+            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA);
+          }
+        });
+        if (p.topZ > maxEntityTopZ) maxEntityTopZ = p.topZ;
+        if (p.isFire) {
+          const fz = Math.min(TERRAIN_Z_MAX, p.baseZ + (p.modelKey === 'stone_lantern' ? 12 : 6));
+          if (!firesByZ.has(fz)) firesByZ.set(fz, []);
+          firesByZ.get(fz).push(p);
+        }
       }
 
-      // 2. Peixes Dourados (+1000 se acima de plataforma para nunca cortar atrás do cogumelo/fardo!)
+      // Peixes dourados visíveis
       for (const f of fishes) {
         if (f.collected) continue;
-        const cIdx = pickCatBucketCell(f.wx, f.wy, f.baseZ, 4.0, sinA, cosA);
+        if (f.wx < minVisWx || f.wx > maxVisWx || f.wy < minVisWy || f.wy > maxVisWy) continue;
+        const bob = Math.sin(cat.idleTimer * 3.5 + f.wx * 0.05) * 2.2;
+        const fBaseZ = Math.round(f.baseZ + 4 + bob);
+        const fModel = propModels.golden_fish;
+        const fTopZ = fBaseZ + fModel.count;
+        const spinAngle = cat.idleTimer * 2.5 + f.wx * 0.03;
         const dp = (f.wx - camX) * sinA + (f.wy - camY) * cosA;
-        const tileBaseH = grid[f.gy][f.gx].h;
-        const bonus = f.baseZ > tileBaseH + 2 ? 1000 : 0;
-        pushToBucket(cIdx, () => drawFishCollectible(f), dp + bonus);
+        registerShadow(f.wx, f.wy, f.baseZ, fBaseZ, 5, 3, 0.25);
+        activeDrawables.push({
+          baseZ: fBaseZ,
+          topZ: fTopZ,
+          depth: dp,
+          drawSlice: (z) => {
+            stampModelSlice(entityCtx, fModel, z - fBaseZ, f.wx, f.wy, z, spinAngle, 1.0, cosA, sinA);
+          }
+        });
+        if (fTopZ > maxEntityTopZ) maxEntityTopZ = fTopZ;
       }
 
-      // 3. NPCs (Popó + Pintinhos)
+      // NPCs visíveis
       for (const npc of npcs) {
-        const cIdx = pickCatBucketCell(npc.x, npc.y, npc.z, 4.0, sinA, cosA);
+        if (npc.x < minVisWx || npc.x > maxVisWx || npc.y < minVisWy || npc.y > maxVisWy) continue;
+        const bob = npc.moving ? Math.abs(Math.sin(npc.walkPhase * 2)) * 0.8 : Math.sin(cat.idleTimer * 2.5) * 0.3;
+        const nBaseZ = Math.round(npc.z + bob);
+        const nTopZ = nBaseZ + Math.ceil(npc.model.count * npc.scale);
         const dp = (npc.x - camX) * sinA + (npc.y - camY) * cosA;
-        pushToBucket(cIdx, () => drawNpcEntity(npc, speechQueue), dp + 0.2);
+        registerShadow(npc.x, npc.y, npc.z, npc.z, 5.2, 3.4, 0.28);
+        activeDrawables.push({
+          baseZ: nBaseZ,
+          topZ: nTopZ,
+          depth: dp + 0.2,
+          drawSlice: (z) => {
+            const sz = Math.min(npc.model.count - 1, Math.floor((z - nBaseZ) / npc.scale));
+            stampModelSlice(entityCtx, npc.model, sz, npc.x, npc.y, z, npc.selfAngle, npc.scale, cosA, sinA);
+          }
+        });
+        if (nTopZ > maxEntityTopZ) maxEntityTopZ = nTopZ;
+        if (npc.speech && npc.speech.timer > 0) {
+          const sp = project(npc.x, npc.y, npc.z + 18);
+          speechQueue.push({ lowX: sp.x, lowY: sp.y, text: npc.speech.text });
+        }
       }
 
-      // 4. Gato Jogável (com bônus de prioridade se estiver em cima de plataforma como cogumelo/fardo/toco!)
+      // Gato Jogável (Patas + Corpo + Chapéu em suas respectivas alturas Z)
       {
-        const catCell = pickCatBucketCell(cat.x, cat.y, cat.z, 4.5, sinA, cosA);
-        const dp = (cat.x - camX) * sinA + (cat.y - camY) * cosA;
-        let onPlatformBonus = 0;
-        for (const pc of platformColliders) {
-          if (Math.hypot(cat.x - pc.wx, cat.y - pc.wy) <= pc.r + 3 && cat.z >= pc.topZ - 2) {
-            onPlatformBonus = 1000;
-            break;
-          }
+        const sk = catSkinModels[cat.skinIdx];
+        const hatPreset = HAT_PRESETS[cat.hatIdx];
+        const hatModel = hatPreset.id !== 'none' ? hatModels[hatPreset.id] : null;
+        const cosC = Math.cos(cat.selfAngle);
+        const sinC = Math.sin(cat.selfAngle);
+        const t = cat.walkPhase;
+        const inAir = !cat.onGround;
+        const dpCat = (cat.x - camX) * sinA + (cat.y - camY) * cosA;
+
+        const hAbove = Math.max(0, cat.z - cat.groundZ);
+        const shrink = Math.max(0.45, 1.0 - hAbove / 55);
+        registerShadow(cat.x, cat.y, cat.groundZ, cat.z, 6.2 * shrink, 4.0 * shrink, 0.32 * shrink);
+
+        const pawSpecs = [
+          [-4.5, -7.5, inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.0) : 0), inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.3 : 0)],
+          [ 3.5, -7.5, inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.0) : 0), inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + 0.3) * 2.3 : 0)],
+          [-4.5,  3.5, inAir ? 0.5 : (cat.isWalking ? Math.max(0, Math.sin(t) * 3.0) : 0), inAir ? 2.2 : (cat.isWalking ? -Math.cos(t) * 2.3 : 0)],
+          [ 3.5,  3.5, inAir ? 0.5 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.0) : 0), inAir ? 2.2 : (cat.isWalking ? -Math.cos(t + Math.PI) * 2.3 : 0)]
+        ];
+        for (const [lx, ly, lift, stride] of pawSpecs) {
+          const px = cat.x + lx * cosC - (ly + stride) * sinC;
+          const py = cat.y + lx * sinC + (ly + stride) * cosC;
+          const pBaseZ = Math.round(cat.z + lift);
+          const pTopZ = pBaseZ + sk.paw.count;
+          const pDp = (px - camX) * sinA + (py - camY) * cosA;
+          activeDrawables.push({
+            baseZ: pBaseZ,
+            topZ: pTopZ,
+            depth: pDp + 0.4,
+            drawSlice: (z) => {
+              stampModelSlice(entityCtx, sk.paw, z - pBaseZ, px, py, z, cat.selfAngle, cat.scale, cosA, sinA);
+            }
+          });
+          if (pTopZ > maxEntityTopZ) maxEntityTopZ = pTopZ;
         }
-        pushToBucket(catCell, () => {
-          drawCatShadow(cat.x, cat.y, cat.groundZ, cat.z);
-          drawCatEntity(speechQueue);
-        }, dp + 0.5 + onPlatformBonus);
-      }
 
-      const stepX = sinA >= 0 ? 1 : -1;
-      const stepY = cosA >= 0 ? 1 : -1;
-      const startX = stepX > 0 ? 0 : GRID_SIZE - 1;
-      const endX   = stepX > 0 ? GRID_SIZE : -1;
-      const startY = stepY > 0 ? 0 : GRID_SIZE - 1;
-      const endY   = stepY > 0 ? GRID_SIZE : -1;
-
-      const camTile = worldToTileCoords(camX, camY);
-      const cullR = Math.ceil(Math.hypot(LOW_W, LOW_H) / (TILE * 1.45)) + 5;
-
-      for (let gy = startY; gy !== endY; gy += stepY) {
-        if (Math.abs(gy - camTile.gy) > cullR) continue;
-        for (let gx = startX; gx !== endX; gx += stepX) {
-          if (Math.abs(gx - camTile.gx) > cullR) continue;
-          const t = grid[gy][gx];
-          const x0 = (gx - HALF_GRID) * TILE;
-          const x1 = x0 + TILE;
-          const y0 = (gy - HALF_GRID) * TILE;
-          const y1 = y0 + TILE;
-          const topZ = t.h;
-
-          if (sinA > 0.001) {
-            const nb = getTile(gx + 1, gy);
-            drawColumnSideFace(x1, y0, x1, y1, topZ, nb ? nb.h : SKIRT_BOTTOM, true, t, animTick);
-          } else if (sinA < -0.001) {
-            const nb = getTile(gx - 1, gy);
-            drawColumnSideFace(x0, y0, x0, y1, topZ, nb ? nb.h : SKIRT_BOTTOM, true, t, animTick);
+        const bob = inAir ? 0 : (cat.isWalking ? Math.abs(Math.sin(t * 2)) * 0.7 : Math.sin(cat.idleTimer * 2.4) * 0.35);
+        const bodyBaseZ = Math.round(cat.z + 1.5 + bob);
+        const bodyTopZ = bodyBaseZ + sk.body.count;
+        activeDrawables.push({
+          baseZ: bodyBaseZ,
+          topZ: bodyTopZ,
+          depth: dpCat + 0.5,
+          drawSlice: (z) => {
+            stampModelSlice(entityCtx, sk.body, z - bodyBaseZ, cat.x, cat.y, z, cat.selfAngle, cat.scale, cosA, sinA);
           }
+        });
+        if (bodyTopZ > maxEntityTopZ) maxEntityTopZ = bodyTopZ;
 
-          if (cosA > 0.001) {
-            const nb = getTile(gx, gy + 1);
-            drawColumnSideFace(x0, y1, x1, y1, topZ, nb ? nb.h : SKIRT_BOTTOM, false, t, animTick);
-          } else if (cosA < -0.001) {
-            const nb = getTile(gx, gy - 1);
-            drawColumnSideFace(x0, y0, x1, y0, topZ, nb ? nb.h : SKIRT_BOTTOM, false, t, animTick);
-          }
-
-          const p00 = project(x0, y0, topZ);
-          const p10 = project(x1, y0, topZ);
-          const p11 = project(x1, y1, topZ);
-          const p01 = project(x0, y1, topZ);
-          drawQuad(p00, p10, p11, p01, getTopColor(t, animTick));
-
-          // GRAMA EM LÂMINAS VOXEL (2–3px de altura) com onda de vento a 8 FPS + rustle!
-          if (t.type === 'grass' || t.type === 'peak') {
-            const gHash = ((gx * 73 + gy * 37) >>> 0) % 10;
-            if (gHash < 7) {
-              const isTall = (t.biomeKey === 'girassol' || t.biomeKey === 'cogumelos' || t.biomeKey === 'zen') && gHash < 3;
-              const grassKey = isTall ? 'grass_tuft_tall' : 'grass_tuft_short';
-              const wf = windWaveCycle[(animTick + ((gx + gy) >> 1)) & 3];
-              const gSpr = getGrassBladeSprite(grassKey, wf);
-              const gp = project((x0 + x1) * 0.5, (y0 + y1) * 0.5, topZ);
-              const rustlePush = (Math.hypot(cat.x - (x0 + 8), cat.y - (y0 + 8)) < 9.5 && Math.abs(cat.z - topZ) < 5) ? 1 : 0;
-              lowCtx.drawImage(gSpr.canvas, gp.x - gSpr.ox + rustlePush, gp.y - gSpr.oy + rustlePush);
+        if (hatModel) {
+          const hx = cat.x - 4.5 * sinC;
+          const hy = cat.y + 4.5 * cosC;
+          const hatBaseZ = Math.round(cat.z + (15.0 + bob - 2.8) * cat.scale);
+          const hatTopZ = hatBaseZ + hatModel.count;
+          activeDrawables.push({
+            baseZ: hatBaseZ,
+            topZ: hatTopZ,
+            depth: dpCat + 0.6,
+            drawSlice: (z) => {
+              stampModelSlice(entityCtx, hatModel, z - hatBaseZ, hx, hy, z, cat.selfAngle, cat.scale, cosA, sinA);
             }
-          }
+          });
+          if (hatTopZ > maxEntityTopZ) maxEntityTopZ = hatTopZ;
+        }
 
-          const cellIdx = gy * GRID_SIZE + gx;
-          const bucket = buckets.get(cellIdx);
-          if (bucket) {
-            if (bucket.length > 1) {
-              bucket.sort((a, b) => a.depthKey - b.depthKey);
-            }
-            for (const entry of bucket) {
-              entry.fn();
-            }
-          }
+        if (cat.speech && cat.speech.timer > 0) {
+          cat.speech.timer--;
+          const sp = project(cat.x, cat.y, cat.z + 24);
+          speechQueue.push({ lowX: sp.x, lowY: sp.y, text: cat.speech.text });
         }
       }
 
+      // Ordenar uma única vez por profundidade para desenhar back-to-front em cada fatia z
+      activeDrawables.sort((a, b) => a.depth - b.depth);
+
+      // 4. Loop Unificado Slice-by-Slice (Terreno + Destination-Out + Grama + Entidades)
+      entityCtx.globalCompositeOperation = 'source-over';
+      entityCtx.clearRect(0, 0, LOW_W, LOW_H);
+      let entityStarted = false;
+
+      for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
+        // 4a. Fatia do terreno (recorte visível)
+        const tSlice = z <= TERRAIN_Z_MAX ? terrainSlices[z] : null;
+        if (tSlice && sw > 0 && sh > 0) {
+          drawTerrainSliceTo(lowCtx, tSlice, z, sx, sy, sw, sh, camGx, camGy);
+
+          // Brilho animado na superfície da água (z = -2)
+          if (z === -2) {
+            lowCtx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+            const step = 12;
+            const startX = Math.floor(minVisWx / step) * step;
+            const startY = Math.floor(minVisWy / step) * step;
+            for (let wy = startY; wy <= maxVisWy; wy += step) {
+              for (let wx = startX; wx <= maxVisWx; wx += step) {
+                const c = getCellAt(wx, wy);
+                if (!c || c.mat !== MAT_WATER || c.h >= 0) continue;
+                if (((c.mx + c.my + animTick) % 9) === 0) {
+                  const wp = project(wx, wy, -1.8);
+                  lowCtx.fillRect(Math.round(wp.x), Math.round(wp.y), 3, 1);
+                }
+              }
+            }
+          }
+
+          // 4b. Recorte matemático de oclusão 3D em entityCanvas
+          if (entityStarted) {
+            entityCtx.globalCompositeOperation = 'destination-out';
+            drawTerrainSliceTo(entityCtx, tSlice, z, sx, sy, sw, sh, camGx, camGy);
+            entityCtx.globalCompositeOperation = 'source-over';
+          }
+        }
+
+        // Sombras dinâmicas no chão na altura z
+        const shList = shadowsByZ.get(z);
+        if (shList) {
+          for (const sh of shList) {
+            const c = getCellAt(sh.x, sh.y);
+            const onTerrain = c && Math.abs(sh.groundZ - c.h) <= 1.2;
+            const targetShadowCtx = onTerrain ? lowCtx : entityCtx;
+            const sp = project(sh.x, sh.y, sh.groundZ + 0.3);
+            targetShadowCtx.fillStyle = `rgba(38, 22, 14, ${sh.alpha})`;
+            targetShadowCtx.beginPath();
+            targetShadowCtx.ellipse(sp.x, sp.y, sh.radiusX, sh.radiusY, 0, 0, Math.PI * 2);
+            targetShadowCtx.fill();
+          }
+        }
+
+        // 4c. Pontas de grama animadas pelo vento (8 FPS)
+        const gSlice = z <= Z_GRASS_MAX ? grassTipSlices[z] : null;
+        if (gSlice && sw > 0 && sh > 0) {
+          drawTerrainSliceTo(lowCtx, gSlice, z, sx, sy, sw, sh, camGx, camGy, windOff);
+        }
+
+        // 4d. Entidades cujo [baseZ, topZ) contém z
+        for (let i = 0; i < activeDrawables.length; i++) {
+          const d = activeDrawables[i];
+          if (z >= d.baseZ && z < d.topZ) {
+            entityStarted = true;
+            d.drawSlice(z);
+          }
+        }
+
+        // Brilho de fogueira / lanternas na altura z
+        const fList = firesByZ.get(z);
+        if (fList) {
+          const flick = Math.sin(cat.idleTimer * 12) * 1.5;
+          for (const p of fList) {
+            const fp = project(p.wx, p.wy, z);
+            lowCtx.fillStyle = 'rgba(255, 210, 80, 0.32)';
+            lowCtx.beginPath();
+            lowCtx.arc(fp.x, fp.y, 6.5 + flick * 0.4, 0, Math.PI * 2);
+            lowCtx.fill();
+          }
+        }
+      }
+
+      // 5. Silhueta Única 1px (#3B2219) + Composição de entityCanvas sobre lowCtx
+      if (entityStarted) {
+        entitySilCtx.globalCompositeOperation = 'source-over';
+        entitySilCtx.clearRect(0, 0, LOW_W, LOW_H);
+        entitySilCtx.drawImage(entityCanvas, 0, 0);
+        entitySilCtx.globalCompositeOperation = 'source-in';
+        entitySilCtx.fillStyle = '#3B2219';
+        entitySilCtx.fillRect(0, 0, LOW_W, LOW_H);
+        entitySilCtx.globalCompositeOperation = 'source-over';
+
+        lowCtx.drawImage(entitySilCanvas, -1, 0);
+        lowCtx.drawImage(entitySilCanvas,  1, 0);
+        lowCtx.drawImage(entitySilCanvas,  0, -1);
+        lowCtx.drawImage(entitySilCanvas,  0,  1);
+        lowCtx.drawImage(entityCanvas, 0, 0);
+      }
+
+      // 6. Partículas 3D
       for (const p of particles) {
         const pp = project(p.x, p.y, p.z);
         lowCtx.fillStyle = p.color;
-        lowCtx.fillRect(pp.x, pp.y, p.size, p.size);
+        lowCtx.fillRect(Math.round(pp.x), Math.round(pp.y), p.size, p.size);
       }
 
-      // Upscale 1:1 quadrado Nearest-Neighbor para o Viewport inteiro (com DPR!)
+      // 7. Upscale 1:1 quadrado Nearest-Neighbor para o canvas principal + Balões Hi-Res
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, viewW, viewH);
       ctx.drawImage(lowCanvas, 0, 0, LOW_W * pixelScale, LOW_H * pixelScale);
 
-      // PASSADA DE OVERLAY HI-RES: balões nítidos e sempre visíveis acima de tudo!
       drawSpeechOverlaysHiRes(speechQueue);
     }
 
     // =========================================================================
-    // 10. MINIMAPA TOPOGRÁFICO 56×56 (112×112 px = 2×2 por tile)
+    // 11. MINIMAPA TOPOGRÁFICO ORGÂNICO (360×360 -> 112×112)
     // =========================================================================
     const mmCanvas = document.getElementById('minimapCanvas');
     const mmCtx = mmCanvas.getContext('2d');
+    const MM_RES = 180;
     const mmBase = document.createElement('canvas');
-    mmBase.width = GRID_SIZE * 2;
-    mmBase.height = GRID_SIZE * 2;
+    mmBase.width = MM_RES;
+    mmBase.height = MM_RES;
     const mmBaseCtx = mmBase.getContext('2d');
 
     function bakeMinimapBase() {
-      for (let gy = 0; gy < GRID_SIZE; gy++) {
-        for (let gx = 0; gx < GRID_SIZE; gx++) {
-          const t = grid[gy][gx];
-          let col = '#65C466';
-          if (t.type === 'water') col = '#38BDF8';
-          else if (t.type === 'lilypad') col = '#22C55E';
-          else if (t.type === 'bridge') col = '#B97A4A';
-          else if (t.type === 'sand') col = '#F3DDA9';
-          else if (t.h >= 96) col = '#F472B6';
-          else if (t.h >= 64) col = '#9CA3AF';
-          else if (t.h >= 48) col = '#A8B1BD';
-          else if (t.h >= 32) col = '#94A3B8';
-          else if (t.h >= 16) col = '#4EA94C';
-          else if (t.type === 'path') col = '#DFB684';
-          mmBaseCtx.fillStyle = col;
-          mmBaseCtx.fillRect(gx * 2, gy * 2, 2, 2);
+      const img = mmBaseCtx.createImageData(MM_RES, MM_RES);
+      const buf = new Uint32Array(img.data.buffer);
+      for (let py = 0; py < MM_RES; py++) {
+        const my = py * 2;
+        for (let px = 0; px < MM_RES; px++) {
+          const mx = px * 2;
+          const idx = my * mw + mx;
+          const h = hmap[idx];
+          const mat = matMap[idx];
+          let col;
+          if (mat === MAT_WATER) col = packRGBA(56, 189, 248);
+          else if (mat === MAT_LILYPAD) col = packRGBA(34, 197, 94);
+          else if (mat === MAT_BRIDGE) col = packRGBA(185, 122, 74);
+          else if (mat === MAT_SAND) col = packRGBA(243, 221, 169);
+          else if (mat === MAT_PEAK || h >= 62) col = packRGBA(244, 114, 182);
+          else if (h >= 46) col = packRGBA(156, 163, 175);
+          else if (h >= 28) col = packRGBA(148, 163, 184);
+          else if (h >= 14) col = packRGBA(78, 169, 76);
+          else if (mat === MAT_PATH) col = packRGBA(223, 182, 132);
+          else col = packRGBA(101, 196, 102);
+          buf[py * MM_RES + px] = col;
         }
       }
+      mmBaseCtx.putImageData(img, 0, 0);
     }
     bakeMinimapBase();
 
     function drawMinimap() {
       mmCtx.imageSmoothingEnabled = false;
-      mmCtx.drawImage(mmBase, 0, 0);
+      mmCtx.drawImage(mmBase, 0, 0, 112, 112);
+
+      const toMm = (w) => (w / VOX + HALF_GRID) * (112 / mw);
 
       for (const f of fishes) {
         if (f.collected) continue;
         mmCtx.fillStyle = '#FACC15';
-        mmCtx.fillRect(f.gx * 2 - 1, f.gy * 2 - 1, 3, 3);
+        mmCtx.fillRect(Math.round(toMm(f.wx)) - 1, Math.round(toMm(f.wy)) - 1, 3, 3);
       }
 
       for (const npc of npcs) {
-        const nx = (npc.x / TILE + HALF_GRID) * 2;
-        const ny = (npc.y / TILE + HALF_GRID) * 2;
         mmCtx.fillStyle = '#FDBA74';
-        mmCtx.fillRect(Math.round(nx) - 1, Math.round(ny) - 1, 3, 3);
+        mmCtx.fillRect(Math.round(toMm(npc.x)) - 1, Math.round(toMm(npc.y)) - 1, 3, 3);
       }
 
-      const cx = (cat.x / TILE + HALF_GRID) * 2;
-      const cy = (cat.y / TILE + HALF_GRID) * 2;
+      const cx = toMm(cat.x);
+      const cy = toMm(cat.y);
       mmCtx.fillStyle = '#EF4444';
       mmCtx.beginPath();
       mmCtx.arc(cx, cy, 3, 0, Math.PI * 2);
@@ -2293,12 +2749,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     // =========================================================================
-    // 11. LOOP PRINCIPAL + HOOKS DE DEBUG/TESTE
+    // 12. LOOP PRINCIPAL + TELEMETRIA FPS & HOOKS DE DEBUG/TESTE
     // =========================================================================
     let lastTime = performance.now();
+    let fpsAccum = 0;
+    let fpsFrames = 0;
+    let currentFps = 60;
+
     function loop(now) {
-      const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+      const rawDt = Math.max(0.001, (now - lastTime) / 1000);
       lastTime = now;
+      fpsAccum += rawDt;
+      fpsFrames++;
+      if (fpsAccum >= 0.5) {
+        currentFps = Math.round(fpsFrames / fpsAccum);
+        fpsAccum = 0;
+        fpsFrames = 0;
+      }
+
+      const dt = Math.min(0.05, rawDt);
       updatePhysics(dt);
       renderScene();
       drawMinimap();
@@ -2308,6 +2777,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     window.__TERRAIN_DEBUG__ = {
       getState: () => ({
+        fps: currentFps,
+        startupMs: STARTUP_MS,
         x: cat.x, y: cat.y, z: cat.z, vz: cat.vz,
         groundZ: cat.groundZ, onGround: cat.onGround,
         selfAngle: cat.selfAngle, turn,
@@ -2319,32 +2790,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         visitedBiomes: Array.from(visitedBiomes),
         viewport: { viewW, viewH, LOW_W, LOW_H, pixelScale, dpr }
       }),
-      setCatTile: (gx, gy, z = null) => {
-        const t = getTile(gx, gy);
-        const c = tileCenter(gx, gy);
-        cat.x = c.wx;
-        cat.y = c.wy;
-        const gz = z !== null ? z : (t ? t.h : 0);
-        cat.z = gz;
-        cat.groundZ = gz;
-        cat.vz = 0;
-        cat.onGround = true;
-        cat.lastSafeX = c.wx;
-        cat.lastSafeY = c.wy;
-        cat.lastSafeZ = gz;
-        cat.maxJumpReached = gz;
-        camX = cat.x;
-        camY = cat.y;
-        camZ = cat.z;
+      setCatWorld: (wx, wy, z = null) => {
+        teleportToWorld(wx, wy, null, z);
       },
+      getHeightAt: (wx, wy) => getHeightAt(wx, wy),
+      getCellAt: (wx, wy) => getCellAt(wx, wy),
+      getRuinsCoords: () => ({
+        approachSouth: { wx: -95, wy: 195, z: getHeightAt(-95, 195) },
+        monoliths: [
+          { name: 'A', wx: -140, wy: 165, rx: 16, ry: 14, targetZ: 6,  topZ: getHeightAt(-140, 165), southApproach: { wx: -140, wy: 195, z: getHeightAt(-140, 195) } },
+          { name: 'B', wx: -95,  wy: 165, rx: 16, ry: 14, targetZ: 16, topZ: getHeightAt(-95,  165), southApproach: { wx: -95,  wy: 195, z: getHeightAt(-95,  195) } },
+          { name: 'C', wx: -50,  wy: 165, rx: 16, ry: 14, targetZ: 32, topZ: getHeightAt(-50,  165), southApproach: { wx: -50,  wy: 195, z: getHeightAt(-50,  195) } },
+          { name: 'D', wx: -5,   wy: 165, rx: 16, ry: 14, targetZ: 48, topZ: getHeightAt(-5,   165), southApproach: { wx: -5,   wy: 195, z: getHeightAt(-5,   195) } }
+        ]
+      }),
       setTurn: (rad) => { turn = rad; targetTurn = rad; },
       triggerJump: () => { cat.jumpBuffer = 0.14; },
       speak: (text) => { catSpeak(text, 240); },
-      getPropsByType: (modelKey) => props.filter(p => p.modelKey === modelKey).map(p => ({ gx: p.gx, gy: p.gy, wx: p.wx, wy: p.wy, wz: p.wz })),
-      getTileAtWorld: (wx, wy) => {
-        const tc = worldToTileCoords(wx, wy);
-        return getTile(tc.gx, tc.gy);
-      }
+      getPropsByType: (key) => props.filter(p => p.modelKey === key).map(p => ({
+        id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ
+      }))
     };
   </script>
 </body>

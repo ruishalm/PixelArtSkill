@@ -13,7 +13,7 @@
 ## 🎮 Live Demos (Jogue no Navegador!)
 
 * 🏡 **[Diorama Multi-Ambientes Completo (room-3d.html / index.html)](https://ruishalm.github.io/PixelArtSkill/)**: Navegue livremente pelos 4 cômodos (Quarto, Sala de Estar, Cozinha e Jardim Externo), decore no modo Drag & Drop e interaja com os pets e murais!
-* 🏔️ **[Vale Felino 3D v2 — Mundo Aberto 56×56 & Grama Voxel (terrain-world.html)](https://ruishalm.github.io/PixelArtSkill/terrain-world.html)**: Mapa expandido **56×56 tiles** com 8 biomas, **23 modelos voxel** (lâminas de grama de 2–3px animadas ao vento, Portal Torii, Farol, Cabana, Cogumelos escaláveis), NPCs vivos (Popó e Pintinhos), balões vetoriais Hi-Res e controle **WASD + Espaço (pulo 2×H)**.
+* 🏔️ **[Vale Felino 3D — Terreno Micro-Voxel Orgânico 360×360 ("Pull-Chain") (terrain-world.html)](https://ruishalm.github.io/PixelArtSkill/terrain-world.html)**: Paisagem contínua **360×360 micro-voxels (`VOX = 2u`)** com 8 biomas, colinas suaves escaláveis, falésias rochosas naturais, rio sinuoso, **23 modelos voxel `1:1`** (lâminas de grama de 2–3px animadas ao vento em 8 FPS, Portal Torii, Farol, Cabana, Cogumelos escaláveis), oclusão unificada via `destination-out`, NPCs vivos (Popó e Pintinhos), balões vetoriais Hi-Res e controle **WASD + Espaço (pulo 2×H)**.
 * 🐱 **[Visualizador Anatômico do Gatinho 3D (cat-3d.html)](https://ruishalm.github.io/PixelArtSkill/cat-3d.html)**: Modelo quadrupedal de 16 fatias do gatinho com olhões expressivos e orelhas empinadas.
 * 🐔 **[Visualizador da Galinha Popó 3D (chicken-3d.html)](https://ruishalm.github.io/PixelArtSkill/chicken-3d.html)**: Modelo rechonchudo da galinha com crista, bico articulado anti-cisalhamento e ciclo de bicadas.
 
@@ -61,26 +61,26 @@ Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo 
 
 ---
 
-## 🏔️ Vale Felino 3D v2 — Motor de Terreno Voxel, Relevo & Grama Viva (`terrain-world.html`)
+## 🏔️ Vale Felino 3D — Motor de Terreno Micro-Voxel Orgânico `360×360` ("Pull-Chain") (`terrain-world.html`)
 
-Mapa aberto **56×56 tiles (`896×896u`)** separado da casa, demonstrando o **Motor de Terreno Voxel 3D em Canvas 2D**:
-- **8 Biomas Conectados**: Vila da Clareira & Cabana (com Galinha Popó NPC), Campos de Girassol (com 2 Pintinhos Piu e Fardos de Feno), Circuito das Ruínas Antigas (`6/16/32/48u`), Praia Dourada (Píer, Vitórias-Régias puláveis e Farol), Jardim Zen com Portal Torii (atravessável pelo vão central), Rio Cristalino com 2 Pontes, Bosque dos Cogumelos Saltitantes (chapéus sólidos até `Z=40`) e Montanha do Pico Sakura (`Z=96`) com cachoeira dupla animada.
+Mapa aberto contínuo com **heightfield fino `360×360` (`VOX = 2u`)**, substituindo blocos quadriculados por relevo orgânico fatiado horizontalmente sobre o motor **Pure HTML5 Canvas 2D**:
+- **Escultura "Pull-Chain" & Relevo Orgânico**:
+  - **Colinas Suaves Escaláveis (`pullHill` + `elasticChainRelax`)**: Elevações orgânicas com curva elástica `cos^steepness` e relaxamento em corrente (puxar 1 pixel arrasta vizinhos proporcionalmente enquanto o chão ancora), gerando morros curvos e caminháveis.
+  - **Falésias Rochosas Naturais (`pullPlateau` + `cliffMask` + `fbm2d`)**: Terraços nivelados com paredões rochosos abruptos nas bordas mascaradas e iluminação direcional calculada pelo gradiente local de altura.
+  - **Rio Sinuoso (`carveRiverPath`)**: Leito escavado continuamente com margens em degraus suaves, pontes e vitórias-régias puláveis.
+- **8 Biomas Conectados**: Vila da Clareira & Cabana (com Galinha Popó NPC), Campos de Girassol (com 2 Pintinhos Piu e Fardos de Feno), Circuito das Ruínas Antigas, Praia Dourada (Píer, Vitórias-Régias e Farol), Jardim Zen com Portal Torii (atravessável pelo vão central), Rio Cristalino com 2 Pontes, Bosque dos Cogumelos Saltitantes (chapéus sólidos até `Z=40`) e Montanha do Pico Sakura (`Z=96`) com cachoeira dupla animada.
 - **Estruturas Monumentais em Escala Real (`1:1` Pixel Density)**: Construções modeladas em voxel real grande sem zoom artificial (`Cabana 52×46×54` `3.4×H`, `Farol 34×34×84` `5.25×H`, `Portal Torii 50×16×54`, `Sakura 54×54×68`, `Pinheiros 28×28×48`, `Pilares 18×18×34`, `Guarda-Sol 28×28×28` e `Barco 34×20×12`).
-- **23 Modelos Voxel & Grama em Lâminas (`2–3px`)**: Grama modelada no próprio Sprite Stacking sem contorno pesado (`noOutline`), animada em 3 frames de vento (8 FPS) + *rustle* sob as patas do gato.
+- **Pré-Bake em Fatias (`terrainSlices[z]`) & Oclusão Unificada via `destination-out`**:
+  - Fatias pré-bakeadas via `Uint32Array` com espessura `min8 - 2` (**zero pinholes** em `360°`) e recorte apenas da área visível (`srcRect`).
+  - Renderização unificada *slice-by-slice* intercalada com `entityLayer`, usando `globalCompositeOperation = 'destination-out'` e silhueta única `1px` (`#3B2219`) para **100% de oclusão** atrás de morros e sob arcos (como o Portal Torii).
+- **23 Modelos Voxel & Lâminas de Grama `2–3px` (`grassTipSlices`)**: Grama modelada em fatias finas sem contorno pesado (`noOutline`), animada em 3 frames de vento a **8 FPS** + *rustle* sob as patas do gato.
 - **Balões Hi-Res & Responsividade 1:1**: Textos desenhados no `ctx` vetorial após o upscale garantindo letras nítidas (zero pixelização) e pixels 100% quadrados tanto em desktop widescreen quanto em celular vertical (com D-Pad touch).
-- **Calibração Física pela Altura do Gato (`H = 16u`) & 5 Modos de Collider**:
-  - `ΔZ ≤ 0.4H` (`Z=6`): Rampa suave transponível andando (`AUTO_STEP`).
-  - `0.4H < ΔZ ≤ 2.0H` (`Z=16` e `Z=32`): Degraus transponíveis com pulo (`Espaço` = pico `~35u`, Coyote Time & Jump Buffer).
-  - `ΔZ > 2.0H` (`Z=48+`) ou **Água**: Intransponíveis com bloqueio por eixo e aviso do gato.
+- **Física Contínua Calibrada pela Altura do Gato (`H = 16u`) & 5 Modos de Collider**:
+  - `ΔZ ≤ AUTO_STEP_MAX` (`5.5u`): Colinas orgânicas e margens suaves escaláveis andando continuamente.
+  - `5.5u < ΔZ ≤ 2.0H`: Degraus e plataformas transponíveis com pulo (`Espaço` = pico `~35u`, Coyote Time & Jump Buffer).
+  - `ΔZ > 2.0H` (falésias) ou **Água**: Intransponíveis com **deslizamento tangencial (`±35°`)** ao longo de encostas curvas e aviso visual do gato.
   - **Colliders em Props**: `'solid'` (troncos, farol), `'box'` (paredes retangulares da cabana e barco), `'platform'` (cogumelos, fardos, tocos, pedras), `'arch'` (2 pilares laterais no Torii) e `'none'` (flores/grama).
-- **16 Peixes Dourados & Botão `🧭 Viagem`**: Viagem rápida pelos marcos principais, minimapa topográfico em tempo real (`56×56`) e toast de descoberta dos 8 biomas.
-
-* **6 Regiões Conectadas**: Clareira do Spawn, Circuito das Ruínas (escada de calibração `Z=6 / 16 / 32 / 48`), Rio Cristalino com Ponte & Pedras de Travessia, Terraços Noroeste, Bosque dos Cogumelos Saltitantes (chapéus sólidos escaláveis) e Montanha do Pico Sakura (`Z=80`) com cachoeira animada e **10 Peixes Dourados** colecionáveis.
-* **Calibração Física pela Altura do Gato (`H = 16u`)**:
-  * `ΔZ ≤ 0.4H` (`Z=6`): Rampa suave transponível apenas andando (`AUTO_STEP`).
-  * `0.4H < ΔZ ≤ 2.0H` (`Z=16` e `Z=32`): Degraus transponíveis com pulo (`Espaço` = pico `~35u`, com Coyote Time e Jump Buffer).
-  * `ΔZ > 2.0H` (`Z=48+`) ou **Água**: Áreas intransponíveis com bloqueio por eixo separado e feedback visual do gato.
-* **Controles**: `W A S D` / Setas para mover relativo à câmera, `Espaço` para pular `2×H`, `Q`/`E` ou arraste do mouse para girar 360°, `M` para miar e `R` para voltar ao Spawn.
+- **16 Peixes Dourados, Minimapa Topográfico (`360×360`) & Controles**: Botão `🧭 Viagem` rápida pelos marcos principais, toast de descoberta dos 8 biomas, `W A S D` / Setas relativos à câmera, `Espaço` para pular `2×H`, `Q`/`E` ou arraste do mouse para girar 360°, `M` para miar e `R` para voltar ao Spawn.
 
 ---
 
@@ -161,11 +161,11 @@ PixelArtSkill/
 ├── SKILL.md                             # Antigravity Skill blindada (regras de render, terreno, modelagem e IA)
 ├── index.html                           # Ponto de entrada padrão (Diorama 3D Multi-Ambientes)
 ├── room-3d.html                         # Diorama 3D com os 4 cômodos e modo Decor
-├── terrain-world.html                   # Mundo Aberto 3D 56×56 (8 Biomas, Grama 2–3px, NPCs e Balões Hi-Res)
+├── terrain-world.html                   # Mundo Aberto 3D 360×360 ("Pull-Chain", 8 Biomas, Grama 2–3px, Oclusão Unificada & Balões Hi-Res)
 ├── cat-3d.html                          # Visualizador 3D do gatinho
 ├── chicken-3d.html                      # Visualizador 3D da galinha Popó
 ├── generate_mega_room.py                # Script principal gerador do mundo 3D multi-cômodos
-├── generate_terrain_world.py            # Construtor do Vale Felino 3D v2 (56×56, colisores 4 modos, Hi-Res)
+├── generate_terrain_world.py            # Construtor do Vale Felino 3D (Micro-Voxel 360×360 Pull-Chain, 1:1, Hi-Res)
 ├── generate_terrain_props.py            # Construtor dos 23 modelos voxel do mapa aberto (incl. grama e pintinho)
 ├── generate_kitchen_and_garden_packs.py # Construtor voxel da Cozinha e Jardim
 ├── generate_living_room_pack.py         # Construtor voxel da Sala de Estar
