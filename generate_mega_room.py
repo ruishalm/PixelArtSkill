@@ -2738,6 +2738,41 @@ html_template = r"""<!DOCTYPE html>
       }
     });
 
+    // Funções de Bounding Quad e Culling do Mural de Post-its
+    function isPointInWallQuad(px, py, p1, p2, p3, p4, tolerance = 3) {
+      function cross(a, b, x, y) {
+        return (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+      }
+      const c1 = cross(p1, p2, px, py);
+      const c2 = cross(p2, p3, px, py);
+      const c3 = cross(p3, p4, px, py);
+      const c4 = cross(p4, p1, px, py);
+      const allPos = (c1 >= -tolerance && c2 >= -tolerance && c3 >= -tolerance && c4 >= -tolerance);
+      const allNeg = (c1 <= tolerance && c2 <= tolerance && c3 <= tolerance && c4 <= tolerance);
+      return allPos || allNeg;
+    }
+
+    function getCorkboardQuad() {
+      const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
+      if (!corkboard) return null;
+
+      // Se a parede leste estiver sumindo ou virando para a frente (culled), a área de clique some 100%!
+      const sinA = Math.sin(turn);
+      if (sinA > -0.08) return null; // Parede oculta ou de perfil extremo
+
+      const xWall = ROOM_R;
+      const p1 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ - 26);
+      const p2 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ - 26);
+      const p3 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ + 26);
+      const p4 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ + 26);
+
+      // Conforme a parede vira, a largura na tela diminui: se for < 8px, já sumiu para o clique!
+      const projW = Math.max(p1.x, p2.x, p3.x, p4.x) - Math.min(p1.x, p2.x, p3.x, p4.x);
+      if (projW < 8) return null;
+
+      return { p1, p2, p3, p4, projW };
+    }
+
     let isDraggingView = false;
     let lastX = 0;
     let pointerDownPos = { x: 0, y: 0 };
@@ -2750,22 +2785,11 @@ html_template = r"""<!DOCTYPE html>
       isPressedOnCorkboard = false;
 
       if (!isDecorMode) {
-        // Se clicar no Mural de Post-its, calcula o bounding box exato projetado na parede leste!
-        const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
-        if (corkboard && Math.sin(turn) <= 0.05) {
-          const xWall = ROOM_R;
-          const p1 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ - 26);
-          const p2 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ - 26);
-          const p3 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ + 26);
-          const p4 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ + 26);
-          const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 10;
-          const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 10;
-          const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 10;
-          const maxY = Math.max(p1.y, p2.y, p3.y, p4.y) + 10;
-          if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
-            isPressedOnCorkboard = true;
-            return;
-          }
+        // A área de clique acompanha perfeitamente a perspectiva 3D e some quando a parede vira!
+        const q = getCorkboardQuad();
+        if (q && isPointInWallQuad(sx, sy, q.p1, q.p2, q.p3, q.p4, 3)) {
+          isPressedOnCorkboard = true;
+          return;
         }
       }
 
@@ -2984,18 +3008,9 @@ html_template = r"""<!DOCTYPE html>
         const worldPos = unproject(sx, sy);
 
         // Clique no Mural de Post-its abre o Zoom / Modal de Lembretes!
-        const corkboard = items.find(it => (it.id === 'corkboard' || it.id === 'frame_cat') && it.visible !== false);
-        if (corkboard && Math.sin(turn) <= 0.05) {
-          const xWall = ROOM_R;
-          const p1 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ - 26);
-          const p2 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ - 26);
-          const p3 = project(xWall - 0.5, corkboard.y + 24, corkboard.liftZ + 26);
-          const p4 = project(xWall - 0.5, corkboard.y - 24, corkboard.liftZ + 26);
-          const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 12;
-          const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 12;
-          const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 12;
-          const maxY = Math.max(p1.y, p2.y, p3.y, p4.y) + 12;
-          const isInside = (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY);
+        const q = getCorkboardQuad();
+        if (q) {
+          const isInside = isPointInWallQuad(sx, sy, q.p1, q.p2, q.p3, q.p4, 4);
           if (isPressedOnCorkboard || (moved < 25 && isInside)) {
             isPressedOnCorkboard = false;
             openCorkboardModal();
