@@ -9,27 +9,27 @@ def to_strings(slices):
         res.append([''.join(str(v) for v in row) for row in s])
     return res
 
-# 1. MESA DE ESTUDO AMPLA & ESPAÇOSA (64x34, 15 slices)
-desk_w, desk_h = 64, 34
+# 1. MESA DE ESTUDO AMPLA & ESPAÇOSA (80x36, 15 slices)
+desk_w, desk_h = 80, 36
 desk_slices = []
 for z in range(15):
     g = make_grid(desk_w, desk_h, 0)
     if z < 10: # 4 Pernas de madeira maciça escura
-        for lx, ly in [(4, 4), (54, 4), (4, 24), (54, 24)]:
+        for lx, ly in [(4, 4), (desk_w - 10, 4), (4, desk_h - 10), (desk_w - 10, desk_h - 10)]:
             for dy in range(6):
                 for dx in range(6):
                     g[ly + dy][lx + dx] = 1 # perna escura
     elif z < 12: # Estrutura e travessas reforçadas sob o tampo
-        for ly in range(4, 30):
+        for ly in range(4, desk_h - 4):
             g[ly][4] = 1; g[ly][5] = 1; g[ly][6] = 1
-            g[ly][57] = 1; g[ly][58] = 1; g[ly][59] = 1
-        for lx in range(4, 60):
+            g[ly][desk_w - 7] = 1; g[ly][desk_w - 6] = 1; g[ly][desk_w - 5] = 1
+        for lx in range(4, desk_w - 4):
             g[4][lx] = 1; g[5][lx] = 1
-            g[28][lx] = 1; g[29][lx] = 1
+            g[desk_h - 6][lx] = 1; g[desk_h - 5][lx] = 1
     else: # Tampo amplo de carvalho aconchegante (z=12, 13, 14)
-        for y in range(2, 32):
-            for x in range(2, 62):
-                if x in (2, 61) or y in (2, 31):
+        for y in range(2, desk_h - 2):
+            for x in range(2, desk_w - 2):
+                if x in (2, desk_w - 3) or y in (2, desk_h - 3):
                     g[y][x] = 3 # Chanfro sutil da borda
                 else:
                     g[y][x] = 2 # Carvalho acolhedor

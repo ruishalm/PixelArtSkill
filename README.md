@@ -92,6 +92,16 @@ y = -r_x \cdot \sin(\theta) + r_y \cdot \cos(\theta)
 
 ---
 
+### 🐾 Inteligência de Plataformas & Confinamento Espacial
+- **Mesa Ampliada (80x36)**: Espaço generoso para acessórios modulares e pets descansarem e passearem.
+- **Gato Mochi na Mesa**: Ao ser colocado na mesa, dorme em postura de pãozinho (`loaf`) por um tempo garantido (`deskSleepTimer`) antes de decidir descer ou passear pelo tampo.
+- **Galinha Popó na Prateleira**: Pode voar/subir na prateleira de parede, chocando aconchegada entre os livros (`state = 'brood'`), e descer flutuando com bater de asas suave.
+- **Pintinho Piu Confinado**: Onde for colocado (mesa ou prateleira), **não desce sozinho**. Fica "sanzando" e ciscando estritamente dentro dos limites daquela plataforma sem cair.
+- **Ajuste Anatômico dos Chapéus**: Chapéus agora repousam confortavelmente no cocuruto da cabeça entre as orelhas do gatinho. Na galinha Popó, o chapéu é inclinado charmosamente ao lado da crista.
+- **Pintinho no Chapéu (Walking Hat)**: Ao equipar chapéu no pintinho, ele veste o chapéu inteiro cobrindo o corpinho com leve transparência (88%), com duas patinhas amarelas andando por baixo e olhinhos pretos brilhantes com biquinho espiando pela aba frontal!
+
+---
+
 ## 🚀 Como Executar Localmente
 
 Como o projeto usa apenas HTML, CSS e JavaScript puros sem bundler ou dependências, basta clonar e abrir qualquer arquivo:
