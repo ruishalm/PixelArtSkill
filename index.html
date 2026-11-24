@@ -3888,6 +3888,11 @@
           }
         }
       }
+
+      // DESENHA O ITEM ARRASTADO NO TOPO DE TUDO (NUNCA SOME DA TELA!)
+      if (isDraggingItem && selectedItem && !selectedItem.isWallItem) {
+        renderItem(selectedItem);
+      }
     }
 
     // Corações flutuantes de carinho
@@ -4041,18 +4046,16 @@
       if (selectedItem && !selectedItem.isWallItem) {
         selectedItem.selfAngle = (selectedItem.selfAngle + Math.PI / 2) % (Math.PI * 2);
 
-        // Se o item selecionado for a mesa, rotaciona seus acessórios em +90° preservando posições exatas!
-        if (selectedItem.id === 'desk') {
+        // SISTEMA UNIFICADO DE PARENTING: Se rotacionar qualquer móvel de superfície (mesa, estante, mesinha), rotaciona todos os itens apoiados nele!
+        if (selectedItem.id === 'desk' || selectedItem.id === 'bookshelf' || selectedItem.isBookshelf || selectedItem.id === 'coffee_table') {
+          const surfId = (selectedItem.id === 'bookshelf' || selectedItem.isBookshelf) ? 'bookshelf' : selectedItem.id;
+          const cosP = Math.cos(selectedItem.selfAngle || 0);
+          const sinP = Math.sin(selectedItem.selfAngle || 0);
           for (const it of items) {
-            if (it.surface === 'desk') {
-              // Rotação vetorial 2D de +90 graus (PI/2): newOffX = -oldOffY, newOffY = oldOffX
-              const oldOffX = it.offX || 0;
-              const oldOffY = it.offY || 0;
-              it.offX = -oldOffY;
-              it.offY = oldOffX;
-              it.x = selectedItem.x + it.offX;
-              it.y = selectedItem.y + it.offY;
-              it.selfAngle = (it.selfAngle + Math.PI / 2) % (Math.PI * 2);
+            if (it.surface === surfId) {
+              it.x = selectedItem.x + (it.offX || 0) * cosP - (it.offY || 0) * sinP;
+              it.y = selectedItem.y + (it.offX || 0) * sinP + (it.offY || 0) * cosP;
+              it.selfAngle = selectedItem.selfAngle;
             }
           }
         }
@@ -4251,27 +4254,44 @@
         selectedItem.x = Math.max(-limitX, Math.min(limitX, newX));
         selectedItem.y = Math.max(-limitY, Math.min(limitY, newY));
 
-        // Se estiver arrastando a mesa inteira, move todos os itens apoiados nela juntos!
-        if (selectedItem.id === 'desk') {
+        // SISTEMA UNIFICADO DE PARENTING: Se estiver arrastando qualquer móvel com superfície (mesa, estante, mesinha), move todos os itens apoiados nele juntos!
+        if (selectedItem.id === 'desk' || selectedItem.id === 'bookshelf' || selectedItem.isBookshelf || selectedItem.id === 'coffee_table') {
+          const surfId = (selectedItem.id === 'bookshelf' || selectedItem.isBookshelf) ? 'bookshelf' : selectedItem.id;
+          const cosP = Math.cos(selectedItem.selfAngle || 0);
+          const sinP = Math.sin(selectedItem.selfAngle || 0);
           for (const it of items) {
-            if (it.surface === 'desk') {
-              it.x = selectedItem.x + it.offX;
-              it.y = selectedItem.y + it.offY;
+            if (it.surface === surfId) {
+              it.x = selectedItem.x + (it.offX || 0) * cosP - (it.offY || 0) * sinP;
+              it.y = selectedItem.y + (it.offX || 0) * sinP + (it.offY || 0) * cosP;
               it.selfAngle = selectedItem.selfAngle;
             }
           }
         } else if (selectedItem.isProp || selectedItem.isCat || selectedItem.isChicken) {
-          // ACESSÓRIO UNIVERSAL OU PET: pode ser colocado na mesa, sofá, mesinha, prateleira ou chão!
+          // ACESSÓRIO UNIVERSAL OU PET: pode ser colocado na mesa, sofá, mesinha, estante, prateleira ou chão!
           const shelf = items.find(it => it.id === 'shelf');
           const sofa = items.find(it => it.id === 'sofa');
           const coffeeTable = items.find(it => it.id === 'coffee_table');
+          const bookshelf = items.find(it => it.id === 'bookshelf' || it.isBookshelf);
+
+          // Checa se está sobre a ESTANTE
+          let onBookshelfArea = false;
+          let bsLocalX = 0, bsLocalY = 0, cosB = 1, sinB = 0;
+          if (bookshelf && bookshelf.visible !== false) {
+            cosB = Math.cos(bookshelf.selfAngle || 0);
+            sinB = Math.sin(bookshelf.selfAngle || 0);
+            const rbx = selectedItem.x - bookshelf.x;
+            const rby = selectedItem.y - bookshelf.y;
+            bsLocalX =  rbx * cosB + rby * sinB;
+            bsLocalY = -rbx * sinB + rby * cosB;
+            onBookshelfArea = Math.abs(bsLocalX) < 28 && Math.abs(bsLocalY) < 18;
+          }
 
           // Checa se está sobre o SOFÁ
           const onSofaArea = sofa && sofa.visible !== false && Math.abs(selectedItem.x - sofa.x) < 32 && Math.abs(selectedItem.y - sofa.y) < 18;
           // Checa se está sobre a MESINHA DE CENTRO
           const onTableArea = coffeeTable && coffeeTable.visible !== false && Math.abs(selectedItem.x - coffeeTable.x) < 20 && Math.abs(selectedItem.y - coffeeTable.y) < 14;
 
-          // 1. Checa se está sobre a MESA
+          // Checa se está sobre a MESA DO QUARTO
           let onDeskArea = false;
           let localX = 0, localY = 0, cosD = 1, sinD = 0;
           if (desk) {
@@ -4284,42 +4304,40 @@
             onDeskArea = Math.abs(localX) < 44 && Math.abs(localY) < 22;
           }
 
-          // 2. Checa se está sobre a PRATELEIRA
+          // Checa se está sobre a PRATELEIRA DA PAREDE
           const onShelfArea = shelf && Math.abs(selectedItem.x - (-ROOM_R + 9)) < 22 && Math.abs(selectedItem.y - shelf.y) < (shelf.length / 2 + 6);
 
           if (onBookshelfArea) {
             // Colocou NA ESTANTE!
             selectedItem.surface = 'bookshelf';
-            const cosB = Math.cos(bookshelf.selfAngle);
-            const sinB = Math.sin(bookshelf.selfAngle);
 
-            // Determina a prateleira com base na altura
+            // Determina a prateleira com base na altura ou mouse
             const currentZ = selectedItem.liftZ || 0;
-            let tierZ = 3.5; // Prateleira 1 (Inferior: z=2..13)
+            let tierZ = 3.5; // Prateleira 1 (Inferior)
             let tierNum = 1;
             if (currentZ > 36) {
               tierZ = 43.5; // Topo da estante
               tierNum = 4;
             } else if (currentZ > 23) {
-              tierZ = 29.5; // Prateleira 3 (Superior: z=28..39)
+              tierZ = 29.5; // Prateleira 3 (Superior)
               tierNum = 3;
             } else if (currentZ > 10) {
-              tierZ = 16.5; // Prateleira 2 (Média: z=15..26)
+              tierZ = 16.5; // Prateleira 2 (Média)
               tierNum = 2;
             }
             selectedItem.liftZ = tierZ;
             selectedItem.tier = tierNum;
 
-            // Snap magnético inteligente nos 3 slots (Esq: -11, Centro: 0, Dir: 11) ou livre
+            // Snap magnético inteligente nos 3 slots (Esq: -8, Centro: 0, Dir: 8)
             let snapSlotX = 0;
-            if (bsLocalX < -5.5) snapSlotX = -11;
-            else if (bsLocalX > 5.5) snapSlotX = 11;
+            if (bsLocalX < -4.5) snapSlotX = -8;
+            else if (bsLocalX > 4.5) snapSlotX = 8;
             else snapSlotX = 0;
 
             selectedItem.offX = snapSlotX;
             selectedItem.offY = 0;
-            selectedItem.x = bookshelf.x + clampX * cosB;
-            selectedItem.y = bookshelf.y + clampX * sinB;
+            selectedItem.x = bookshelf.x + snapSlotX * cosB;
+            selectedItem.y = bookshelf.y + snapSlotX * sinB;
             selectedItem.selfAngle = bookshelf.selfAngle;
 
             if (selectedItem.isCat) {
