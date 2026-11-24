@@ -701,35 +701,36 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     // =========================================================================
     // Modos:
     // - 'solid': cilindro bloqueante até (baseZ + h)
+    // - 'box': caixa retangular bloqueante até (baseZ + h) para edificações/barcos
     // - 'platform': bloqueia abaixo do topo e fornece apoio escalável em (baseZ + h)
     // - 'arch': 2 pilares laterais deixando vão central 100% passável!
     // - 'none': atravessável
     const PROP_COLLIDER_META = {
-      pine_tree:       { mode: 'solid',    r: 4.5, h: 30 },
-      sakura_oak:      { mode: 'solid',    r: 7.5, h: 40 },
-      cozy_cabin:      { mode: 'solid',    r: 12.2, h: 28 },
-      lighthouse:      { mode: 'solid',    r: 8.5, h: 42 },
-      campfire:        { mode: 'solid',    r: 5.2, h: 9 },
-      wood_sign:       { mode: 'solid',    r: 3.6, h: 14 },
-      ruin_pillar:     { mode: 'solid',    r: 5.5, h: 18 },
-      stone_lantern:   { mode: 'solid',    r: 4.5, h: 18 },
-      beach_umbrella:  { mode: 'solid',    r: 2.8, h: 18 },
-      wood_boat:       { mode: 'solid',    r: 7.5, h: 8 },
-      bush_berry:      { mode: 'solid',    r: 4.8, h: 9 },
-      sunflower:       { mode: 'solid',    r: 3.2, h: 15 },
-      pumpkin_patch:   { mode: 'solid',    r: 5.8, h: 8 },
-      mushroom_giant:  { mode: 'platform', r: 7.8, h: 16 },
-      boulder_large:   { mode: 'platform', r: 6.2, h: 12 },
-      hay_bale:        { mode: 'platform', r: 6.8, h: 10 },
-      tree_stump:      { mode: 'platform', r: 6.5, h: 10 },
-      torii_gate:      { mode: 'arch',     offset: 7.2, r: 2.5, h: 26 },
+      pine_tree:       { mode: 'solid',    r: 5.0,  h: 48 },
+      sakura_oak:      { mode: 'solid',    r: 9.5,  h: 68 },
+      cozy_cabin:      { mode: 'box',      halfW: 23.5, halfD: 20.5, h: 54 },
+      lighthouse:      { mode: 'solid',    r: 14.5, h: 84 },
+      campfire:        { mode: 'solid',    r: 5.2,  h: 9 },
+      wood_sign:       { mode: 'solid',    r: 3.6,  h: 14 },
+      ruin_pillar:     { mode: 'solid',    r: 7.5,  h: 34 },
+      stone_lantern:   { mode: 'solid',    r: 5.5,  h: 24 },
+      beach_umbrella:  { mode: 'solid',    r: 2.5,  h: 28 },
+      wood_boat:       { mode: 'box',      halfW: 15.0, halfD: 8.5,  h: 12 },
+      bush_berry:      { mode: 'solid',    r: 4.8,  h: 9 },
+      sunflower:       { mode: 'solid',    r: 3.2,  h: 15 },
+      pumpkin_patch:   { mode: 'solid',    r: 5.8,  h: 8 },
+      mushroom_giant:  { mode: 'platform', r: 7.8,  h: 16 },
+      boulder_large:   { mode: 'platform', r: 6.2,  h: 12 },
+      hay_bale:        { mode: 'platform', r: 6.8,  h: 10 },
+      tree_stump:      { mode: 'platform', r: 6.5,  h: 10 },
+      torii_gate:      { mode: 'arch',     offset: 16.5, r: 3.8, h: 54 },
       flower_tuft:     { mode: 'none' },
       grass_tuft_short:{ mode: 'none' },
       grass_tuft_tall: { mode: 'none' }
     };
 
     const props = [];
-    const propColliders = [];     // Todos os cilindros sólidos e pilares de arco
+    const propColliders = [];     // Cilindros sólidos, caixas ('box') e pilares de arco ('arch')
     const platformColliders = []; // Tops escaláveis (cogumelos, pedras, fardos, tocos)
     const fishes = [];
     const npcs = [];
@@ -766,14 +767,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         isFire: modelKey === 'campfire' || modelKey === 'stone_lantern',
         isPlatform: meta.mode === 'platform',
         topZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ,
-        promoteWide: (modelKey === 'sakura_oak' || modelKey === 'cozy_cabin')
+        promoteWide: (modelKey === 'sakura_oak' || modelKey === 'cozy_cabin' || modelKey === 'lighthouse' || modelKey === 'wood_boat')
       };
       props.push(item);
 
       if (meta.mode === 'solid') {
         propColliders.push({
+          shape: 'circle',
           wx, wy,
           r: meta.r * scale,
+          baseZ: liftZ,
+          colH: meta.h * scale,
+          modelKey
+        });
+      } else if (meta.mode === 'box') {
+        propColliders.push({
+          shape: 'box',
+          wx, wy,
+          halfW: meta.halfW * scale,
+          halfD: meta.halfD * scale,
+          angle,
           baseZ: liftZ,
           colH: meta.h * scale,
           modelKey
@@ -791,10 +804,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const sinA = Math.sin(angle);
         const off = meta.offset * scale;
         propColliders.push({
+          shape: 'circle',
           wx: wx - off * cosA, wy: wy - off * sinA,
           r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey
         });
         propColliders.push({
+          shape: 'circle',
           wx: wx + off * cosA, wy: wy + off * sinA,
           r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey
         });
@@ -817,15 +832,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     function populateWorldObjects() {
       // 1. Vila da Clareira
-      addProp('cozy_cabin', 16, 30, { radius: 13 });
+      addProp('cozy_cabin', 15, 31, { radius: 22 });
       addProp('campfire', 22, 27);
       addProp('wood_sign', 23, 30, { angle: 0.2 });
-      addProp('pumpkin_patch', 15, 33);
+      addProp('pumpkin_patch', 15, 34);
       addProp('tree_stump', 23, 32);
-      addProp('flower_tuft', 17, 32);
+      addProp('flower_tuft', 17, 33);
       addProp('flower_tuft', 21, 31);
-      addProp('pine_tree', 14, 23, { radius: 8 });
-      addProp('pine_tree', 24, 23, { radius: 8 });
+      addProp('pine_tree', 14, 23, { radius: 10 });
+      addProp('pine_tree', 24, 23, { radius: 10 });
       addProp('bush_berry', 24, 34);
 
       // 2. Campos de Girassol
@@ -838,31 +853,31 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       addProp('flower_tuft', 4, 29);
 
       // 3. Circuito das Ruínas
-      addProp('ruin_pillar', 6, 37);
-      addProp('ruin_pillar', 17, 37);
+      addProp('ruin_pillar', 6, 37, { radius: 8 });
+      addProp('ruin_pillar', 17, 37, { radius: 8 });
       addProp('stone_lantern', 6, 41);
       addProp('stone_lantern', 17, 41);
       addProp('boulder_large', 20, 41);
       addProp('flower_tuft', 8, 43);
 
-      // 4. Praia Dourada, Píer & Farol
-      addProp('lighthouse', 7, 51, { radius: 9 });
-      addProp('stone_lantern', 10, 49);
-      addProp('beach_umbrella', 15, 47);
-      addProp('beach_umbrella', 23, 47);
-      addProp('wood_boat', 33, 47, { angle: 0.15 });
+      // 4. Praia Dourada, Píer & Farol Monumental
+      addProp('lighthouse', 7, 50, { ox: 8, oy: 8, radius: 16 });
+      addProp('stone_lantern', 10, 48);
+      addProp('beach_umbrella', 15, 47, { radius: 9 });
+      addProp('beach_umbrella', 23, 47, { radius: 9 });
+      addProp('wood_boat', 33, 47, { angle: 0.15, radius: 15 });
       addProp('boulder_large', 33, 51);
 
-      // 5. Jardim Zen & Portal Torii (Vão central entre gx=15..17 em gy=13!)
-      addProp('torii_gate', 16, 13, { ox: 8, angle: 0, allowOnPath: true });
-      addProp('stone_lantern', 14, 15);
+      // 5. Jardim Zen & Portal Torii Gigante (Centralizado em gx=16; pilares em 15 e 17, vão livre de 25.4u!)
+      addProp('torii_gate', 16, 13, { ox: 0, angle: 0, radius: 18, allowOnPath: true });
+      addProp('stone_lantern', 13, 15);
       addProp('stone_lantern', 19, 15);
       addProp('stone_lantern', 13, 10);
       addProp('bush_berry', 21, 9);
       addProp('flower_tuft', 14, 7);
       addProp('boulder_large', 7, 5);
-      addProp('ruin_pillar', 4, 4);
-      addProp('pine_tree', 21, 5);
+      addProp('ruin_pillar', 4, 4, { radius: 8 });
+      addProp('pine_tree', 21, 5, { radius: 10 });
 
       // 6. Bosque dos Cogumelos Saltitantes (Sudeste)
       addProp('mushroom_giant', 37, 34); // Cap Z=16
@@ -871,7 +886,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       addProp('mushroom_giant', 45, 31); // Cap Z=16
       addProp('mushroom_giant', 36, 40); // Cap Z=16
       for (const [tx, ty] of [[33, 32], [35, 37], [38, 42], [44, 41], [47, 33], [51, 35], [49, 41], [33, 43], [52, 43]]) {
-        addProp('pine_tree', tx, ty, { radius: 8 });
+        addProp('pine_tree', tx, ty, { radius: 10 });
       }
       addProp('tree_stump', 34, 34);
       addProp('hay_bale', 49, 40);
@@ -880,22 +895,22 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       addProp('flower_tuft', 35, 32);
       addProp('flower_tuft', 44, 32);
 
-      // 7. Montanha & Pico Sakura (Trilha em espiral mantida 100% livre!)
-      addProp('sakura_oak', 38, 10, { scale: 1.0, radius: 13 });
-      addProp('stone_lantern', 42, 12);
-      addProp('stone_lantern', 36, 12);
+      // 7. Montanha & Pico Sakura Monumental (Trilha em espiral mantida 100% livre!)
+      addProp('sakura_oak', 38, 10, { scale: 1.0, radius: 18 });
+      addProp('stone_lantern', 42, 13);
+      addProp('stone_lantern', 36, 13);
       addProp('flower_tuft', 37, 13);
       addProp('flower_tuft', 41, 9);
       addProp('boulder_large', 34, 21);
-      addProp('pine_tree', 36, 22);
+      addProp('pine_tree', 36, 22, { radius: 10 });
 
-      // Pinheiros nas bordas arborizadas (fora de caminhos/água/mar)
+      // Pinheiros altos nas bordas arborizadas (fora de caminhos/água/mar)
       for (let gx = 1; gx <= 54; gx += 7) {
-        addProp('pine_tree', gx, 1);
+        addProp('pine_tree', gx, 1, { radius: 10 });
       }
       for (let gy = 4; gy <= 44; gy += 6) {
-        addProp('pine_tree', 1, gy);
-        addProp('pine_tree', 54, gy);
+        addProp('pine_tree', 1, gy, { radius: 10 });
+        addProp('pine_tree', 54, gy, { radius: 10 });
       }
 
       // 16 PEIXES DOURADOS COLECIONÁVEIS distribuídos pelos 8 biomas!
@@ -904,7 +919,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       addFish(5,  20, 'Colina dos Girassóis');           // #3 (Z=16)
       addFish(14, 39, 'Torre das Ruínas');               // #4 (Z=48)
       addFish(18, 52, 'Ponta do Píer');                  // #5 (Z=2)
-      addFish(8,  49, 'Farol da Praia');                 // #6 (Z=16)
+      addFish(9,  52, 'Mirante do Farol');               // #6 (Z=16 bem visível frente ao Farol!)
       addFish(32, 50, 'Ilhota das Vitórias-Régias');     // #7 (Z=0 pós pulos)
       addFish(27, 28, 'Ponte Central');                  // #8 (Z=2)
       addFish(27, 39, 'Pedra do Rio', 0);
@@ -1044,6 +1059,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       return { bestH, centerTile };
     }
 
+    function isPointInPropCollider(px, py, sc, pad = 3.0) {
+      if (sc.shape === 'box') {
+        const dx = px - sc.wx;
+        const dy = py - sc.wy;
+        const ca = Math.cos(-(sc.angle || 0));
+        const sa = Math.sin(-(sc.angle || 0));
+        const lx = dx * ca - dy * sa;
+        const ly = dx * sa + dy * ca;
+        return Math.abs(lx) < sc.halfW + pad && Math.abs(ly) < sc.halfD + pad;
+      }
+      return Math.hypot(px - sc.wx, py - sc.wy) < sc.r + pad;
+    }
+
     function checkCollisionAt(nx, ny, catZ, onGround) {
       if (nx < WORLD_MIN + 6 || nx > WORLD_MAX - 6 || ny < WORLD_MIN + 6 || ny > WORLD_MAX - 6) {
         return { blocked: true, reason: 'high', maxStepH: 999 };
@@ -1083,11 +1111,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      // 2. Props Sólidos e Pilares de Arco (como troncos, cabanas, pilares, Torii)
+      // 2. Props Sólidos, Caixas ('box' como cabana/barco) e Pilares de Arco ('arch' Torii)
       for (const sc of propColliders) {
-        const d = Math.hypot(nx - sc.wx, ny - sc.wy);
-        if (d < sc.r + 3.0) {
-          if (catZ >= sc.baseZ - 2 && catZ < sc.baseZ + sc.colH - 1.5) {
+        if (catZ >= sc.baseZ - 2 && catZ < sc.baseZ + sc.colH - 1.5) {
+          if (isPointInPropCollider(nx, ny, sc, 3.0)) {
             blocked = true;
             propBlocked = true;
             const topH = sc.baseZ + sc.colH;
@@ -1139,9 +1166,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const sc of propColliders) {
-        if (Math.hypot(probeX - sc.wx, probeY - sc.wy) < sc.r + 3.2 && cat.groundZ < sc.baseZ + sc.colH - 1.5) {
+        if (cat.groundZ < sc.baseZ + sc.colH - 1.5 && isPointInPropCollider(probeX, probeY, sc, 3.2)) {
           cat.obstacleHint = 'high';
-          cat.obstacleLabel = '🌲 Obstáculo Sólido';
+          cat.obstacleLabel = sc.shape === 'box' ? '🏠 Parede / Estrutura' : '🌲 Obstáculo Sólido';
           return;
         }
       }
@@ -1342,7 +1369,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           if (t && t.type !== 'water' && Math.abs(t.h - npc.z) <= 6.5) {
             let hitProp = false;
             for (const sc of propColliders) {
-              if (Math.hypot(nx - sc.wx, ny - sc.wy) < sc.r + 3.5) { hitProp = true; break; }
+              if (isPointInPropCollider(nx, ny, sc, 3.5)) { hitProp = true; break; }
             }
             if (!hitProp) {
               npc.x = nx;
@@ -1635,7 +1662,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function invalidateAngleCachesIfNeeded() {
-      const qAngle = Math.round(turn * 180 / Math.PI);
+      const qAngle = Math.round((turn * 180 / Math.PI) / 3) * 3;
       if (cachedTurnAngle !== qAngle) {
         cachedTurnAngle = qAngle;
         for (const k in propOutlineCache) delete propOutlineCache[k];

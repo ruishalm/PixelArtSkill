@@ -37,27 +37,27 @@ Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo 
 ```
 
 1. **🛏️ Quarto Aconchegante**:
-   - Cama quentinha, lousa de cortiça com post-its funcionais interativos, estante modular e setup workstation de carvalho (laptop, tablet digitalizador, caneca fumegante, pilha de livros).
-   - Relógio de parede cilíndrico sincronizado com o horário real do seu sistema e janela com nuvens volumétricas em parallax.
+   * Cama quentinha, lousa de cortiça com post-its funcionais interativos, estante modular e setup workstation de carvalho (laptop, tablet digitalizador, caneca fumegante, pilha de livros).
+   * Relógio de parede cilíndrico sincronizado com o horário real do seu sistema e janela com nuvens volumétricas em parallax.
 
 2. **🛋️ Sala de Estar Retrô**:
-   - Sofá aconchegante de veludo com manta bordada, tapete escandinavo 3D, mesa de centro com café e livro aberto.
-   - TV retrô com tela azul e rack de madeira no centro da sala.
-   - Estante imponente de livros com 3 nichos fechados por painéis de nogueira maciça (anti-clipping lateral e traseiro).
-   - Quadro temático de galinhas no campo e janela colonial com vista ensolarada para o jardim.
+   * Sofá aconchegante de veludo com manta bordada, tapete escandinavo 3D, mesa de centro com café e livro aberto.
+   * TV retrô com tela azul e rack de madeira no centro da sala.
+   * Estante imponente de livros com 3 nichos fechados por painéis de nogueira maciça (anti-clipping lateral e traseiro).
+   * Quadro temático de galinhas no campo e janela colonial com vista ensolarada para o jardim.
 
 3. **🍽️ Cozinha Pastel & Café**:
-   - Bancada contínua de ponta a ponta na parede Norte com pia de aço inox, cooktop e forno embutidos sob a janela.
-   - **Geladeira Retrô Pastel**: Interativa ao clique, abre um modal estilizado em formato de porta de geladeira com ímãs de frutas e lista de compras funcional com post-its.
-   - Mesa de jantar quadrada maciça e espaçosa com 4 cadeiras e fruteira central de cerâmica (maçãs, bananas e laranjas).
-   - Aparador rústico com gaveteiros e bule de louça na parede Oeste.
+   * Bancada contínua de ponta a ponta na parede Norte com pia de aço inox, cooktop e forno embutidos sob a janela.
+   * **Geladeira Retrô Pastel**: Interativa ao clique, abre um modal estilizado em formato de porta de geladeira com ímãs de frutas e lista de compras funcional com post-its.
+   * Mesa de jantar quadrada maciça e espaçosa com 4 cadeiras e fruteira central de cerâmica (maçãs, bananas e laranjas).
+   * Aparador rústico com gaveteiros e bule de louça na parede Oeste.
 
 4. **🌳 Jardim Externo & Céu Aberto**:
-   - Piso de grama viva com flores coloridas perimetrais ao longo de todas as bordas do diorama.
-   - **Carvalho Centenário Gigante**: Árvore com tronco massivo de 72x64 fatias e copa frondosa com brotos cor-de-rosa.
-   - **Balanço de Pneu Vertical**: Suspenso no galho horizontal da árvore por uma única corda trançada, onde a galinha Popó sobe para balançar no vento!
-   - Fachada colonial da casa com janela com floreiras, arbustos e cadeira de varanda aconchegante.
-   - Paredes substituídas por um horizonte panorâmico de céu azul infinito e nuvens ensolaradas.
+   * Piso de grama viva com flores coloridas perimetrais ao longo de todas as bordas do diorama.
+   * **Carvalho Centenário Gigante**: Árvore com tronco massivo de 72x64 fatias e copa frondosa com brotos cor-de-rosa.
+   * **Balanço de Pneu Vertical**: Suspenso no galho horizontal da árvore por uma única corda trançada, onde a galinha Popó sobe para balançar no vento!
+   * Fachada colonial da casa com janela com floreiras, arbustos e cadeira de varanda aconchegante.
+   * Paredes substituídas por um horizonte panorâmico de céu azul infinito e nuvens ensolaradas.
 
 ---
 
@@ -65,14 +65,22 @@ Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo 
 
 Mapa aberto **56×56 tiles (`896×896u`)** separado da casa, demonstrando o **Motor de Terreno Voxel 3D em Canvas 2D**:
 - **8 Biomas Conectados**: Vila da Clareira & Cabana (com Galinha Popó NPC), Campos de Girassol (com 2 Pintinhos Piu e Fardos de Feno), Circuito das Ruínas Antigas (`6/16/32/48u`), Praia Dourada (Píer, Vitórias-Régias puláveis e Farol), Jardim Zen com Portal Torii (atravessável pelo vão central), Rio Cristalino com 2 Pontes, Bosque dos Cogumelos Saltitantes (chapéus sólidos até `Z=40`) e Montanha do Pico Sakura (`Z=96`) com cachoeira dupla animada.
+- **Estruturas Monumentais em Escala Real (`1:1` Pixel Density)**: Construções modeladas em voxel real grande sem zoom artificial (`Cabana 52×46×54` `3.4×H`, `Farol 34×34×84` `5.25×H`, `Portal Torii 50×16×54`, `Sakura 54×54×68`, `Pinheiros 28×28×48`, `Pilares 18×18×34`, `Guarda-Sol 28×28×28` e `Barco 34×20×12`).
 - **23 Modelos Voxel & Grama em Lâminas (`2–3px`)**: Grama modelada no próprio Sprite Stacking sem contorno pesado (`noOutline`), animada em 3 frames de vento (8 FPS) + *rustle* sob as patas do gato.
 - **Balões Hi-Res & Responsividade 1:1**: Textos desenhados no `ctx` vetorial após o upscale garantindo letras nítidas (zero pixelização) e pixels 100% quadrados tanto em desktop widescreen quanto em celular vertical (com D-Pad touch).
-- **Calibração Física pela Altura do Gato (`H = 16u`) & 4 Modos de Collider**:
+- **Calibração Física pela Altura do Gato (`H = 16u`) & 5 Modos de Collider**:
   - `ΔZ ≤ 0.4H` (`Z=6`): Rampa suave transponível andando (`AUTO_STEP`).
   - `0.4H < ΔZ ≤ 2.0H` (`Z=16` e `Z=32`): Degraus transponíveis com pulo (`Espaço` = pico `~35u`, Coyote Time & Jump Buffer).
   - `ΔZ > 2.0H` (`Z=48+`) ou **Água**: Intransponíveis com bloqueio por eixo e aviso do gato.
-  - **Colliders em Props**: `'solid'` (troncos, cabanas, farol), `'platform'` (cogumelos, fardos, tocos, pedras), `'arch'` (2 pilares laterais no Torii) e `'none'` (flores/grama).
+  - **Colliders em Props**: `'solid'` (troncos, farol), `'box'` (paredes retangulares da cabana e barco), `'platform'` (cogumelos, fardos, tocos, pedras), `'arch'` (2 pilares laterais no Torii) e `'none'` (flores/grama).
 - **16 Peixes Dourados & Botão `🧭 Viagem`**: Viagem rápida pelos marcos principais, minimapa topográfico em tempo real (`56×56`) e toast de descoberta dos 8 biomas.
+
+* **6 Regiões Conectadas**: Clareira do Spawn, Circuito das Ruínas (escada de calibração `Z=6 / 16 / 32 / 48`), Rio Cristalino com Ponte & Pedras de Travessia, Terraços Noroeste, Bosque dos Cogumelos Saltitantes (chapéus sólidos escaláveis) e Montanha do Pico Sakura (`Z=80`) com cachoeira animada e **10 Peixes Dourados** colecionáveis.
+* **Calibração Física pela Altura do Gato (`H = 16u`)**:
+  * `ΔZ ≤ 0.4H` (`Z=6`): Rampa suave transponível apenas andando (`AUTO_STEP`).
+  * `0.4H < ΔZ ≤ 2.0H` (`Z=16` e `Z=32`): Degraus transponíveis com pulo (`Espaço` = pico `~35u`, com Coyote Time e Jump Buffer).
+  * `ΔZ > 2.0H` (`Z=48+`) ou **Água**: Áreas intransponíveis com bloqueio por eixo separado e feedback visual do gato.
+* **Controles**: `W A S D` / Setas para mover relativo à câmera, `Espaço` para pular `2×H`, `Q`/`E` ou arraste do mouse para girar 360°, `M` para miar e `R` para voltar ao Spawn.
 
 ---
 
@@ -81,7 +89,7 @@ Mapa aberto **56×56 tiles (`896×896u`)** separado da casa, demonstrando o **Mo
 O ecossistema implementa rigorosamente a taxonomia descrita na skill oficial [SKILL.md](./SKILL.md):
 
 | Classe | Descrição | Exemplos | Comportamento no Modo Decor |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **🐾 Pets / Personagens** | Entidades autônomas vivas com IA, ciclo de 2 fases e poleiros | Popó (galinha), Pipoca (gato), Pompom (pintinho) | Caminham, descansam, sobem em mesas/balanço e migram de cômodo |
 | **🧱 Móveis Fixos (`isFixed`)** | Estruturas arquiteturais âncoras do cômodo | Bancada da cozinha, geladeira retrô, carvalho gigante, canteiros | **Imóveis e protegidos contra arrasto**; podem abrir modais ao clique |
 | **🛋️ Móveis Móveis (`isMovable`)** | Mobília reposicionável com suporte a *Parenting Hierárquico* | Mesa de jantar, cadeiras, sofás, carrinho de mão, estante | **Arrastáveis e rotacionáveis (tecla R)**; movem todos os filhos juntos |
@@ -94,20 +102,21 @@ O ecossistema implementa rigorosamente a taxonomia descrita na skill oficial [SK
 
 Para garantir que novos móveis nunca fiquem de costas para a câmera ou virados para a parede:
 
-- **Convenção das Fatias Voxel (`grid[y][x]`)**:
-  - `y = 0`: **Traseira (Costas)** do móvel.
-  - `y = H - 1`: **Frente** do móvel (portas, puxadores, gavetas, telas, ímãs e rostos).
-- **Ângulos Canônicos por Parede** (com câmera padrão em `-45°`):
-  - **Parede Norte (`y = -ROOM_R`)**: `selfAngle = 0` (frente voltada para o Sul / centro do cômodo).
-  - **Parede Oeste (`x = -ROOM_R`)**: `selfAngle = 0` (foco aberto para a câmera) ou `Math.PI / 2` (perpendicular para o Leste).
-  - **Parede Leste (`x = ROOM_R`)**: `selfAngle = Math.PI / 2` (voltado para o Oeste / centro).
-  - **Parede Sul (`y = ROOM_R`)**: `selfAngle = Math.PI` (voltado para o Norte / fundo).
+* **Convenção das Fatias Voxel (`grid[y][x]`)**:
+  * `y = 0`: **Traseira (Costas)** do móvel.
+  * `y = H - 1`: **Frente** do móvel (portas, puxadores, gavetas, telas, ímãs e rostos).
+* **Ângulos Canônicos por Parede** (com câmera padrão em `-45°`):
+  * **Parede Norte (`y = -ROOM_R`)**: `selfAngle = 0` (frente voltada para o Sul / centro do cômodo).
+  * **Parede Oeste (`x = -ROOM_R`)**: `selfAngle = 0` (foco aberto para a câmera) ou `Math.PI / 2` (perpendicular para o Leste).
+  * **Parede Leste (`x = ROOM_R`)**: `selfAngle = Math.PI / 2` (voltado para o Oeste / centro).
+  * **Parede Sul (`y = ROOM_R`)**: `selfAngle = Math.PI` (voltado para o Norte / fundo).
 
 ---
 
 ## 📋 Checklist Pré-Modelagem para Novos Assets
 
 Antes de gerar qualquer novo modelo para a engine, siga o questionário de 8 etapas do [SKILL.md](./SKILL.md):
+
 1. **Categoria**: Pet, Fixo, Móvel, Prop de Superfície ou Item de Parede?
 2. **Voxel Budget & Dimensões**: Largura $\times$ Profundidade $\times$ Altura de fatias.
 3. **Frente do Modelo**: A frente rica em detalhes está em `y = H - 1` e costas em `y = 0`?
@@ -121,8 +130,8 @@ Antes de gerar qualquer novo modelo para a engine, siga o questionário de 8 eta
 
 ## 💾 Sistema de Persistência (3 Slots & Cloud-Ready)
 
-- **3 Slots de Decoração**: Salve e restaure configurações da casa ("Original", "Custom A", "Custom B").
-- **Camada Desacoplada (`DecorStorageService`)**: Persiste instantaneamente via `localStorage` e já conta com ganchos nativos para envio de payloads JSON a backends e sistemas de login.
+* **3 Slots de Decoração**: Salve e restaure configurações da casa ("Original", "Custom A", "Custom B").
+* **Camada Desacoplada (`DecorStorageService`)**: Persiste instantaneamente via `localStorage` e já conta com ganchos nativos para envio de payloads JSON a backends e sistemas de login.
 
 ---
 

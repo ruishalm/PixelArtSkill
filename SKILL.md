@@ -804,14 +804,15 @@ const targetAngle = Math.atan2(-worldMoveX, worldMoveY);
   2. Faça o `ctx.drawImage(lowCanvas, 0, 0, canvas.width, canvas.height)` no canvas principal da tela.
   3. **Depois** do upscale (usando a API vetorial do `ctx` principal em alta resolução, escalando `sx = item.lowX * (canvas.width / LOW_W)` e `sy = item.lowY * (canvas.height / LOW_H)`), desenhe todos os balões de fala com `roundRect`, borda `#3B2219`, fonte nítida (`13px bold`) e rabicho apontando para o personagem. Assim o texto fica 100% legível e sempre acima de qualquer penhasco ou mobília!
 
-### 7. 4 Modos de Collider para Props de Terreno (`propColliders`) + Desobstrução de Trilhas
+### 7. 5 Modos de Collider para Props de Terreno (`propColliders`) + Desobstrução de Trilhas
 Todo prop colocado sobre o terreno deve declarar explicitamente seu modo em `propColliders`:
 
 | Modo | Geometria / Regra de Colisão | Exemplos |
 |---|---|---|
-| `'solid'` | Cilindro `(wx, wy, colR, baseZ, colH)` bloqueando quando `cat.z < baseZ + colH - 1.5`. | Árvores, cabanas, faróis, fogueiras, placas, pilares, lanternas, barcos. |
+| `'solid'` | Cilindro `(wx, wy, colR, baseZ, colH)` bloqueando quando `cat.z < baseZ + colH - 1.5`. | Árvores altas, faróis, fogueiras, placas, pilares, lanternas. |
+| `'box'` | Caixa retangular rotacionada `(halfW, halfD, angle, baseZ, colH)` — permite deslizar rente às paredes retas sem cantos invisíveis. | Cabanas (`cozy_cabin`), barcos (`wood_boat`), casas grandes. |
 | `'platform'` | Bloqueia lateralmente abaixo de `topZ - 2` e fornece superfície de pouso sólida no topo `topZ` ao pular. **Atenção**: nunca disparar `AUTO_STEP` se `topZ - cat.z > 4` para props altos. | Cogumelos gigantes, pedras grandes, fardos de feno, tocos de árvore. |
-| `'arch'` | Dois cilindros apenas nas colunas laterais, deixando o vão central 100% livre para passar por baixo. | Portal Torii. |
+| `'arch'` | Dois cilindros apenas nas colunas laterais, deixando o vão central 100% livre para passar por baixo. | Portal Torii gigante (`torii_gate`). |
 | `'none'` | Decorativo atravessável (sem bloqueio físico). | Florzinhas, tufos de grama. |
 
 - **Desobstrução Automática de Trilhas e Escadas**: Implemente um validador explícito em `addProp(...)` que impeça gerar props sólidos (`'solid'`, `'platform'` ou colunas de `'arch'`) sobre células com `type === 'path'`, `type === 'bridge'` ou degraus estreitos de escada, garantindo rotas de circulação sempre livres:
@@ -840,6 +841,15 @@ Para vegetação baixa densa e leve diretamente no motor de Sprite Stacking:
 - **Pré-cache em 3 frames de vento (8 FPS)** por ângulo quantizado `qAngle`:
   - Desloque as fatias superiores conforme a fase do vento `wf` em `+0.5 * wf`, `+1.0 * wf`, `+1.5 * wf` para `z = 1, 2, 3`.
   - Aplique nos tiles `grass` com onda espacial baseada em `(gx + gy)` + efeito de ***rustle*** (inclinação extra + partícula verde) quando o personagem pisa no tile.
+
+### 9. Proporção Arquitetural em Densidade `1:1` (Estruturas Monumentais)
+Para que construções e árvores grandes imponham presença ao lado do personagem (`H = 16u`) **sem nunca esticar o `scale` deixando pixels borrados/gigantes**:
+- Modele estruturas arquiteturais diretamente em **resolução voxel real grande** mantendo `scale = 1.0` (mesma densidade `1:1` do personagem e do chão):
+  - **Cabanas / Casas**: `~3.4×H` (`52×46×54` fatias) com porta aberta de `~22u` de altura.
+  - **Faróis / Torres**: `~5.2×H` (`34×34×84` fatias) com base octogonal, varanda e cúpula luminosa.
+  - **Portais / Arcos (`torii_gate`)**: `~3.4×H` (`50×16×54` fatias) com vão central livre superior a `2×H` de altura.
+  - **Árvores Monumentais (`sakura_oak` / `pine_tree`)**: `3.0×H` a `4.25×H` (`28×28×48` e `54×54×68`).
+- Quantize o cache de pré-render dessas estruturas gigantes em passos de `3°` (`Math.round((turn * 180 / Math.PI) / 3) * 3`) para garantir rotação orbital fluida a 60 FPS mesmo com `50–84` fatias.
 
 ---
 

@@ -30,44 +30,54 @@ def hash3(x, y, z):
 
 
 def build_pine_tree():
-    """1. pine_tree (20 x 20 x 34)"""
-    w, h, z_count = 20, 20, 34
+    """1. pine_tree (28 x 28 x 48)"""
+    w, h, z_count = 28, 28, 48
     palette = [
         'rgba(0,0,0,0)',
         '#3B2219',  # 1: sombra escura tronco
         '#6B4226',  # 2: tronco base
         '#8C5A38',  # 3: tronco iluminado
-        '#1B4332',  # 4: verde-pinheiro sombra base
-        '#2D6A4F',  # 5: verde-pinheiro médio
-        '#40916C',  # 6: verde-pinheiro claro
-        '#74C69D',  # 7: pontas iluminadas nas bordas/topo
+        '#143628',  # 4: verde-pinheiro contorno escuro interno natural
+        '#1B4332',  # 5: verde-pinheiro sombra base
+        '#2D6A4F',  # 6: verde-pinheiro médio
+        '#40916C',  # 7: verde-pinheiro claro
+        '#74C69D',  # 8: pontas iluminadas nas bordas/topo
     ]
     vol = make_volume(w, h, z_count, 0)
-    cx, cy = 9.5, 9.5
+    cx, cy = 13.5, 13.5
 
-    # Tronco central (z=0..8) com leve alargamento na raiz (z=0..1)
-    for z in range(9):
-        rad = 2.6 if z == 0 else (2.1 if z == 1 else 1.7)
+    # Tronco marrom reto central (z=0..11) com r=3.2 e leve alargamento de raiz na base (z=0..1)
+    # Estende nucleo interno ate z=38 para garantir 100% de conexao entre as camadas
+    for z in range(39):
+        if z == 0:
+            rad = 4.2
+        elif z == 1:
+            rad = 3.6
+        elif z <= 11:
+            rad = 3.2
+        else:
+            rad = 2.2
         for y in range(h):
             for x in range(w):
                 dx = x - cx
                 dy = y - cy
                 if dx * dx + dy * dy <= rad * rad:
-                    if x > cx + 0.5 and y >= cy:
+                    if dx + dy > 1.2:
                         vol[z][y][x] = 3
-                    elif y < cy - 0.5 or x < cx - 0.8:
+                    elif dx + dy < -1.2:
                         vol[z][y][x] = 1
                     else:
                         vol[z][y][x] = 2
 
-    # 3 camadas cônicas de copa (z=7..33)
+    # 4 camadas cônicas bem definidas de copa verde-pinheiro (z=10..47)
     cones = [
-        (7, 17, 9.0, 2.5),   # camada inferior: z=7..17
-        (15, 25, 7.6, 2.0),  # camada média: z=15..25
-        (23, 33, 5.8, 0.4),  # camada superior: z=23..33
+        (10, 21, 13.2, 4.4),  # camada 1: z=10..21
+        (19, 30, 11.4, 3.6),  # camada 2: z=19..30
+        (28, 38, 9.2, 2.8),   # camada 3: z=28..38
+        (36, 47, 7.0, 0.5),   # camada 4: z=36..47
     ]
 
-    for z_start, z_end, r_bot, r_top in cones:
+    for tier_idx, (z_start, z_end, r_bot, r_top) in enumerate(cones):
         span = z_end - z_start
         for z in range(z_start, z_end + 1):
             t = (z - z_start) / span
@@ -77,131 +87,149 @@ def build_pine_tree():
                     dx = x - cx
                     dy = y - cy
                     dist = (dx * dx + dy * dy) ** 0.5
-                    # Recorte orgânico de galhos em estrela/pinho
-                    notch = ((abs(int(dx * 2)) + abs(int(dy * 2)) + z) % 3 == 0) * 0.55
-                    # Última camada fecha firme no topo
-                    if z >= 31:
-                        notch = 0.0
-                    eff_r = base_r - notch
+                    ang = math.atan2(dy, dx)
+                    # Recorte estrelado de galhos de pinheiro
+                    bough_wave = 0.85 * math.cos(ang * 8.0 + tier_idx * 0.7)
+                    if z >= 45:
+                        bough_wave = 0.0
+                    eff_r = max(0.6, base_r + bough_wave * (1.0 - 0.65 * t))
                     if dist <= eff_r:
-                        is_edge = dist >= eff_r - 1.25
-                        is_lit_side = (dx + dy) > 0.5
-                        if z >= 31 or (is_edge and is_lit_side and t > 0.25):
+                        is_edge = dist >= eff_r - 1.4
+                        is_lit = (dx + dy) > 0.8
+                        is_deep_under = (z <= z_start + 1) and (dist > eff_r * 0.52)
+                        if z >= 45:
+                            col = 8
+                        elif is_deep_under:
+                            col = 4  # contorno escuro interno natural sob cada camada
+                        elif is_edge and is_lit and t > 0.15:
+                            col = 8
+                        elif is_edge and (dx >= -1.0 or dy >= -1.0):
                             col = 7
-                        elif z <= z_start + 1 and t < 0.25 and not is_lit_side:
-                            col = 4
-                        elif is_edge and (dy >= 0 or dx >= 0):
-                            col = 6
-                        elif t < 0.35 and dist > eff_r * 0.55:
-                            col = 4
-                        elif t > 0.65 or is_lit_side:
-                            col = 6 if (hash3(x, y, z) % 3 == 0) else 5
+                        elif t < 0.30 and not is_lit:
+                            col = 5
+                        elif t > 0.65 or is_lit:
+                            col = 7 if (hash3(x, y, z) % 4 == 0) else 6
                         else:
-                            col = 5 if (y >= cy - 1.5) else 4
+                            col = 6 if (dx + dy >= -2.0) else 5
                         vol[z][y][x] = col
 
-    # Garante topo nítido conectado em z=33
-    vol[33][9][9] = 7
-    vol[33][9][10] = 7
-    vol[33][10][9] = 7
-    vol[33][10][10] = 7
+    # Ponta nítida conectada em z=47
+    for y in (13, 14):
+        for x in (13, 14):
+            vol[47][y][x] = 8
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
 def build_sakura_oak():
-    """2. sakura_oak (32 x 32 x 42)"""
-    w, h, z_count = 32, 32, 42
+    """2. sakura_oak (54 x 54 x 68)"""
+    w, h, z_count = 54, 54, 68
     palette = [
         'rgba(0,0,0,0)',
         '#3B2219',  # 1: sombra tronco escura
         '#5C3A28',  # 2: tronco médio
         '#80533B',  # 3: tronco iluminado
-        '#9D3B68',  # 4: sombra magenta suave
-        '#D95B8A',  # 5: rosa cerejeira profundo
-        '#F48FB1',  # 6: rosa cerejeira médio
-        '#FFC2D4',  # 7: rosa claro
-        '#FFF5F8',  # 8: flores brancas/rosa claro
+        '#9D174D',  # 4: sombra magenta profunda sob a copa
+        '#DB2777',  # 5: rosa cerejeira profundo
+        '#F472B6',  # 6: rosa cerejeira vivo
+        '#F9A8D4',  # 7: rosa cerejeira médio/claro
+        '#FCE7F3',  # 8: rosa muito claro
+        '#FFFFFF',  # 9: flores brancas salpicadas
     ]
     vol = make_volume(w, h, z_count, 0)
-    cx, cy = 15.5, 15.5
+    cx, cy = 26.5, 26.5
 
-    # Tronco largo com raízes espalhadas (z=0..18)
+    # Tronco largo orgânico com raízes grossas espalhadas (z=0..6: r=14 -> r=6) até z=28
     roots = [
-        (-1.0, 0.0, 4.5),
-        (1.0, 0.2, 4.2),
-        (0.0, -1.0, 4.2),
-        (0.2, 1.0, 4.5),
-        (-0.8, 0.8, 3.8),
-        (0.8, -0.7, 3.8),
+        (0.0, 1.0, 14.0),
+        (1.0, 0.25, 13.8),
+        (0.7, -0.75, 13.5),
+        (-0.2, -1.0, 13.8),
+        (-0.95, -0.2, 14.0),
+        (-0.75, 0.75, 13.6),
     ]
-    for z in range(19):
-        t = z / 18.0
-        trunk_r = 4.2 - 1.3 * t
+    for z in range(29):
+        if z <= 6:
+            t_root = z / 6.0
+            trunk_r = 8.4 * (1.0 - t_root) + 6.0 * t_root
+        else:
+            t_up = (z - 6) / 22.0
+            trunk_r = 6.0 - 1.1 * t_up
         for y in range(h):
             for x in range(w):
                 dx = x - cx
                 dy = y - cy
-                in_trunk = (dx * dx + dy * dy) <= trunk_r * trunk_r
+                ang = math.atan2(dy, dx)
+                bark_flute = 0.45 * math.sin(ang * 7.0 + z * 0.12)
+                in_trunk = (dx * dx + dy * dy) <= (trunk_r + bark_flute) ** 2
                 in_root = False
-                if z < 6:
-                    root_reach = (1.0 - z / 6.0)
-                    for rx_dir, ry_dir, r_len in roots:
-                        rx = cx + rx_dir * (2.5 + r_len * root_reach)
-                        ry = cy + ry_dir * (2.5 + r_len * root_reach)
-                        r_rad = 1.9 * root_reach + 0.9
-                        # Segmento do centro até a ponta da raiz
-                        for step in range(4):
-                            s = step / 3.0
-                            px = cx + (rx - cx) * s
-                            py = cy + (ry - cy) * s
-                            if (x - px) ** 2 + (y - py) ** 2 <= (r_rad * (1.15 - 0.35 * s)) ** 2:
+                if z <= 6:
+                    root_reach = 1.0 - (z / 6.5)
+                    for rx_dir, ry_dir, max_r in roots:
+                        length = max_r * (0.45 + 0.55 * root_reach)
+                        for step in range(8):
+                            s = step / 7.0
+                            px = cx + rx_dir * length * s
+                            py = cy + ry_dir * length * s
+                            r_rad = (3.4 - 1.7 * s) * (0.55 + 0.45 * root_reach)
+                            if (x - px) ** 2 + (y - py) ** 2 <= r_rad * r_rad:
                                 in_root = True
                                 break
+                        if in_root:
+                            break
                 if in_trunk or in_root:
-                    if dx + dy > 1.2:
+                    if dx + dy > 2.2:
                         vol[z][y][x] = 3
-                    elif dx + dy < -1.2:
+                    elif dx + dy < -2.2:
                         vol[z][y][x] = 1
                     else:
                         vol[z][y][x] = 2
 
-    # Galhos principais sustentando a copa (z=13..22)
+    # Galhos principais se abrindo em z=20..30+ sustentando toda a copa (z=24..67)
     branches = [
-        ((15.5, 15.5, 13), (8.0, 15.0, 21), 2.1),
-        ((15.5, 15.5, 14), (23.0, 16.0, 22), 2.1),
-        ((15.5, 15.5, 14), (15.0, 8.0, 21), 2.0),
-        ((15.5, 15.5, 15), (16.5, 23.0, 22), 2.1),
-        ((15.5, 15.5, 16), (15.5, 15.5, 24), 2.2),
+        ((26.5, 26.5, 20.0), (13.0, 26.0, 32.0), 3.3),
+        ((26.5, 26.5, 21.0), (40.0, 27.0, 33.0), 3.3),
+        ((26.5, 26.5, 20.5), (26.0, 13.0, 32.0), 3.2),
+        ((26.5, 26.5, 21.5), (27.5, 40.0, 33.0), 3.3),
+        ((26.5, 26.5, 22.0), (16.5, 16.5, 35.0), 2.9),
+        ((26.5, 26.5, 22.5), (37.0, 16.5, 35.0), 2.9),
+        ((26.5, 26.5, 22.5), (16.5, 37.0, 35.0), 2.9),
+        ((26.5, 26.5, 23.0), (37.0, 37.0, 36.0), 2.9),
+        ((26.5, 26.5, 24.0), (26.5, 26.5, 42.0), 3.5),
     ]
     for (x0, y0, z0), (x1, y1, z1), r_b in branches:
-        steps = 16
+        steps = 24
         for i in range(steps + 1):
             s = i / steps
             bx = x0 + (x1 - x0) * s
             by = y0 + (y1 - y0) * s
             bz = z0 + (z1 - z0) * s
-            rad = r_b * (1.0 - 0.35 * s)
+            rad = r_b * (1.0 - 0.4 * s)
             for z in range(max(0, int(bz - rad - 1)), min(z_count, int(bz + rad + 2))):
                 for y in range(max(0, int(by - rad - 1)), min(h, int(by + rad + 2))):
                     for x in range(max(0, int(bx - rad - 1)), min(w, int(bx + rad + 2))):
                         if (x - bx) ** 2 + (y - by) ** 2 + (z - bz) ** 2 <= rad * rad:
-                            vol[z][y][x] = 3 if (z > bz and y >= by) else (1 if z < bz - 0.4 else 2)
+                            vol[z][y][x] = 3 if (z > bz and y >= by) else (1 if z < bz - 0.5 else 2)
 
-    # Copa exuberante arredondada em nuvens de cerejeira (z=16..41)
-    # Lobos esféricos/elipsoidais conectados formando uma copa majestosa
+    # Copa exuberante arredondada em nuvens de flores rosa-cerejeira (z=24..67)
     lobes = [
-        (15.5, 15.5, 28.0, 11.5, 11.5, 12.5),  # massa central até z=40..41
-        (9.5, 15.0, 24.5, 7.8, 7.8, 7.5),      # lobo oeste
-        (22.0, 16.0, 25.5, 7.8, 7.8, 7.8),     # lobo leste
-        (15.0, 9.5, 25.0, 8.0, 7.5, 7.5),      # lobo norte/traseira
-        (16.0, 22.0, 25.5, 8.2, 7.6, 7.8),     # lobo sul/frente
-        (11.0, 10.5, 31.0, 6.8, 6.8, 6.8),     # coroa NW
-        (20.5, 20.5, 32.0, 7.0, 7.0, 7.0),     # coroa SE
-        (15.5, 15.5, 35.5, 7.2, 7.2, 6.2),     # cúpula topo (z até 41)
+        (26.5, 26.5, 45.5, 18.0, 18.0, 17.5),  # núcleo majestoso
+        (26.5, 26.5, 57.5, 13.5, 13.5, 10.2),  # cúpula topo até z=67
+        (13.0, 26.0, 38.0, 11.2, 11.5, 12.0),  # nuvem W
+        (40.0, 27.0, 39.0, 11.2, 11.5, 12.0),  # nuvem E
+        (26.0, 13.0, 38.5, 11.5, 11.2, 12.0),  # nuvem N
+        (27.0, 40.0, 39.5, 11.5, 11.2, 12.2),  # nuvem S
+        (16.5, 16.5, 42.0, 10.5, 10.5, 11.5),  # nuvem NW
+        (36.5, 16.5, 43.0, 10.5, 10.5, 11.5),  # nuvem NE
+        (16.5, 36.5, 42.5, 10.5, 10.5, 11.5),  # nuvem SW
+        (36.5, 36.5, 43.5, 10.8, 10.8, 11.8),  # nuvem SE
+        (19.0, 20.0, 52.5, 9.5, 9.5, 9.5),     # coroa alta NW
+        (34.0, 33.0, 53.5, 9.8, 9.8, 9.8),     # coroa alta SE
+        (34.0, 20.0, 52.0, 9.0, 9.0, 9.0),     # coroa alta NE
+        (19.5, 33.5, 52.5, 9.2, 9.2, 9.2),     # coroa alta SW
     ]
 
-    for z in range(16, z_count):
+    for z in range(24, z_count):
         for y in range(h):
             for x in range(w):
                 best_d = 999.0
@@ -209,31 +237,34 @@ def build_sakura_oak():
                     d = ((x - lx) / rx) ** 2 + ((y - ly) / ry) ** 2 + ((z - lz) / rz) ** 2
                     if d < best_d:
                         best_d = d
-                if best_d <= 1.0:
-                    # Não sobrescrever tronco interno aparente abaixo de z=19
-                    if z < 19 and vol[z][y][x] in (1, 2, 3):
+                # Leve recorte orgânico nas bordas externas das nuvens
+                edge_ripple = 0.045 * math.sin(x * 0.55) * math.cos(y * 0.55)
+                if best_d <= 1.0 + edge_ripple:
+                    # Mantem galhos inferiores visiveis ate z=29
+                    if z <= 29 and vol[z][y][x] in (1, 2, 3):
                         continue
-                    # Sombreamento da copa
                     h_val = hash3(x, y, z)
-                    light = (z - 22.0) * 0.08 + (y - cy) * 0.03 + (x - cx) * 0.025
-                    if z >= 35 or (z >= 29 and light > 0.35):
-                        if h_val % 7 == 0 or (z >= 39 and h_val % 3 == 0):
-                            col = 8  # flores brancas/rosa muito claro salpicadas no topo
-                        elif h_val % 3 == 0 or z >= 37:
+                    light = (z - 38.0) * 0.045 + (y - cy) * 0.02 + (x - cx) * 0.018
+                    if z <= 28 or (z < 36 and best_d > 0.85 and light < -0.1):
+                        col = 4
+                    elif z >= 59 or (z >= 50 and light > 0.35):
+                        if h_val % 6 == 0 or (z >= 64 and h_val % 3 == 0):
+                            col = 9  # flores brancas no topo
+                        elif h_val % 3 == 0 or z >= 62:
+                            col = 8
+                        else:
+                            col = 7
+                    elif light < -0.25:
+                        col = 5
+                    else:
+                        if h_val % 14 == 0 and z >= 42:
+                            col = 9
+                        elif h_val % 5 == 0 and z >= 38:
+                            col = 8
+                        elif light > 0.12:
                             col = 7
                         else:
                             col = 6
-                    elif z <= 21 or (y < cy - 3 and z < 28) or best_d > 0.88 and z < 26:
-                        col = 4  # sombra magenta suave na base/parte inferior
-                    elif light < -0.15:
-                        col = 5
-                    else:
-                        if h_val % 13 == 0 and z >= 26:
-                            col = 8
-                        elif h_val % 5 == 0 and z >= 24:
-                            col = 7
-                        else:
-                            col = 6 if light > 0.1 else 5
                     vol[z][y][x] = col
 
     return {'palette': palette, 'slices': to_strings(vol)}
@@ -719,8 +750,8 @@ def build_golden_fish():
 
 
 def build_ruin_pillar():
-    """9. ruin_pillar (12 x 12 x 18)"""
-    w, h, z_count = 12, 12, 18
+    """9. ruin_pillar (18 x 18 x 34)"""
+    w, h, z_count = 18, 18, 34
     palette = [
         'rgba(0,0,0,0)',
         '#2B2623',  # 1: rachadura / sombra profunda
@@ -732,74 +763,86 @@ def build_ruin_pillar():
         '#68A352',  # 7: musgo claro
     ]
     vol = make_volume(w, h, z_count, 0)
-    cx, cy = 5.5, 5.5
+    cx, cy = 8.5, 8.5
 
-    # Base quadrada larga (z=0..3)
-    for z in range(4):
-        pad = 1 if z <= 1 else 2
+    # z=0..5: base quadrada escalonada (plinto)
+    for z in range(6):
+        pad = 1 if z <= 1 else (2 if z <= 3 else 3)
         for y in range(pad, h - pad):
             for x in range(pad, w - pad):
+                # Cantos chanfrados no degrau superior da base
+                if z >= 4 and x in (pad, w - pad - 1) and y in (pad, h - pad - 1):
+                    continue
                 is_edge = (x in (pad, w - pad - 1) or y in (pad, h - pad - 1))
-                if z == 0 or y < 3 or x < 3:
-                    vol[z][y][x] = 2 if is_edge else 3
-                elif z in (1, 3) and is_edge and (x + y >= 10):
+                if z == 0 or (is_edge and (x < 4 or y < 4)):
+                    vol[z][y][x] = 2
+                elif z in (1, 3, 5) and is_edge and (x + y >= 16):
                     vol[z][y][x] = 5
+                elif is_edge:
+                    vol[z][y][x] = 4 if z in (3, 5) else 2
                 else:
-                    vol[z][y][x] = 4 if (z == 3 and is_edge) else 3
+                    vol[z][y][x] = 3
 
-    # Fuste cilíndrico/octogonal (z=4..13) com estrias e rachaduras
-    for z in range(4, 14):
+    # z=6..28: fuste octogonal estriado com rachaduras
+    for z in range(6, 29):
         for y in range(h):
             for x in range(w):
                 dx = abs(x - cx)
                 dy = abs(y - cy)
-                # Octógono: corta apenas os 4 cantos extremos
-                if dx <= 3.6 and dy <= 3.6 and (dx + dy) <= 5.4:
-                    # Estria/rachadura diagonal
+                if dx <= 5.5 and dy <= 5.5 and (dx + dy) <= 8.2:
+                    # Estrias verticais nas faces cardinais/diagonais
+                    is_flute = (
+                        (dx >= 4.6 and abs(dy - 2.0) <= 0.6) or
+                        (dy >= 4.6 and abs(dx - 2.0) <= 0.6)
+                    )
+                    # Rachaduras diagonais marcantes
                     is_crack = (
-                        (z in (6, 7) and x == 6 and y == 9) or
-                        (z in (8, 9) and x == 7 and y == 8) or
-                        (z in (10, 11) and x == 8 and y == 7) or
-                        (z in (5, 6) and x == 3 and y == 8)
+                        (10 <= z <= 13 and x == 9 + (z - 10) // 2 and y == 13) or
+                        (14 <= z <= 17 and x == 11 and y == 12 - (z - 14) // 2) or
+                        (19 <= z <= 22 and x == 5 + (z - 19) // 2 and y == 12) or
+                        (8 <= z <= 11 and x == 4 and y == 10 - (z - 8) // 2)
                     )
                     if is_crack:
                         vol[z][y][x] = 1
-                    elif x + y >= 12:
-                        vol[z][y][x] = 4 if (x == 9 or y == 9) else 3
-                    elif x + y <= 8:
+                    elif is_flute:
+                        vol[z][y][x] = 2 if (x + y < 17) else 3
+                    elif x + y >= 21:
+                        vol[z][y][x] = 4 if (dx >= 4.5 or dy >= 4.5) else 3
+                    elif x + y <= 13:
                         vol[z][y][x] = 2
                     else:
                         vol[z][y][x] = 3
 
-    # Topo quebrado assimétrico (z=14..17)
-    for z in range(14, z_count):
+    # z=29..33: capitel quebrado assimétrico
+    for z in range(29, z_count):
+        pad = 2 if z >= 30 else 3
+        for y in range(pad, h - pad):
+            for x in range(pad, w - pad):
+                # Plano inclinado irregular de quebra: mais alto no canto NW (x<=8, y<=8)
+                break_h = 33.4 - (x * 0.22 + y * 0.18)
+                if (x <= 6 and y <= 7) or (x <= 5 and y <= 10):
+                    break_h += 0.8
+                if x >= 11 and y >= 11:
+                    break_h -= 1.2
+                if z <= break_h:
+                    is_top_break = (z + 1 > break_h)
+                    if is_top_break:
+                        vol[z][y][x] = 5 if (x + y >= 14) else 4
+                    elif x + y <= 12:
+                        vol[z][y][x] = 2
+                    else:
+                        vol[z][y][x] = 4 if (z == 30 and (x in (pad, w - pad - 1) or y in (pad, h - pad - 1))) else 3
+
+    # Musgo verde subindo na base e nas quebras (z=0..11 e degraus)
+    for z in range(12):
         for y in range(h):
             for x in range(w):
-                dx = abs(x - cx)
-                dy = abs(y - cy)
-                if dx <= 3.6 and dy <= 3.6 and (dx + dy) <= 5.4:
-                    # Plano inclinado irregular de quebra: mais alto no canto NW (x<=5, y<=6)
-                    break_h = 17.4 - (x * 0.35 + y * 0.25)
-                    if (x == 4 and y == 4):
-                        break_h = 17.5
-                    if z <= break_h:
-                        is_top_break = (z + 1 > break_h)
-                        vol[z][y][x] = 5 if (is_top_break and x + y >= 8) else (4 if is_top_break else 3)
-
-    # Musgo verde subindo na base (z=0..6)
-    moss_spots = [
-        (1, 8, 0), (1, 9, 0), (2, 9, 0), (2, 10, 0),
-        (1, 9, 1), (2, 9, 1), (2, 10, 1),
-        (2, 8, 2), (2, 9, 2), (3, 9, 2),
-        (2, 7, 3), (3, 8, 3), (3, 9, 3),
-        (3, 7, 4), (3, 8, 4), (4, 8, 4),
-        (3, 7, 5), (4, 8, 5),
-        (8, 2, 0), (9, 2, 0), (9, 3, 0),
-        (8, 2, 1), (9, 3, 1), (8, 3, 2),
-    ]
-    for mx, my, mz in moss_spots:
-        if vol[mz][my][mx] != 0:
-            vol[mz][my][mx] = 7 if (mz >= 2 or mx <= 3) else 6
+                if vol[z][y][x] in (2, 3, 4, 5):
+                    # Manchas organicas de musgo na frente-esquerda e tras-direita
+                    patch1 = (x - 4.0) ** 2 + (y - 13.0) ** 2 + (z * 0.65) ** 2 <= 22.0
+                    patch2 = (x - 13.5) ** 2 + (y - 4.0) ** 2 + (z * 0.75) ** 2 <= 16.0
+                    if (patch1 or patch2) and (hash3(x, y, z) % 3 != 0 or z <= 2):
+                        vol[z][y][x] = 7 if (z >= 3 or x + y >= 16) else 6
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
@@ -866,234 +909,311 @@ def build_flower_tuft():
 
 
 def build_cozy_cabin():
-    """11. cozy_cabin (26 x 24 x 28)"""
-    w, h, z_count = 26, 24, 28
+    """11. cozy_cabin (52 x 46 x 54)"""
+    w, h, z_count = 52, 46, 54
     palette = [
         'rgba(0,0,0,0)',
-        '#3B2219',  # 1: porta marrom escura / sombra vigas
-        '#6B4226',  # 2: vigas marrom / molduras
-        '#D99B4E',  # 3: macaneta dourada / madeira clara
-        '#E6D5BE',  # 4: parede creme sombra
-        '#FAF3E8',  # 5: parede creme clara
-        '#FDE68A',  # 6: janelinha amarela quente acesa
-        '#9E4429',  # 7: telhado terracota sombra
-        '#C25E3E',  # 8: telhado terracota principal
-        '#7A3222',  # 9: tijolinho chamine escuro
+        '#3B2219',  # 1: madeira escura / vigas / batente / argamassa
+        '#6B4226',  # 2: madeira média / tábua da porta / venezianas
+        '#64748B',  # 3: fundação sólida pedra cinza/ardósia
+        '#F5EBDC',  # 4: parede creme aconchegante
+        '#FACC15',  # 5: maçaneta dourada
+        '#FDE68A',  # 6: brilho janela amarelo claro
+        '#F59E0B',  # 7: brilho janela âmbar quente
+        '#C25E3E',  # 8: telhado terracota principal / tijolo claro
+        '#9E4429',  # 9: telhado terracota sombra / tijolo escuro
     ]
     vol = make_volume(w, h, z_count, 0)
 
-    # Corpo principal da cabana: x=2..23, y=2..23, z=0..14 (y=23 = H-1 e a fachada frontal)
-    for z in range(15):
-        for y in range(2, h):
-            for x in range(2, w - 2):
-                is_wall = (x in (2, w - 3) or y in (2, h - 1))
-                is_corner = (x in (2, 3, w - 4, w - 3)) and (y in (2, 3, h - 2, h - 1))
-                is_beam = (
-                    is_corner
-                    or (is_wall and z in (0, 7, 14))
-                    or (y in (2, h - 1) and x in (9, 16) and z <= 14)
-                    or (x in (2, w - 3) and y in (12, 13))
-                )
-                if not is_wall and z > 0:
-                    # Interior preenchido nas camadas visiveis ou estruturais (economiza mas mantem solido)
-                    if z == 14:
-                        vol[z][y][x] = 4
+    # z=0..4: fundação sólida de pedra cinza/ardósia (x=4..47, y=4..41)
+    for z in range(5):
+        for y in range(4, 42):
+            for x in range(4, 48):
+                # Rebaixo nos degraus da entrada em y=41 diante da porta (x=19..32, z=3..4)
+                if y == 41 and z >= 3 and 19 <= x <= 32:
                     continue
-                if z == 0 and not is_wall:
-                    vol[z][y][x] = 2  # piso conectado em z=0
-                elif is_beam:
-                    vol[z][y][x] = 1 if z == 0 else 2
-                else:
-                    vol[z][y][x] = 5 if (y >= 12 or x >= 13) else 4
+                is_mortar = (z in (0, 2) and (x + (z // 2) * 3) % 6 == 0) and (x in (4, 47) or y in (4, 41))
+                vol[z][y][x] = 1 if (z == 0 and (x in (4, 47) or y in (4, 41))) or is_mortar else 3
 
-    # Porta marrom escura na frente (y = H - 1 = 23, x=10..15, z=0..10) com macaneta
-    for z in range(11):
-        for x in range(10, 16):
-            if x in (10, 15) or z == 10:
-                vol[z][h - 1][x] = 2  # batente marrom
+    # Degrau de pedra frontal acolhedor (y=42..43, x=19..32, z=0..1)
+    for z in range(2):
+        for y in range(42, 44 - z):
+            for x in range(19, 33):
+                vol[z][y][x] = 3
+
+    # z=5..28: paredes creme/madeira (x=5..46, y=5..40) com vigas nos 4 cantos, meio e moldura superior
+    for z in range(5, 29):
+        for y in range(5, 41):
+            for x in range(5, 47):
+                is_wall = (x in (5, 6, 45, 46) or y in (5, 6, 39, 40))
+                if not is_wall:
+                    if z == 28:
+                        vol[z][y][x] = 2  # laje de teto sólida
+                    continue
+                is_corner = (x in (5, 6, 45, 46)) and (y in (5, 6, 39, 40))
+                is_mid_x = (y in (5, 6, 39, 40)) and (x in (17, 18, 33, 34) or (y in (5, 6) and x in (25, 26)))
+                is_mid_y = (x in (5, 6, 45, 46)) and (y in (23, 24))
+                is_top_frame = (z in (27, 28))
+                is_base_beam = (z == 5)
+                if is_corner or is_mid_x or is_mid_y or is_top_frame or is_base_beam:
+                    vol[z][y][x] = 1 if (z in (5, 28) or (x in (5, 46) and y in (5, 40))) else 2
+                else:
+                    vol[z][y][x] = 4
+
+    # Porta frontal convidativa e grande em y = H - 6 = 40 (x=19..32, z=3..24)
+    # Selo interno em y=38..39 + folha da porta em y=39 + batente em y=40 + macaneta dourada (#FACC15)
+    for z in range(3, 25):
+        for x in range(19, 33):
+            vol[z][38][x] = 1
+            is_frame = (x in (19, 20, 31, 32) or z in (23, 24))
+            if is_frame:
+                vol[z][39][x] = 1
+                vol[z][40][x] = 1 if (x in (19, 32) or z == 24) else 2
             else:
-                vol[z][h - 1][x] = 1  # folha da porta marrom escura
-            # Reforca batente interno em y=22 para solidez
-            vol[z][h - 2][x] = 1
-    vol[4][h - 1][14] = 3
-    vol[5][h - 1][14] = 3  # macaneta
+                # Tabuas verticais da porta em y=39 e abertura livre em y=40 para profundidade 3D
+                vol[z][40][x] = 0
+                is_seam = (x in (23, 26, 28)) or (z in (6, 15, 20))
+                vol[z][39][x] = 1 if is_seam else 2
+    # Macaneta dourada (#FACC15) bem visivel
+    for kz in (12, 13):
+        vol[kz][39][29] = 5
+        vol[kz][40][29] = 5
 
-    # Janelinhas amarelas quentes acesas (#FDE68A) na frente e laterais
-    def carve_window_y(y_pos, x0, x1, z0, z1):
+    # Janelas duplas com venezianas e brilho amarelo aconchegante (#FDE68A / #F59E0B)
+    def build_window_y(y_face, y_back, y_out, x0, x1, z0, z1):
+        # x0..x1: largura 7 (ex: 9..15 ou 36..42), z0..z1 = 12..21
         for z in range(z0 - 1, z1 + 2):
-            for x in range(x0 - 1, x1 + 2):
-                if x0 <= x <= x1 and z0 <= z <= z1:
-                    # Caixilho fino cruzado opcional ou vidro aceso
-                    vol[z][y_pos][x] = 6
+            for x in range(x0, x1 + 1):
+                vol[z][y_back][x] = 1
+                if z == z0 - 1 or z == z1 + 1:
+                    # Peitoril e verga de madeira
+                    vol[z][y_face][x] = 2
+                    if z == z0 - 1:
+                        vol[z][y_out][x] = 2
+                elif x in (x0, x1):
+                    # Venezianas laterais com ripas
+                    col = 1 if (z % 2 == 0) else 2
+                    vol[z][y_face][x] = col
+                    vol[z][y_out][x] = col
+                elif z in (z0, z1) or x == (x0 + x1) // 2 or z == (z0 + z1) // 2:
+                    vol[z][y_face][x] = 1  # caixilho cruzado de janela dupla
                 else:
-                    vol[z][y_pos][x] = 2
+                    vol[z][y_face][x] = 6 if (z >= 15 and (x + z) % 3 != 0) else 7
 
-    def carve_window_x(x_pos, y0, y1, z0, z1):
+    def build_window_x(x_face, x_back, x_out, y0, y1, z0, z1):
+        # y0..y1: largura 8 (ex: 15..22 ou 26..33), z0..z1 = 12..21
         for z in range(z0 - 1, z1 + 2):
-            for y in range(y0 - 1, y1 + 2):
-                if y0 <= y <= y1 and z0 <= z <= z1:
-                    vol[z][y][x_pos] = 6
+            for y in range(y0, y1 + 1):
+                vol[z][y][x_back] = 1
+                if z == z0 - 1 or z == z1 + 1:
+                    vol[z][y][x_face] = 2
+                    if z == z0 - 1:
+                        vol[z][y][x_out] = 2
+                elif y in (y0, y1):
+                    col = 1 if (z % 2 == 0) else 2
+                    vol[z][y][x_face] = col
+                    vol[z][y][x_out] = col
+                elif z in (z0, z1) or y == (y0 + y1) // 2 or z == (z0 + z1) // 2:
+                    vol[z][y][x_face] = 1
                 else:
-                    vol[z][y][x_pos] = 2
+                    vol[z][y][x_face] = 6 if (z >= 15 and (y + z) % 3 != 0) else 7
 
-    # Frente (y = H - 1 = 23)
-    carve_window_y(h - 1, 5, 7, 5, 8)
-    carve_window_y(h - 1, 18, 20, 5, 8)
-    # Costas (y = 2)
-    carve_window_y(2, 6, 8, 5, 8)
-    carve_window_y(2, 17, 19, 5, 8)
-    # Laterais (x = 2 e x = 23)
-    carve_window_x(2, 6, 9, 5, 8)
-    carve_window_x(2, 16, 19, 5, 8)
-    carve_window_x(w - 3, 6, 9, 5, 8)
-    carve_window_x(w - 3, 16, 19, 5, 8)
+    # Frente (y=40) aos lados da porta: x=9..15 e x=36..42
+    build_window_y(40, 39, 41, 9, 15, 12, 21)
+    build_window_y(40, 39, 41, 36, 42, 12, 21)
+    # Traseira (y=5) simetrica
+    build_window_y(5, 6, 4, 9, 15, 12, 21)
+    build_window_y(5, 6, 4, 36, 42, 12, 21)
+    # 2 laterais (x=5 e x=46): y=15..22 e y=26..33, z=12..21
+    build_window_x(5, 6, 4, 15, 22, 12, 21)
+    build_window_x(5, 6, 4, 26, 33, 12, 21)
+    build_window_x(46, 45, 47, 15, 22, 12, 21)
+    build_window_x(46, 45, 47, 26, 33, 12, 21)
 
-    # Telhado inclinado dois-aguas terracota (z=15..25), cumeeira ao longo de Y (x=12..13)
-    for z in range(15, 26):
-        dz = z - 15  # 0..10
-        half_span = 12.5 - dz * 1.2  # 12.5 em z=15 (x=0..25), 0.5 em z=25 (x=12..13)
-        x_min = max(0, int(round(12.5 - half_span)))
-        x_max = min(w - 1, int(round(12.5 + half_span)))
-        inner_min = max(2, x_min + 2)
-        inner_max = min(w - 3, x_max - 2)
+    # z=28..48: telhado inclinado dois-águas em terracota (#C25E3E / #9E4429)
+    # Beiral saliente (x=2..49, y=2..43), afunilando em y até a cumeeira central y=22..23 em z=48
+    for z in range(28, 49):
+        dz = z - 28  # 0..20
+        half_span = 20.5 - dz * 1.0  # 20.5 em z=28 -> 0.5 em z=48
+        y_min = max(2, int(round(22.5 - half_span)))
+        y_max = min(43, int(round(22.5 + half_span)))
+        inner_y0 = max(5, y_min + 2)
+        inner_y1 = min(40, y_max - 2)
 
-        for y in range(1, h):
-            for x in range(x_min, x_max + 1):
+        for y in range(y_min, y_max + 1):
+            for x in range(2, 50):
                 is_roof_shell = (
-                    x <= x_min + 1
-                    or x >= x_max - 1
-                    or z == 25
-                    or y in (1, h - 1)
+                    y <= y_min + 1
+                    or y >= y_max - 1
+                    or z == 48
+                    or x in (2, 3, 48, 49)
                 )
-                # Paredes triangulares do oitao na frente (y=23) e atras (y=2)
-                if y in (2, h - 1) and inner_min <= x <= inner_max and z < 24:
-                    vol[z][y][x] = 2 if x in (inner_min, inner_max) else (5 if y == h - 1 else 4)
+                # Oitões triangulares nas laterais (x=5..6 e x=45..46)
+                if x in (5, 6, 45, 46) and inner_y0 <= y <= inner_y1 and z < 47:
+                    if y in (inner_y0, inner_y1):
+                        vol[z][y][x] = 2
+                    else:
+                        vol[z][y][x] = 4
                 elif is_roof_shell:
                     # Padrao de telhas terracota
-                    tile = ((x + y + z) % 3 == 0) or (z == 15) or (z == 25)
-                    vol[z][y][x] = 7 if (tile or x < 12) else 8
-                elif 2 <= y <= h - 2 and inner_min <= x <= inner_max:
-                    # Preenchimento solido abaixo da cumeeira nas bordas do oitao
-                    if y in (3, h - 2):
-                        vol[z][y][x] = 4
+                    tile = ((x // 2 + y + z) % 3 == 0) or (z in (28, 48)) or (x in (2, 49))
+                    if y > 22 and not tile:
+                        vol[z][y][x] = 8
+                    elif tile:
+                        vol[z][y][x] = 9
+                    else:
+                        vol[z][y][x] = 8 if (x + z) % 4 != 0 else 9
 
-    # Janelinha iluminada no oitao frontal (y=23, x=12..13, z=17..18)
-    for z in (17, 18):
-        for x in (12, 13):
-            vol[z][h - 1][x] = 6
-    vol[16][h - 1][12] = 2
-    vol[16][h - 1][13] = 2
+    # Janelinhas iluminadas nos oitões laterais (x=5 e x=46, y=21..24, z=32..36)
+    for gx in (5, 46):
+        for z in range(32, 37):
+            for y in range(21, 25):
+                if z in (32, 36) or y in (21, 24):
+                    vol[z][y][gx] = 2
+                else:
+                    vol[z][y][gx] = 6 if z >= 34 else 7
 
-    # Chamine de tijolinho (x=17..20, y=6..9, z=16..27) conectada firmemente ao telhado
-    for z in range(16, 28):
-        is_rim = (z == 26)
-        x0, x1 = (17, 20) if not is_rim else (16, 21)
-        y0, y1 = (6, 9) if not is_rim else (5, 10)
+    # z=34..53: chaminé de tijolinho (x=36..42, y=12..18) subindo acima do telhado
+    for z in range(34, 54):
+        is_cap = (z == 51)
+        x0, x1 = (35, 43) if is_cap else (36, 42)
+        y0, y1 = (11, 19) if is_cap else (12, 18)
         for y in range(y0, y1 + 1):
             for x in range(x0, x1 + 1):
-                if z == 27 and 18 <= x <= 19 and 7 <= y <= 8:
+                if z == 53 and 38 <= x <= 40 and 14 <= y <= 16:
                     vol[z][y][x] = 1  # boca da chamine escura
                 else:
-                    brick_alt = (x + y + z * 2) % 3
-                    vol[z][y][x] = 9 if brick_alt == 0 else (7 if brick_alt == 1 else 8)
+                    brick = (x + y * 2 + z * 2) % 4
+                    vol[z][y][x] = 9 if brick in (0, 3) else 8
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
 def build_torii_gate():
-    """12. torii_gate (22 x 10 x 26)"""
-    w, h, z_count = 22, 10, 26
+    """12. torii_gate (50 x 16 x 54)"""
+    w, h, z_count = 50, 16, 54
     palette = [
         'rgba(0,0,0,0)',
-        '#24140F',  # 1: sombra base escura
-        '#3B2219',  # 2: base escura / detalhe escuro topo kasagi
-        '#7F1D1D',  # 3: vermelho sombra profunda
-        '#991B1B',  # 4: vermelho escuro
-        '#DC2626',  # 5: vermelho vivo principal
-        '#EF4444',  # 6: vermelho iluminado
-        '#F59E0B',  # 7: detalhe dourado placa central
+        '#1C1917',  # 1: telhado preto suave / placa central preta
+        '#2B1D16',  # 2: nemaki pedra escura sombra
+        '#3F3F46',  # 3: nemaki pedra escura cinza
+        '#7F1D1D',  # 4: vermelho sombra profunda
+        '#991B1B',  # 5: vermelho escuro
+        '#DC2626',  # 6: vermelho vivo principal
+        '#EF4444',  # 7: vermelho iluminado
+        '#FACC15',  # 8: centro dourado placa central
     ]
     vol = make_volume(w, h, z_count, 0)
 
-    # APENAS 2 pilares laterais nas pontas (x=3..5 e x=16..18 em y=3..6)
-    # Vao central x=6..15 fica 100% VAZIO e ABERTO de z=0 ate z=17!
-    for z in range(23):
-        for x0, x1 in ((3, 5), (16, 18)):
-            if z <= 1:
-                # Sapata escura mantendo x=6..15 completamente livre
-                bx0 = x0 - 1 if x0 == 3 else x0
-                bx1 = x1 if x0 == 3 else x1 + 1
-                for y in range(2, 8):
-                    for x in range(bx0, bx1 + 1):
-                        vol[z][y][x] = 1 if (z == 0 or y in (2, 7)) else 2
-            elif z <= 3:
-                for y in range(3, 7):
-                    for x in range(x0, x1 + 1):
-                        vol[z][y][x] = 2
-            else:
-                for y in range(3, 7):
-                    for x in range(x0, x1 + 1):
-                        if y == 6:
-                            vol[z][y][x] = 6 if x in (x0 + 1, x1) else 5
-                        elif y == 3:
-                            vol[z][y][x] = 4
-                        else:
-                            vol[z][y][x] = 5
+    # z=0..5: duas bases de pedra escura (nemaki) nas extremidades sem invadir x=12..37
+    # Colunas ocupam x=6..11 e x=38..43; nemaki ocupa x=5..11 e x=38..44 (y=4..11)
+    for z in range(6):
+        for x0, x1 in ((5, 11), (38, 44)):
+            for y in range(4, 12):
+                for x in range(x0, x1 + 1):
+                    # Chanfra os cantos externos nos topos do nemaki (z=4..5)
+                    if z >= 4 and (x in (x0, x1) and y in (4, 11)):
+                        continue
+                    is_edge = (z == 0 or y in (4, 11) or x in (x0, x1))
+                    vol[z][y][x] = 2 if is_edge else 3
 
-    # Viga horizontal inferior (nuki) em z=18..20
-    for z in range(18, 21):
-        for y in range(4, 6):
-            for x in range(1, w - 1):
-                if x in (1, w - 2):
-                    vol[z][y][x] = 3 if z == 18 else 4
-                elif z == 20:
-                    vol[z][y][x] = 6 if y == 5 else 5
-                elif z == 18:
-                    vol[z][y][x] = 4
-                else:
+    # z=4..46: duas colunas vermelhas grossas em x=6..11 e x=38..43 (y=5..10)
+    # VAO CENTRAL x=12..37 (26px) fica 100% VAZIO de z=0 ate z=35!
+    for z in range(4, 47):
+        for x0, x1 in ((6, 11), (38, 43)):
+            for y in range(5, 11):
+                for x in range(x0, x1 + 1):
+                    # Arredonda levemente os 4 cantos de cada pilar (6x6 octogonal)
+                    if x in (x0, x1) and y in (5, 10):
+                        continue
+                    if z <= 5:
+                        vol[z][y][x] = 3  # encaixe firme no nemaki
+                    elif y >= 9:
+                        vol[z][y][x] = 7 if (x in (x0 + 1, x0 + 2, x1 - 1)) else 6
+                    elif y <= 6:
+                        vol[z][y][x] = 5 if y == 6 else 4
+                    else:
+                        vol[z][y][x] = 6
+
+    # z=36..40: travessa inferior vermelha (nuki) cobrindo x=2..47, y=6..9
+    for z in range(36, 41):
+        for y in range(6, 10):
+            for x in range(2, 48):
+                # Pontas chanfradas em x=2 e x=47
+                if x in (2, 47) and z in (36, 40):
+                    continue
+                if z == 40:
+                    vol[z][y][x] = 7 if y >= 8 else 6
+                elif z == 36:
+                    vol[z][y][x] = 4 if y <= 7 else 5
+                elif y == 9:
+                    vol[z][y][x] = 7
+                elif y == 6:
                     vol[z][y][x] = 5
-
-    # Suporte central (gakuzuka) entre nuki (z=20) e kasagi (z=22)
-    for z in range(20, 23):
-        for y in range(3, 7):
-            for x in (10, 11):
-                if y in (3, 6) and z == 21:
-                    vol[z][y][x] = 7 if y == 6 else 2
                 else:
-                    vol[z][y][x] = 2 if (y in (3, 6)) else 4
-
-    # Viga superior curva (kasagi) em z=22..25 com pontas arrebitadas e detalhe escuro no topo
-    for x in range(w):
-        dist_c = abs(x - 10.5)
-        if dist_c <= 7.5:
-            z_bot, z_top_red, z_cap = 22, 23, 24
-        elif dist_c <= 9.5:
-            z_bot, z_top_red, z_cap = 23, 24, 25
-        else:
-            z_bot, z_top_red, z_cap = 24, 24, 25  # pontas extremas x=0 e x=21 arrebitadas
-
-        for y in range(2, 8):
-            # Chanfro sutil nas pontas
-            if dist_c > 9.5 and y in (2, 7):
-                continue
-            for z in range(z_bot, z_top_red + 1):
-                if z == z_bot:
-                    vol[z][y][x] = 4
-                elif y >= 6:
                     vol[z][y][x] = 6
-                elif y <= 3:
-                    vol[z][y][x] = 4
+
+    # z=41..46: suportes sobre os pilares + placa central (gakuzuka) em x=22..27, y=5..10
+    for z in range(41, 47):
+        # Aneis/suportes sobre os pilares
+        for x0, x1 in ((5, 12), (37, 44)):
+            if z >= 45:
+                for y in range(5, 11):
+                    for x in range(x0, x1 + 1):
+                        vol[z][y][x] = 1 if z == 46 else 2
+        # Placa central (gakuzuka) preta com centro dourado (#FACC15)
+        for y in range(5, 11):
+            for x in range(22, 28):
+                is_front_back = (y in (5, 10))
+                is_gold = is_front_back and (23 <= x <= 26) and (42 <= z <= 45)
+                if is_gold:
+                    # Detalhe interno escuro sutil no centro do medalhao dourado
+                    if z in (43, 44) and x in (24, 25) and (x + z) % 2 == 0:
+                        vol[z][y][x] = 1
+                    else:
+                        vol[z][y][x] = 8
                 else:
+                    vol[z][y][x] = 1 if (x in (22, 27) or z in (41, 46)) else 2
+
+    # z=47..53: viga superior curva (kasagi) cobrindo x=0..49, y=4..11
+    # Camadas vermelha (z=47..49) e telhado preto (z=50..53) subindo 2 fatias nas pontas (x=0..5 e x=44..49)
+    for x in range(w):
+        if x <= 5 or x >= 44:
+            z_red0, z_red1 = 49, 51
+            z_blk0, z_blk1 = 52, 53
+        elif x <= 9 or x >= 40:
+            z_red0, z_red1 = 48, 50
+            z_blk0, z_blk1 = 51, 52
+        else:
+            z_red0, z_red1 = 47, 49
+            z_blk0, z_blk1 = 50, 51
+
+        for y in range(4, 12):
+            # Chanfro elegante nas pontas extremas
+            if (x in (0, 49)) and y in (4, 11):
+                continue
+            for z in range(z_red0, z_red1 + 1):
+                if z == z_red0 and y in (4, 11):
+                    continue
+                if z == z_red0:
                     vol[z][y][x] = 5
-            # Detalhe escuro no topo do kasagi
-            vol[z_cap][y][x] = 1 if y in (2, 7) else 2
+                elif y >= 10:
+                    vol[z][y][x] = 7
+                elif y <= 5:
+                    vol[z][y][x] = 5
+                else:
+                    vol[z][y][x] = 6
+            for z in range(z_blk0, z_blk1 + 1):
+                if z == z_blk1 and y in (4, 11):
+                    continue
+                vol[z][y][x] = 1 if (z == z_blk1 or y in (4, 11)) else 2
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
 def build_stone_lantern():
-    """13. stone_lantern (10 x 10 x 18)"""
-    w, h, z_count = 10, 10, 18
+    """13. stone_lantern (14 x 14 x 24)"""
+    w, h, z_count = 14, 14, 24
     palette = [
         'rgba(0,0,0,0)',
         '#374151',  # 1: pedra sombra profunda
@@ -1110,7 +1230,7 @@ def build_stone_lantern():
         lo, hi = pad, w - 1 - pad
         for y in range(lo, hi + 1):
             for x in range(lo, hi + 1):
-                if pad <= 2 and (x in (lo, hi) and y in (lo, hi)):
+                if pad <= 3 and (x in (lo, hi) and y in (lo, hi)):
                     continue
                 is_edge = (x in (lo, hi) or y in (lo, hi))
                 if col_hi and is_edge and (x + y >= w - 1):
@@ -1120,171 +1240,239 @@ def build_stone_lantern():
                 else:
                     vol[z][y][x] = col_fill
 
-    # z=0..3: base larga de pedra
+    # z=0..4: base escalonada robusta
     fill_chamfer_square(0, 1, 1, 2)
     fill_chamfer_square(1, 1, 2, 3, 4)
     fill_chamfer_square(2, 2, 2, 3, 4)
-    fill_chamfer_square(3, 3, 3, 4, 5)
+    fill_chamfer_square(3, 2, 3, 4, 5)
+    fill_chamfer_square(4, 3, 3, 4, 5)
 
-    # z=4..8: haste fina
-    for z in range(4, 9):
-        for y in (4, 5):
-            for x in (4, 5):
-                vol[z][y][x] = 4 if (x == 5 and y == 5) else (2 if (x == 4 and y == 4) else 3)
-
-    # z=9..12: camara com janela luminosa amarela (#FDE68A)
-    fill_chamfer_square(9, 2, 3, 4, 5)  # plataforma inferior da camara
-    for z in (10, 11):
-        for y in range(3, 7):
-            for x in range(3, 7):
-                is_corner = (x in (3, 6) and y in (3, 6))
-                if is_corner:
-                    vol[z][y][x] = 4 if (x == 6 or y == 6) else 2
-                elif x in (4, 5) and y in (4, 5):
-                    vol[z][y][x] = 7
+    # z=5..11: haste de pedra com anel central (z=8)
+    for z in range(5, 12):
+        lo, hi = (4, 9) if z == 11 else (5, 8)
+        for y in range(lo, hi + 1):
+            for x in range(lo, hi + 1):
+                if z == 11 and x in (lo, hi) and y in (lo, hi):
+                    continue
+                if z == 8 and (x in (5, 8) or y in (5, 8)):
+                    vol[z][y][x] = 5 if (x + y >= 14) else 2
+                elif x + y >= 15:
+                    vol[z][y][x] = 4
+                elif x + y <= 11:
+                    vol[z][y][x] = 2
                 else:
-                    vol[z][y][x] = 6  # janela luminosa nas 4 faces
-    fill_chamfer_square(12, 2, 2, 3, 4)
+                    vol[z][y][x] = 3
 
-    # z=13..17: telhadinho piramidal de pedra com pinaculo
-    fill_chamfer_square(13, 1, 3, 4, 5)
-    # Pontas levemente arrebitadas nos 4 cantos em z=13
-    for cx, cy in ((1, 1), (8, 1), (1, 8), (8, 8)):
-        vol[13][cy][cx] = 4
-    fill_chamfer_square(14, 2, 3, 4, 5)
-    fill_chamfer_square(15, 3, 4, 4, 5)
-    for y in (4, 5):
-        for x in (4, 5):
-            vol[16][y][x] = 5 if (x + y >= 9) else 4
-    vol[17][4][4] = 5
-    vol[17][5][4] = 5
-    vol[17][4][5] = 5
-    vol[17][5][5] = 5
+    # z=12..17: camara com janela luminosa (#FDE68A)
+    fill_chamfer_square(12, 2, 3, 4, 5)
+    for z in range(13, 17):
+        for y in range(3, 11):
+            for x in range(3, 11):
+                is_post = (x in (3, 4, 9, 10)) and (y in (3, 4, 9, 10))
+                if is_post:
+                    if x in (3, 10) and y in (3, 10):
+                        continue
+                    vol[z][y][x] = 4 if (x + y >= 14) else (2 if x + y <= 11 else 3)
+                elif 5 <= x <= 8 and 5 <= y <= 8:
+                    vol[z][y][x] = 7
+                elif 4 <= x <= 9 and 4 <= y <= 9:
+                    vol[z][y][x] = 6  # janela luminosa reentrante nas 4 faces
+    fill_chamfer_square(17, 2, 2, 3, 4)
+
+    # z=18..23: telhadinho piramidal com pontas arrebitadas e ponta no topo
+    fill_chamfer_square(18, 0, 2, 3, 4)
+    # Pontas arrebitadas nos 4 cantos
+    for cx_t, cy_t in ((1, 1), (12, 1), (1, 12), (12, 12)):
+        vol[18][cy_t][cx_t] = 4
+        vol[19][cy_t][cx_t] = 5
+    fill_chamfer_square(19, 1, 3, 4, 5)
+    fill_chamfer_square(20, 2, 3, 4, 5)
+    fill_chamfer_square(21, 4, 4, 4, 5)
+    fill_chamfer_square(22, 5, 4, 5, 5)
+    for y in (6, 7):
+        for x in (6, 7):
+            vol[23][y][x] = 5
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
 def build_lighthouse():
-    """14. lighthouse (18 x 18 x 42)"""
-    w, h, z_count = 18, 18, 42
+    """14. lighthouse (34 x 34 x 84)"""
+    w, h, z_count = 34, 34, 84
     palette = [
         'rgba(0,0,0,0)',
-        '#231F28',  # 1: porta escura / varanda escura
-        '#4B5563',  # 2: base octogonal cinza escura
-        '#8491A3',  # 3: base octogonal cinza clara
-        '#CBD5E1',  # 4: branco sombra da torre
-        '#F8FAFC',  # 5: branco vivo da torre
-        '#991B1B',  # 6: vermelho sombra
-        '#DC2626',  # 7: vermelho vivo
-        '#F59E0B',  # 8: vidro dourado medio / macaneta
+        '#231F28',  # 1: ferro escuro varanda / pilastras / vigias / batente
+        '#4B5563',  # 2: pedra cinza escura base octogonal
+        '#8491A3',  # 3: pedra cinza clara base octogonal
+        '#CBD5E1',  # 4: branco sombra torre
+        '#F8FAFC',  # 5: branco vivo torre
+        '#991B1B',  # 6: vermelho sombra torre/cupula
+        '#DC2626',  # 7: vermelho vivo torre/cupula
+        '#F59E0B',  # 8: vidro dourado medio / macaneta / para-raios
         '#FEF08A',  # 9: vidro dourado brilhante
     ]
     vol = make_volume(w, h, z_count, 0)
-    cx, cy = 8.5, 8.5
+    cx, cy = 16.5, 16.5
 
-    # Base octogonal cinza (z=0..3)
-    for z in range(4):
-        lim = 6.6 if z <= 1 else 6.1
-        oct_lim = 10.0 if z <= 1 else 9.2
+    # z=0..9: base octogonal robusta de pedra cinza (cx=16.5, cy=16.5, r=14.5)
+    for z in range(10):
+        rad = 14.5 if z <= 7 else (13.8 if z == 8 else 12.8)
+        oct_lim = rad * 1.42
         for y in range(h):
             for x in range(w):
                 dx = abs(x - cx)
                 dy = abs(y - cy)
-                if dx <= lim and dy <= lim and (dx + dy) <= oct_lim:
-                    vol[z][y][x] = 3 if (x + y >= 17 and z >= 1) else 2
+                if dx <= rad and dy <= rad and (dx + dy) <= oct_lim:
+                    is_rim = (z in (0, 8, 9)) or (max(dx, dy) >= rad - 1.1) or ((dx + dy) >= oct_lim - 1.3)
+                    if z == 0 or (dx + dy < 2.0 and False):
+                        vol[z][y][x] = 2
+                    elif is_rim and (x + y >= 33) and z >= 1:
+                        vol[z][y][x] = 3
+                    elif (x + y) >= 34 and z >= 2:
+                        vol[z][y][x] = 3
+                    else:
+                        vol[z][y][x] = 2
 
-    # Torre cilindrica listrada branco (#F8FAFC) e vermelho (#DC2626) a cada 6 fatias (z=4..29)
-    for z in range(4, 30):
-        rad = 5.3 - 1.5 * ((z - 4) / 25.0)
-        stripe = ((z - 4) // 6) % 2  # 0: branco, 1: vermelho
+    # z=10..61: torre cilindrica afunilando suavemente de r=11.5 (z=10) ate r=7.8 (z=61)
+    for z in range(10, 62):
+        rad = 11.5 - (11.5 - 7.8) * ((z - 10) / 51.0)
+        if z <= 19:
+            is_white = True
+        elif z <= 29:
+            is_white = False
+        elif z <= 39:
+            is_white = True
+        elif z <= 49:
+            is_white = False
+        else:
+            is_white = True
         for y in range(h):
             for x in range(w):
                 dx = x - cx
                 dy = y - cy
                 if dx * dx + dy * dy <= rad * rad:
-                    lit = (dx + dy) > -0.5
-                    if stripe == 0:
+                    lit = (dx + dy) > -1.0
+                    if is_white:
                         vol[z][y][x] = 5 if lit else 4
                     else:
                         vol[z][y][x] = 7 if lit else 6
 
-    # Portinha escura na frente (y = H - 1 = 17, z=1..7) com moldura conectada a base/torre
-    for z in range(9):
-        for y in range(13, h):
-            for x in range(6, 12):
-                if z == 0:
-                    vol[z][y][x] = 2
-                elif z <= 7 and y == h - 1 and 7 <= x <= 10:
-                    if x in (7, 10) or z == 7:
-                        vol[z][y][x] = 3
-                    else:
-                        vol[z][y][x] = 1  # folha da porta escura
-                elif z <= 7 and 7 <= x <= 10 and y == h - 2:
+    # Portinha arqueada na frente (y=28..31, x=13..20, z=2..18) com batente escuro e macaneta dourada
+    # Degrau de entrada em z=0..1 para transicao limpa ate z=2
+    for z in range(2):
+        for y in range(29, 33):
+            for x in range(12, 22):
+                vol[z][y][x] = 2 if z == 0 else 3
+    for z in range(2, 19):
+        for y in range(28, 32):
+            for x in range(13, 21):
+                # Arco superior fechando suavemente em z=15..18
+                if z >= 15 and x in (13, 20):
+                    continue
+                if z >= 17 and x in (14, 19):
+                    continue
+                if z == 18 and y == 31:
+                    continue
+                # Abertura interna da porta para o arco
+                in_arch_hole = (
+                    (z <= 13 and 15 <= x <= 18) or
+                    (z == 14 and 15 <= x <= 18) or
+                    (z == 15 and 16 <= x <= 17)
+                )
+                if y == 31 and in_arch_hole:
+                    continue  # recuo de 1px revelando a folha em y=30
+                elif y == 30 and in_arch_hole:
+                    vol[z][y][x] = 2 if (x in (16, 17) and z % 3 != 0) else 1
+                elif y == 29 and in_arch_hole:
                     vol[z][y][x] = 1
-                elif z <= 8:
-                    vol[z][y][x] = 3 if (y >= 16 or x >= 9) else 2
-    vol[4][h - 1][9] = 8  # macaneta dourada
+                elif y >= 30 and (x in (14, 19) or (z in (14, 15, 16) and 14 <= x <= 19)):
+                    vol[z][y][x] = 1  # batente escuro ao redor da porta
+                else:
+                    vol[z][y][x] = 3 if (x >= 17 or y == 31) else 2
+    # Macaneta dourada
+    vol[9][30][18] = 8
+    vol[9][31][18] = 8
+    vol[10][30][18] = 8
 
-    # Pequenas janelinhas na frente da torre
-    for jz in (13, 23):
-        for z in (jz, jz + 1):
-            for x in (8, 9):
-                for y in range(12, h):
-                    if vol[z][y][x] != 0 and (y == h - 1 or vol[z][y + 1][x] == 0):
-                        vol[z][y][x] = 9 if z == jz + 1 else 8
+    # Janelinhas vigia pequenas escuras em z=24 e z=44 (frente + laterais/tras)
+    for jz in (24, 44):
+        for z in (jz - 1, jz, jz + 1):
+            for ox in (15, 16, 17, 18):
+                if z in (jz - 1, jz + 1) and ox in (15, 18):
+                    continue
+                for y in range(22, h):
+                    if vol[z][y][ox] != 0 and (y == h - 1 or vol[z][y + 1][ox] == 0):
+                        vol[z][y][ox] = 1
+                        vol[z][y - 1][ox] = 1
                         break
 
-    # Varanda circular escura (z=30..32)
-    for z in range(30, 33):
+    # z=62..66: varanda circular saliente de ferro escuro (r=10.5), guarda-corpo (r=9.5..10.5, oco z=64..66)
+    for z in range(62, 67):
         for y in range(h):
             for x in range(w):
                 dist = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-                if z == 30:
-                    if dist <= 5.5:
+                if z == 62:
+                    if dist <= 9.2:
                         vol[z][y][x] = 1
-                elif z == 31:
-                    if 4.5 <= dist <= 5.5 or dist <= 3.3:
+                elif z == 63:
+                    if dist <= 10.5:
                         vol[z][y][x] = 1
-                else:  # z == 32: postes da grade + piso da lanterna
-                    if dist <= 3.3 or (4.5 <= dist <= 5.5 and (abs(x - cx) < 1.2 or abs(y - cy) < 1.2)):
+                else:
+                    # Nucleo base da camara de vidro (r<=6.8) + guarda-corpo em r=9.5..10.5
+                    in_core = (dist <= 6.8)
+                    on_rail_ring = (9.5 <= dist <= 10.5) if z < 66 else (9.0 <= dist <= 10.5)
+                    is_post = (abs(x - cx) <= 1.1 or abs(y - cy) <= 1.1 or abs(abs(x - cx) - abs(y - cy)) <= 1.0)
+                    if in_core:
+                        vol[z][y][x] = 1
+                    elif (on_rail_ring and z == 66) or (on_rail_ring and is_post):
                         vol[z][y][x] = 1
 
-    # Lanterna de vidro dourado brilhante (z=33..37)
-    for z in range(33, 38):
+    # z=67..75: camara de vidro dourado brilhante (r=6.8, #FEF08A / #F59E0B) com 4 pilastras escuras
+    for z in range(67, 76):
         for y in range(h):
             for x in range(w):
                 dx = x - cx
                 dy = y - cy
                 dist = (dx * dx + dy * dy) ** 0.5
-                if dist <= 3.3:
-                    is_mullion = (dist >= 2.2) and (abs(abs(dx) - abs(dy)) <= 0.6)
-                    if is_mullion or z == 37 and dist >= 2.5:
+                if dist <= 6.8:
+                    is_pillar = (dist >= 5.3) and (abs(abs(dx) - abs(dy)) <= 0.85)
+                    if is_pillar or (z == 75 and dist >= 5.6):
                         vol[z][y][x] = 1
-                    elif dist <= 1.8:
+                    elif dist <= 3.6:
                         vol[z][y][x] = 9
                     else:
-                        vol[z][y][x] = 9 if (z in (34, 35) and dx + dy > 0) else 8
+                        vol[z][y][x] = 9 if (69 <= z <= 73 and dx + dy > -1.0) else 8
 
-    # Cupula vermelha com ponta (z=38..41)
-    dome_radii = {38: 4.1, 39: 3.0, 40: 1.8}
+    # z=76..83: cupula conica vermelha (r=8.2 ate r=1) com haste/para-raios no topo (z=81..83)
+    dome_radii = {
+        76: 8.2,
+        77: 6.8,
+        78: 5.4,
+        79: 4.0,
+        80: 2.5,
+        81: 1.3,
+    }
     for z, drad in dome_radii.items():
         for y in range(h):
             for x in range(w):
                 dx = x - cx
                 dy = y - cy
                 if dx * dx + dy * dy <= drad * drad:
-                    vol[z][y][x] = 7 if (dx + dy >= 0 or z >= 39) else 6
-    # Ponta da cupula em z=41
-    for y in (8, 9):
-        for x in (8, 9):
-            vol[41][y][x] = 8 if (x == 9 and y == 9) else 7
+                    vol[z][y][x] = 7 if (dx + dy >= -0.5 or z >= 79) else 6
+    # Haste / para-raios no topo (z=81..83)
+    for z in (81, 82, 83):
+        for y in (16, 17):
+            for x in (16, 17):
+                if z == 83 and not (x == 16 and y == 16):
+                    continue
+                vol[z][y][x] = 8 if z == 83 else 1
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
 def build_beach_umbrella():
-    """15. beach_umbrella (18 x 18 x 18)"""
-    w, h, z_count = 18, 18, 18
+    """15. beach_umbrella (28 x 28 x 28)"""
+    w, h, z_count = 28, 28, 28
     palette = [
         'rgba(0,0,0,0)',
         '#5C3A21',  # 1: mastro madeira sombra
@@ -1296,22 +1484,25 @@ def build_beach_umbrella():
         '#FFFDF7',  # 7: branco vivo
     ]
     vol = make_volume(w, h, z_count, 0)
-    cx, cy = 8.5, 8.5
+    cx, cy = 13.5, 13.5
 
-    # Mastro fino de madeira no centro (x=8..9, y=8..9, z=0..14)
-    for z in range(15):
-        for y in (8, 9):
-            for x in (8, 9):
-                vol[z][y][x] = 3 if (x == 9 and y == 9) else (1 if (x == 8 and y == 8) else 2)
+    # Mastro fino de madeira no centro (x=13..14, y=13..14, z=0..22, estendendo ate z=26 dentro da cupula)
+    for z in range(27):
+        for y in (13, 14):
+            for x in (13, 14):
+                vol[z][y][x] = 3 if (x == 14 and y == 14) else (1 if (x == 13 and y == 13) else 2)
 
-    # Cupula octogonal listrada radialmente de vermelho (#EF4444) e branco (#FFFDF7) de z=12..17
+    # Cupula octogonal listrada vermelho/branco grande (z=19..27, r=12.5)
     shells = {
-        17: (0.0, 1.5),
-        16: (0.0, 3.3),
-        15: (0.0, 5.2),
-        14: (4.0, 6.9),
-        13: (5.8, 8.2),
-        12: (7.0, 8.5),
+        27: (0.0, 2.2),
+        26: (0.0, 4.3),
+        25: (2.6, 6.4),
+        24: (4.6, 8.3),
+        23: (6.5, 9.9),
+        22: (8.2, 11.1),
+        21: (9.5, 11.9),
+        20: (10.6, 12.5),
+        19: (11.4, 12.5),
     }
     for z, (r_min, r_max) in shells.items():
         for y in range(h):
@@ -1320,13 +1511,13 @@ def build_beach_umbrella():
                 dy = y - cy
                 oct_d = max(abs(dx), abs(dy), (abs(dx) + abs(dy)) * 0.72)
                 if r_min <= oct_d <= r_max:
-                    if z == 17 and oct_d <= 0.8:
+                    if z == 27 and oct_d <= 1.1:
                         vol[z][y][x] = 3
                         continue
                     ang = math.atan2(dy, dx)
-                    sector = int(((ang + math.pi) / (2.0 * math.pi)) * 8.0) % 8
+                    sector = int(((ang + math.pi + math.pi / 8.0) / (2.0 * math.pi)) * 8.0) % 8
                     is_red = (sector % 2 == 0)
-                    is_shaded = (z == 12) or (dx + dy < -2.0)
+                    is_shaded = (z == 19) or (dx + dy < -3.0)
                     if is_red:
                         vol[z][y][x] = 4 if is_shaded else 5
                     else:
@@ -1336,8 +1527,8 @@ def build_beach_umbrella():
 
 
 def build_wood_boat():
-    """16. wood_boat (20 x 12 x 8)"""
-    w, h, z_count = 20, 12, 8
+    """16. wood_boat (34 x 20 x 12)"""
+    w, h, z_count = 34, 20, 12
     palette = [
         'rgba(0,0,0,0)',
         '#3B2219',  # 1: borda marrom escura / sombra quilha
@@ -1347,49 +1538,61 @@ def build_wood_boat():
         '#C88E65',  # 5: realce bancos / borda interna
     ]
     vol = make_volume(w, h, z_count, 0)
-    cy = 5.5
+    cy = 9.5
 
-    # Perfil de largura por X (popa x=0..2, meio x=3..15, proa x=16..19)
-    half_widths = {
-        0: 0.9, 1: 1.9, 2: 3.1,
-        3: 4.1, 4: 4.6, 5: 4.8, 6: 4.9, 7: 4.9, 8: 4.9, 9: 4.9,
-        10: 4.9, 11: 4.9, 12: 4.9, 13: 4.8, 14: 4.6, 15: 4.1,
-        16: 3.4, 17: 2.6, 18: 1.7, 19: 0.8,
-    }
+    # Perfil de largura por X (popa x=0..4, meio x=5..26, proa afilada x=27..33)
+    half_widths = []
+    for x in range(w):
+        if x <= 5:
+            # Popa arredondada/afilada
+            t = x / 5.0
+            hw = 1.6 + 6.9 * math.sin(t * math.pi * 0.5)
+        elif x <= 24:
+            hw = 8.5
+        else:
+            # Proa afilada ate x=33
+            t = (33 - x) / 9.0
+            hw = 1.0 + 7.5 * (t ** 0.78)
+        half_widths.append(hw)
+
     z_scales = {
-        0: 0.48, 1: 0.68, 2: 0.84,
-        3: 0.92, 4: 0.96, 5: 0.99, 6: 1.00, 7: 1.02,
+        0: 0.45, 1: 0.62, 2: 0.76, 3: 0.86,
+        4: 0.92, 5: 0.96, 6: 0.98, 7: 1.00,
+        8: 1.01, 9: 1.02, 10: 1.03, 11: 1.04,
     }
 
     for z in range(z_count):
         zs = z_scales[z]
         for x in range(w):
+            # Quilha sobe ligeiramente nas pontas extremas
+            if z == 0 and (x <= 1 or x >= 32):
+                continue
             hw = half_widths[x] * zs
-            # Fundo solido em z=0..2; oco em z=3..7 mantendo espessura da parede
-            inner_hw = -1.0 if z <= 2 else max(0.0, hw - 1.35)
-            # Proa (x>=18) e popa (x<=1) fechadas com bico
-            if x <= 1 or x >= 18:
+            # Fundo solido em z=0..3; interior oco de z=4..11
+            inner_hw = -1.0 if z <= 3 else max(0.0, hw - 1.9)
+            if x <= 2 or x >= 30:
                 inner_hw = -1.0
             for y in range(h):
                 dy = abs(y - cy)
                 if dy <= hw and dy >= inner_hw:
-                    if z == 7:
-                        vol[z][y][x] = 1  # borda marrom escura em cima
+                    if z == 11 or (z == 10 and dy >= hw - 1.0):
+                        vol[z][y][x] = 1  # borda marrom escura
                     elif z == 0:
                         vol[z][y][x] = 1
-                    elif z <= 2:
-                        vol[z][y][x] = 3 if (dy < hw - 1.0) else 2
-                    elif dy >= hw - 0.8:
+                    elif z <= 3:
+                        vol[z][y][x] = 3 if (dy < hw - 1.4 and z == 3) else 2
+                    elif dy >= hw - 0.9:
                         vol[z][y][x] = 3 if y >= cy else 2
                     else:
-                        vol[z][y][x] = 4 if z >= 5 else 3
+                        vol[z][y][x] = 4 if z >= 8 else 3
 
-    # Dois bancos transversais (x=6 e x=12 em z=4)
-    for bx in (6, 12):
-        hw_seat = half_widths[bx] * z_scales[4]
-        for y in range(h):
-            if abs(y - cy) <= hw_seat - 0.5:
-                vol[4][y][bx] = 5 if y >= cy else 4
+    # 2 bancos internos (x=10..11 e x=21..22 em z=5..6)
+    for bx in (10, 11, 21, 22):
+        hw_seat = half_widths[bx] * z_scales[6]
+        for z in (5, 6):
+            for y in range(h):
+                if abs(y - cy) <= hw_seat - 0.8:
+                    vol[z][y][bx] = 5 if (z == 6 and y >= cy) else (4 if z == 6 else 3)
 
     return {'palette': palette, 'slices': to_strings(vol)}
 
@@ -1783,22 +1986,22 @@ def build_baby_chick():
 
 
 EXPECTED_SPECS = {
-    'pine_tree': (20, 20, 34),
-    'sakura_oak': (32, 32, 42),
+    'pine_tree': (28, 28, 48),
+    'sakura_oak': (54, 54, 68),
     'boulder_large': (14, 14, 12),
     'mushroom_giant': (16, 16, 16),
     'wood_sign': (10, 8, 14),
     'campfire': (12, 12, 9),
     'bush_berry': (12, 12, 9),
     'golden_fish': (12, 8, 6),
-    'ruin_pillar': (12, 12, 18),
+    'ruin_pillar': (18, 18, 34),
     'flower_tuft': (10, 10, 5),
-    'cozy_cabin': (26, 24, 28),
-    'torii_gate': (22, 10, 26),
-    'stone_lantern': (10, 10, 18),
-    'lighthouse': (18, 18, 42),
-    'beach_umbrella': (18, 18, 18),
-    'wood_boat': (20, 12, 8),
+    'cozy_cabin': (52, 46, 54),
+    'torii_gate': (50, 16, 54),
+    'stone_lantern': (14, 14, 24),
+    'lighthouse': (34, 34, 84),
+    'beach_umbrella': (28, 28, 28),
+    'wood_boat': (34, 20, 12),
     'sunflower': (10, 10, 16),
     'hay_bale': (14, 14, 10),
     'tree_stump': (14, 14, 10),
@@ -1829,6 +2032,15 @@ def validate_pack(pack):
 
         assert len(slices) == exp_z, f"{name}: Z={len(slices)} != {exp_z}"
         assert isinstance(slices[0][0], str), f"{name}: slices[0][0] nao e str"
+
+        if name == 'torii_gate':
+            # Confirmacao explicita: vao central x=12..37, z=0..35 deve ser 100% vazio ('0')
+            for z_chk in range(0, 36):
+                for y_chk in range(exp_h):
+                    for x_chk in range(12, 38):
+                        assert slices[z_chk][y_chk][x_chk] == '0', (
+                            f"torii_gate vao central nao vazio em ({x_chk},{y_chk},{z_chk})"
+                        )
 
         valid_chars = {encode_char(i) for i in range(len(palette))}
         solid_coords = set()
