@@ -33,12 +33,26 @@
 - **Elevação em Z e Sombra Suave**: Ao arrastar um móvel, ele levita alguns milímetros com sombra projetada dinâmica.
 - **Rotação Individual (Tecla R)**: Gire qualquer móvel selecionado em 90° para posicioná-lo onde quiser.
 
-### 4. 📦 Catálogo de Assets & Inventário
-- Gaveta lateral flutuante com todos os 9 móveis e itens do quarto.
-- Ative ou oculte qualquer objeto com um clique (botões `✓ Ativo` / `+ Adicionar`).
+### 4. 📦 Catálogo de Assets & Aba Exclusiva de Pets
+- Gaveta lateral flutuante organizada em 4 categorias: `🛋️ Móveis`, `🧸 Quarto`, `🐾 Pets` e `🎩 Chapéus`.
+- **Companheiros Modulares**: Ative até 3 bichinhos simultâneos no quarto ou recolha quem quiser:
+  - 🐱 **Gatinho Mochi**: 6 pelagens selecionáveis (Calico Original, Kuro Preto, Felix Frajola, Cheddar Laranja, Luna Siamês, Misty Cinza).
+  - 🐔 **Galinha Popó**: Galinha rechonchuda que passeia rebolando e cisca milho no chão com bicadas "toc-toc".
+  - 🐥 **Pintinho Piu (Pintinho Amarelinho)**: Modelo próprio de 10 fatias ("bolinha" esférica sem crista), patinhas de palito e olhinhos brilhantes.
 - Botões rápidos para **Mostrar Todos** ou **Limpar Sala**.
 
-### 5. 🖥️ Setup Workstation 100% Modular
+### 5. 📌 Mural de Post-its Interativo & Zoom 3D
+- Quadro de cortiça expandido na parede leste com 6 post-its coloridos e tachinhas.
+- **Clique Dinâmico em 360°**: Hitbox calculado diretamente a partir da projeção 3D dos 4 vértices da parede com culling automático quando a parede fica de costas.
+- **Bloco de Notas & Lembretes**: Ao clicar no quadro fora do modo decoração, abre um modal interativo em tela cheia com bloquinho de notas e persistência via `localStorage`.
+
+### 6. 🐓 Locomoção Biomecânica & Animação Sem Deformação
+- **Passada Real em 2 Fases**: Separação física entre *Fase de Balanço* (patinha no ar avançando pelo céu) e *Fase de Apoio* (patinha no chão deslizando para trás e empurrando o corpo), eliminando passos em falso ou patinação.
+- **Orientação Direcional Perfeita**: Rotação das fatias alinhada estritamente com o vetor de velocidade (`totalAngle = theta + turn`), fazendo com que o animal ande sempre na exata direção em que está olhando.
+- **Articulação de Bloco Sólido (Anti-Shear)**: O bico e cabeça mergulham até o chão para ciscar sem distorção ou colapso horizontal de fatias.
+- **Rebolado e Dinâmica Corporal**: Gingado de quadril (`rollWobble`), quique vertical (`bodyBobZ`) e impulso optocinético de cabeça.
+
+### 7. 🖥️ Setup Workstation 100% Modular
 - **Mesa de Estudo Ampla (50x30)**: Madeira maciça de carvalho com 4 pernas e tampo chanfrado.
 - **Notebook no Suporte Ergonômico**: Base e hastes de alumínio elevadas, teclado com trackpad e tela aberta com display ciano brilhante.
 - **Mesa Digitalizadora (Drawing Tablet)**: Corpo fino grafite com express keys, tela com rascunho de gatinho em progresso e caneta stylus ao lado em suporte donut.
@@ -46,14 +60,14 @@
 - **Caneca de Café**: Cerâmica branca com café expresso e vapor quentinho subindo.
 - *Inteligência de Grupo*: Arrastar a mesa move todos os acessórios de cima juntos; arrastar cada acessório permite reorganizar a mesa ou colocá-los no chão!
 
-### 6. ⏰ Relógio Cilíndrico 3D com Hora Real
+### 8. ⏰ Relógio Cilíndrico 3D com Hora Real
 - Cilindro de madeira maciça de 16 facetas saliente na parede com mostrador afundado.
 - Ponteiros de horas e minutos sincronizados com o horário real do sistema operacional.
 
-### 7. ☁️ Nuvens Volumétricas em Parallax 3D
+### 9. ☁️ Nuvens Volumétricas em Parallax 3D
 - As nuvens flutuam **30 unidades fora do quarto** ($y = -ROOM\_R - 30$) com parallax 3D verdadeiro através do vidro da janela.
 
-### 8. 📚 Prateleira Segmentada sem Sobreposição
+### 10. 📚 Prateleira Segmentada sem Sobreposição
 - Nichos claramente espaçados com ordenação dinâmica de profundidade: livros em pé, suporte metálico com livro inclinado em $22^\circ$, vasinho de suculenta e livros horizontais com cristal.
 
 ---
