@@ -1,4 +1,4 @@
-# 🐾 PixelArtSkill — 3D & Pseudo-3D Pixel Art Engine
+# 🐾 PixelArtSkill — 3D & Pseudo-3D Pixel Art Multi-Room Engine & Antigravity Skill
 
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live%20Demo-brightgreen?logo=github)](https://ruishalm.github.io/PixelArtSkill/)
 [![Tech](https://img.shields.io/badge/HTML5-Canvas%202D-E34F26?logo=html5&logoColor=white)](https://ruishalm.github.io/PixelArtSkill/)
@@ -6,105 +6,113 @@
 [![No WebGL Required](https://img.shields.io/badge/3D%20Engine-No%20WebGL%20%2F%20No%20Three.js-orange)](#)
 [![Antigravity Skill](https://img.shields.io/badge/Antigravity-Custom%20Skill-purple)](https://ruishalm.github.io/PixelArtSkill/)
 
-> **Engine de Pixel Art 3D e Diorama Interativo** construída 100% em **HTML5 Canvas 2D puro**, utilizando **Sprite Stacking (Fatiamento Voxel Z)**, rotação orbital 360°, projeção inversa para drag & drop e oclusão inteligente de paredes dinâmicas. Inspirado no universo aconchegante de *PurrModoro*, *The Sims* e *Animal Crossing*.
+> **Engine de Pixel Art 3D e Mansão Diorama Interativa Multi-Ambientes** construída 100% em **HTML5 Canvas 2D puro**, utilizando **Sprite Stacking (Fatiamento Voxel Z)**, rotação orbital 360°, projeção inversa para drag & drop com parenting hierárquico sincronizado, IA comportamental de pets, oclusão dinâmica de paredes e navegação por planta baixa arquitetural. Inspirado no universo aconchegante de *PurrModoro*, *The Sims* e *Animal Crossing*.
 
 ---
 
 ## 🎮 Live Demos (Jogue no Navegador!)
 
-* 🏠 **[Quarto 3D Diorama Completo (room-3d.html / index.html)](https://ruishalm.github.io/PixelArtSkill/)**: Quarto amplo com todos os móveis modulares, modo decoração drag & drop, relógio 3D em tempo real e nuvens passando na janela.
-* 🐱 **[Visualizador do Gatinho 3D (cat-3d.html)](https://ruishalm.github.io/PixelArtSkill/cat-3d.html)**: Modelo anatômico quadrupedal de 16 fatias do gatinho calico com olhões expressivos e orelhas empinadas.
+* 🏡 **[Diorama Multi-Ambientes Completo (room-3d.html / index.html)](https://ruishalm.github.io/PixelArtSkill/)**: Navegue livremente pelos 4 cômodos (Quarto, Sala de Estar, Cozinha e Jardim Externo), decore no modo Drag & Drop e interaja com os pets e murais!
+* 🐱 **[Visualizador Anatômico do Gatinho 3D (cat-3d.html)](https://ruishalm.github.io/PixelArtSkill/cat-3d.html)**: Modelo quadrupedal de 16 fatias do gatinho com olhões expressivos e orelhas empinadas.
+* 🐔 **[Visualizador da Galinha Popó 3D (chicken-3d.html)](https://ruishalm.github.io/PixelArtSkill/chicken-3d.html)**: Modelo rechonchudo da galinha com crista, bico articulado anti-cisalhamento e ciclo de bicadas.
 
 ---
 
-## ✨ Funcionalidades Principais
+## 🗺️ Os 4 Cômodos do Diorama Interativo
 
-### 1. 🏠 Diorama 3D em Canvas 2D Puro
-- **Zero WebGL / Zero Three.js**: Todo o render 3D (rotação, projeção de vértices, oclusão, fatiamento em Z e perspectiva) roda na CPU sobre a API padrão do `CanvasRenderingContext2D`.
-- **Pixel Art Nítida (Nearest-Neighbor)**: Buffer interno de baixa resolução (`440x440`) com upscale inteiro sem interpolação bilinear borrada (`image-rendering: pixelated`).
+Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo o botão de **Planta Baixa (Minimapa 🗺️)** no canto superior direito:
 
-### 2. 🧱 Smart Dynamic Wall Culling (Paredes Dinâmicas)
-- Cálculo vetorial da normal da parede relativo ao ângulo da câmera (`nyRot = normal.x * sin(turn) + normal.y * cos(turn)`).
-- **As paredes que ficam na frente da câmera recolhem automaticamente** virando rodapés baixos de 3px, garantindo que o interior do quarto esteja sempre 100% visível em qualquer ângulo de 360°!
+```
+                  ┌──────────────────────┐
+                  │   🌳 Jardim Externo   │
+                  │ (Carvalho & Balanço) │
+                  └──────────▲───────────┘
+                             │ Porta Norte
+                             ▼
+┌──────────────────┐      ┌──────────────────────┐      ┌──────────────────────┐
+│    🛏️ Quarto     │◄────►│  🛋️ Sala de Estar    │◄────►│     🍽️ Cozinha       │
+│  (Setup & Cama)  │      │ (TV, Sofá & Estante) │      │(Mesa, Fogão & Gelad.)│
+└──────────────────┘      └──────────────────────┘      └──────────────────────┘
+```
 
-### 3. 🛠️ Modo Decoração (Drag & Drop em 3D Real)
-- **Unproject Matemático**: Inversão da matriz de rotação e inclinação isométrica para transformar as coordenadas de clique da tela `(screenX, screenY)` em pontos exatos do chão 3D `(worldX, worldY)`.
-- **Grid Isométrico & Snapping**: Grid visual de 16px no piso com snap suave de 4px para alinhamento perfeito.
-- **Elevação em Z e Sombra Suave**: Ao arrastar um móvel, ele levita alguns milímetros com sombra projetada dinâmica.
-- **Rotação Individual (Tecla R)**: Gire qualquer móvel selecionado em 90° para posicioná-lo onde quiser.
+1. **🛏️ Quarto Aconchegante**:
+   - Cama quentinha, lousa de cortiça com post-its funcionais interativos, estante modular e setup workstation de carvalho (laptop, tablet digitalizador, caneca fumegante, pilha de livros).
+   - Relógio de parede cilíndrico sincronizado com o horário real do seu sistema e janela com nuvens volumétricas em parallax.
 
-### 4. 📦 Catálogo de Assets & Aba Exclusiva de Pets
-- Gaveta lateral flutuante organizada em 4 categorias: `🛋️ Móveis`, `🧸 Quarto`, `🐾 Pets` e `🎩 Chapéus`.
-- **Companheiros Modulares**: Ative até 3 bichinhos simultâneos no quarto ou recolha quem quiser:
-  - 🐱 **Gatinho Mochi**: 6 pelagens selecionáveis (Calico Original, Kuro Preto, Felix Frajola, Cheddar Laranja, Luna Siamês, Misty Cinza).
-  - 🐔 **Galinha Popó**: Galinha rechonchuda que passeia rebolando e cisca milho no chão com bicadas "toc-toc".
-  - 🐥 **Pintinho Piu (Pintinho Amarelinho)**: Modelo próprio de 10 fatias ("bolinha" esférica sem crista), patinhas de palito e olhinhos brilhantes.
-- Botões rápidos para **Mostrar Todos** ou **Limpar Sala**.
+2. **🛋️ Sala de Estar Retrô**:
+   - Sofá aconchegante de veludo com manta bordada, tapete escandinavo 3D, mesa de centro com café e livro aberto.
+   - TV retrô com tela azul e rack de madeira no centro da sala.
+   - Estante imponente de livros com 3 nichos fechados por painéis de nogueira maciça (anti-clipping lateral e traseiro).
+   - Quadro temático de galinhas no campo e janela colonial com vista ensolarada para o jardim.
 
-### 5. 📌 Mural de Post-its Interativo & Zoom 3D
-- Quadro de cortiça expandido na parede leste com 6 post-its coloridos e tachinhas.
-- **Clique Dinâmico em 360°**: Hitbox calculado diretamente a partir da projeção 3D dos 4 vértices da parede com culling automático quando a parede fica de costas.
-- **Bloco de Notas & Lembretes**: Ao clicar no quadro fora do modo decoração, abre um modal interativo em tela cheia com bloquinho de notas e persistência via `localStorage`.
+3. **🍽️ Cozinha Pastel & Café**:
+   - Bancada contínua de ponta a ponta na parede Norte com pia de aço inox, cooktop e forno embutidos sob a janela.
+   - **Geladeira Retrô Pastel**: Interativa ao clique, abre um modal estilizado em formato de porta de geladeira com ímãs de frutas e lista de compras funcional com post-its.
+   - Mesa de jantar quadrada maciça e espaçosa com 4 cadeiras e fruteira central de cerâmica (maçãs, bananas e laranjas).
+   - Aparador rústico com gaveteiros e bule de louça na parede Oeste.
 
-### 6. 🐓 Locomoção Biomecânica & Animação Sem Deformação
-- **Passada Real em 2 Fases**: Separação física entre *Fase de Balanço* (patinha no ar avançando pelo céu) e *Fase de Apoio* (patinha no chão deslizando para trás e empurrando o corpo), eliminando passos em falso ou patinação.
-- **Orientação Direcional Perfeita**: Rotação das fatias alinhada estritamente com o vetor de velocidade (`totalAngle = theta + turn`), fazendo com que o animal ande sempre na exata direção em que está olhando.
-- **Articulação de Bloco Sólido (Anti-Shear)**: O bico e cabeça mergulham até o chão para ciscar sem distorção ou colapso horizontal de fatias.
-- **Rebolado e Dinâmica Corporal**: Gingado de quadril (`rollWobble`), quique vertical (`bodyBobZ`) e impulso optocinético de cabeça.
-
-### 7. 🖥️ Setup Workstation 100% Modular
-- **Mesa de Estudo Ampla (50x30)**: Madeira maciça de carvalho com 4 pernas e tampo chanfrado.
-- **Notebook no Suporte Ergonômico**: Base e hastes de alumínio elevadas, teclado com trackpad e tela aberta com display ciano brilhante.
-- **Mesa Digitalizadora (Drawing Tablet)**: Corpo fino grafite com express keys, tela com rascunho de gatinho em progresso e caneta stylus ao lado em suporte donut.
-- **Livrinhos da Mesa**: Pilha de 3 livros com fita marcadora azul pendurada na borda.
-- **Caneca de Café**: Cerâmica branca com café expresso e vapor quentinho subindo.
-- *Inteligência de Grupo*: Arrastar a mesa move todos os acessórios de cima juntos; arrastar cada acessório permite reorganizar a mesa ou colocá-los no chão!
-
-### 8. ⏰ Relógio Cilíndrico 3D com Hora Real
-- Cilindro de madeira maciça de 16 facetas saliente na parede com mostrador afundado.
-- Ponteiros de horas e minutos sincronizados com o horário real do sistema operacional.
-
-### 9. ☁️ Nuvens Volumétricas em Parallax 3D
-- As nuvens flutuam **30 unidades fora do quarto** ($y = -ROOM\_R - 30$) com parallax 3D verdadeiro através do vidro da janela.
-
-### 10. 📚 Prateleira Segmentada sem Sobreposição
-- Nichos claramente espaçados com ordenação dinâmica de profundidade: livros em pé, suporte metálico com livro inclinado em $22^\circ$, vasinho de suculenta e livros horizontais com cristal.
+4. **🌳 Jardim Externo & Céu Aberto**:
+   - Piso de grama viva com flores coloridas perimetrais ao longo de todas as bordas do diorama.
+   - **Carvalho Centenário Gigante**: Árvore com tronco massivo de 72x64 fatias e copa frondosa com brotos cor-de-rosa.
+   - **Balanço de Pneu Vertical**: Suspenso no galho horizontal da árvore por uma única corda trançada, onde a galinha Popó sobe para balançar no vento!
+   - Fachada colonial da casa com janela com floreiras, arbustos e cadeira de varanda aconchegante.
+   - Paredes substituídas por um horizonte panorâmico de céu azul infinito e nuvens ensolaradas.
 
 ---
 
-## 📐 Especificação Técnica & Matemática
+## ✨ Arquitetura & Taxonomia de Classes de Assets
 
-### Projeção Isométrica (World $\to$ Screen)
-$$\begin{cases}
-r_x = x \cdot \cos(\theta) - y \cdot \sin(\theta) \\
-r_y = x \cdot \sin(\theta) + y \cdot \cos(\theta) \\
-\text{screen}_X = \text{center}_X + r_x \\
-\text{screen}_Y = \text{center}_Y + r_y \cdot \text{squash} - z
-\end{cases}$$
+O ecossistema implementa rigorosamente a taxonomia descrita na skill oficial [SKILL.md](./SKILL.md):
 
-### Desprojeção Inversa (Screen $\to$ World no plano $Z = 0$)
-$$\begin{cases}
-r_x = \text{screen}_X - \text{center}_X \\
-r_y = \frac{\text{screen}_Y - \text{center}_Y}{\text{squash}} \\
-x = r_x \cdot \cos(\theta) + r_y \cdot \sin(\theta) \\
-y = -r_x \cdot \sin(\theta) + r_y \cdot \cos(\theta)
-\end{cases}$$
+| Classe | Descrição | Exemplos | Comportamento no Modo Decor |
+|---|---|---|---|
+| **🐾 Pets / Personagens** | Entidades autônomas vivas com IA, ciclo de 2 fases e poleiros | Popó (galinha), Pipoca (gato), Pompom (pintinho) | Caminham, descansam, sobem em mesas/balanço e migram de cômodo |
+| **🧱 Móveis Fixos (`isFixed`)** | Estruturas arquiteturais âncoras do cômodo | Bancada da cozinha, geladeira retrô, carvalho gigante, canteiros | **Imóveis e protegidos contra arrasto**; podem abrir modais ao clique |
+| **🛋️ Móveis Móveis (`isMovable`)** | Mobília reposicionável com suporte a *Parenting Hierárquico* | Mesa de jantar, cadeiras, sofás, carrinho de mão, estante | **Arrastáveis e rotacionáveis (tecla R)**; movem todos os filhos juntos |
+| **🍎 Props / Superfície (`isProp`)** | Acessórios de tampo e prateleira com snapping inteligente | Fruteira, notebook, bule de chá, xícaras, livros, luminária | Snapping automático de altura (`liftZ`) e sincronizados ao móvel pai |
+| **🚪 Parede e Portas (`isWallItem`)** | Portas de transição, janelas, lousas e quadros | Portas rústicas com plaquinha, janela do jardim, lousa de post-its | Hitbox 3D na parede com culling automático se de costas para a câmera |
 
 ---
 
-### 🐾 Inteligência de Plataformas & Confinamento Espacial
-- **Mesa Ampliada (80x36)**: Espaço generoso para acessórios modulares e pets descansarem e passearem.
-- **Gato Mochi na Mesa**: Ao ser colocado na mesa, dorme em postura de pãozinho (`loaf`) por um tempo garantido (`deskSleepTimer`) antes de decidir descer ou passear pelo tampo.
-- **Galinha Popó na Prateleira**: Pode voar/subir na prateleira de parede, chocando aconchegada entre os livros (`state = 'brood'`), e descer flutuando com bater de asas suave.
-- **Pintinho Piu Confinado**: Onde for colocado (mesa ou prateleira), **não desce sozinho**. Fica "sanzando" e ciscando estritamente dentro dos limites daquela plataforma sem cair.
-- **Ajuste Anatômico dos Chapéus**: Chapéus agora repousam confortavelmente no cocuruto da cabeça entre as orelhas do gatinho. Na galinha Popó, o chapéu é inclinado charmosamente ao lado da crista.
-- **Pintinho no Chapéu (Walking Hat)**: Ao equipar chapéu no pintinho, ele veste o chapéu inteiro cobrindo o corpinho com leve transparência (88%), com duas patinhas amarelas andando por baixo e olhinhos pretos brilhantes com biquinho espiando pela aba frontal!
+## 📐 Regras Canônicas de Orientação e Rotação
+
+Para garantir que novos móveis nunca fiquem de costas para a câmera ou virados para a parede:
+
+- **Convenção das Fatias Voxel (`grid[y][x]`)**:
+  - `y = 0`: **Traseira (Costas)** do móvel.
+  - `y = H - 1`: **Frente** do móvel (portas, puxadores, gavetas, telas, ímãs e rostos).
+- **Ângulos Canônicos por Parede** (com câmera padrão em `-45°`):
+  - **Parede Norte (`y = -ROOM_R`)**: `selfAngle = 0` (frente voltada para o Sul / centro do cômodo).
+  - **Parede Oeste (`x = -ROOM_R`)**: `selfAngle = 0` (foco aberto para a câmera) ou `Math.PI / 2` (perpendicular para o Leste).
+  - **Parede Leste (`x = ROOM_R`)**: `selfAngle = Math.PI / 2` (voltado para o Oeste / centro).
+  - **Parede Sul (`y = ROOM_R`)**: `selfAngle = Math.PI` (voltado para o Norte / fundo).
 
 ---
 
-## 🚀 Como Executar Localmente
+## 📋 Checklist Pré-Modelagem para Novos Assets
 
-Como o projeto usa apenas HTML, CSS e JavaScript puros sem bundler ou dependências, basta clonar e abrir qualquer arquivo:
+Antes de gerar qualquer novo modelo para a engine, siga o questionário de 8 etapas do [SKILL.md](./SKILL.md):
+1. **Categoria**: Pet, Fixo, Móvel, Prop de Superfície ou Item de Parede?
+2. **Voxel Budget & Dimensões**: Largura $\times$ Profundidade $\times$ Altura de fatias.
+3. **Frente do Modelo**: A frente rica em detalhes está em `y = H - 1` e costas em `y = 0`?
+4. **Parede & Ângulo Canônico**: Posição e `selfAngle` segundo a tabela canônica.
+5. **Parenting Hierárquico**: O objeto carrega outros itens? Quais os offsets relativos (`offX, offY, liftZ`)?
+6. **Superfície de Apoio**: Qual o `liftZ` útil para descanso de pets ou apoio de props?
+7. **Interatividade**: Abre modal? Emite som? Tem física ou partículas?
+8. **Paleta & Animação**: Paleta restrita indexada e partes procedurais dinâmicas.
+
+---
+
+## 💾 Sistema de Persistência (3 Slots & Cloud-Ready)
+
+- **3 Slots de Decoração**: Salve e restaure configurações da casa ("Original", "Custom A", "Custom B").
+- **Camada Desacoplada (`DecorStorageService`)**: Persiste instantaneamente via `localStorage` e já conta com ganchos nativos para envio de payloads JSON a backends e sistemas de login.
+
+---
+
+## 🚀 Como Rodar Localmente
+
+Zero build, zero npm, zero WebGL. Funciona imediatamente em qualquer navegador:
 
 ```bash
 # Clone o repositório
@@ -112,36 +120,42 @@ git clone https://github.com/ruishalm/PixelArtSkill.git
 cd PixelArtSkill
 
 # Inicie um servidor local simples
-python -m http.server 8080
+python -m http.server 8088
 
 # Abra no navegador:
-# http://localhost:8080/room-3d.html ou http://localhost:8080/cat-3d.html
+# http://localhost:8088/index.html
 ```
 
 ---
 
-## 📂 Estrutura de Arquivos
+## 📂 Estrutura do Repositório
 
 ```
 PixelArtSkill/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml          # GitHub Actions: Deploy automático no GitHub Pages
-├── index.html                  # Ponto de entrada padrão do GitHub Pages (Quarto 3D)
-├── room-3d.html                # Quartinho 3D Modular com Modo Decoração & Catálogo
-├── cat-3d.html                 # Visualizador 3D do gatinho calico Mochi
-├── generate_mega_room.py       # Script construtor do diorama 3D
-├── generate_modular_furniture.py# Construtor de fatias dos móveis modulares
-├── modular_desk_pack.json      # Dados voxel dos acessórios da mesa (note, tablet, livros, caneca)
-├── furniture_pack.json         # Dados voxel da caminha, planta monstera e torre
-├── slices_v5.json              # 16 fatias anatômicas do gatinho calico
-├── README.md                   # Documentação do projeto
-└── LICENSE                     # Licença MIT
+├── .github/workflows/deploy.yml         # GitHub Actions: Deploy contínuo no GitHub Pages
+├── SKILL.md                             # Antigravity Skill: regras de arquitetura, render e modelagem
+├── index.html                           # Ponto de entrada padrão (Diorama 3D Multi-Ambientes)
+├── room-3d.html                         # Diorama 3D com os 4 cômodos e modo Decor
+├── cat-3d.html                          # Visualizador 3D do gatinho
+├── chicken-3d.html                      # Visualizador 3D da galinha Popó
+├── generate_mega_room.py                # Script principal gerador do mundo 3D multi-cômodos
+├── generate_kitchen_and_garden_packs.py # Construtor voxel da Cozinha e Jardim
+├── generate_living_room_pack.py         # Construtor voxel da Sala de Estar
+├── generate_modular_furniture.py        # Construtor voxel do Quarto e Móveis Modulares
+├── build_chicken_slices.py              # Construtor anatômico da galinha e pintinho
+├── kitchen_pack.json                    # Voxel slices da Cozinha (bancada, geladeira, mesa, fruteira)
+├── garden_pack.json                     # Voxel slices do Jardim (carvalho gigante, balanço de pneu, cadeira)
+├── living_room_pack.json                # Voxel slices da Sala (sofá, estante sólida, TV retrô, mesa)
+├── furniture_pack.json                  # Voxel slices do Quarto (caminha, monstera, torre)
+├── modular_desk_pack.json               # Voxel slices da Workstation (mesa, note, tablet, caneca)
+├── chicken_slices.json                  # Fatias anatômicas da galinha e pintinho
+├── slices_v5.json                       # Fatias anatômicas do gatinho calico
+├── README.md                            # Documentação completa da engine
+└── LICENSE                              # Licença MIT
 ```
 
 ---
 
 ## 📄 Licença
 
-Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
-Desenvolvido com carinho e precisão artesanal em Pixel Art 3D! 🐾
+Distribuído sob a licença MIT. Desenvolvido com carinho e precisão artesanal em Pixel Art 3D! 🐾
