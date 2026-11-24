@@ -1138,14 +1138,17 @@
 
     // 3. Móveis da Sala de Estar Central (Hub com 3 portas, Sofá, Mesinha, Rack com TV Retrô, Estante)
     const LIVING_ITEMS = [
-      { id: 'door_bedroom',  name: 'Porta pro Quarto',     icon: '🚪', category: 'furniture', isWallItem: true, isDoor: true, wall: 'south', x: 45, y: ROOM_R, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false, targetRoom: 'bedroom' },
-      { id: 'door_kitchen',  name: 'Porta pra Cozinha',    icon: '🚪', category: 'furniture', isWallItem: true, isDoor: true, wall: 'west', x: -ROOM_R, y: -30, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false, targetRoom: 'kitchen' },
-      { id: 'door_garden',   name: 'Porta pro Jardim',     icon: '🚪', category: 'furniture', isWallItem: true, isDoor: true, wall: 'east', x: ROOM_R, y: 55, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false, targetRoom: 'garden' },
-      { id: 'sofa',          name: 'Sofá Aconchegante',    icon: '🛋️', category: 'furniture', model: sofaModel,      x: -15, y: 35,  liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 42, isSofa: true, visible: true },
-      { id: 'coffee_table',  name: 'Mesinha de Centro',    icon: '🪵', category: 'furniture', model: coffeeTableModel,x: -15, y: -10, liftZ: 0,  selfAngle: 0,   scale: 1.45, radius: 26, isCoffeeTable: true, visible: true },
-      { id: 'tv_rack',       name: 'Rack com TV Retrô',    icon: '📺', category: 'furniture', model: tvRackModel,    x: -15, y: -75, liftZ: 0,  selfAngle: Math.PI, scale: 1.45, radius: 36, isTvRack: true, visible: true },
-      { id: 'bookshelf',     name: 'Estante Alta de Livros',icon: '📚', category: 'furniture', model: bookshelfModel, x: -95, y: 35,  liftZ: 0,  selfAngle: Math.PI / 2, scale: 1.45, radius: 28, isBookshelf: true, visible: true },
-      { id: 'plant_living',  name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: 85,  y: -75, liftZ: 0,  selfAngle: 0.8, scale: 1.4,  radius: 20, visible: true }
+      // 3 Portas da Sala em paredes 100% VISÍVEIS (Parede Norte e Parede Leste)!
+      { id: 'door_kitchen',  name: 'Porta pra Cozinha',    icon: '🍽️', category: 'furniture', isWallItem: true, isDoor: true, wall: 'north', x: -80, y: -ROOM_R, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false, targetRoom: 'kitchen' },
+      { id: 'door_bedroom',  name: 'Porta pro Quarto',     icon: '🛏️', category: 'furniture', isWallItem: true, isDoor: true, wall: 'north', x: 75,  y: -ROOM_R, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false, targetRoom: 'bedroom' },
+      { id: 'door_garden',   name: 'Porta pro Jardim',     icon: '🌳', category: 'furniture', isWallItem: true, isDoor: true, wall: 'east',  x: ROOM_R, y: 55, liftZ: 0, width: 28, height: 76, radius: 24, visible: true, isOpen: false, targetRoom: 'garden' },
+
+      // Móveis da Sala de Estar: Estante e TV encostadas na Parede Norte, Sofá encostado na Parede Leste sob a janela!
+      { id: 'bookshelf',     name: 'Estante Alta de Livros',icon: '📚', category: 'furniture', model: bookshelfModel, x: -40, y: -118, liftZ: 0,  selfAngle: 0,           scale: 1.45, radius: 28, isBookshelf: true, visible: true },
+      { id: 'tv_rack',       name: 'Rack com TV Retrô',    icon: '📺', category: 'furniture', model: tvRackModel,    x: 2,   y: -115, liftZ: 0,  selfAngle: 0,           scale: 1.45, radius: 36, isTvRack: true, visible: true },
+      { id: 'plant_living',  name: 'Planta Monstera',      icon: '🌿', category: 'decor',     model: plantModel,     x: 42,  y: -115, liftZ: 0,  selfAngle: 0.8,         scale: 1.4,  radius: 20, visible: true },
+      { id: 'sofa',          name: 'Sofá Aconchegante',    icon: '🛋️', category: 'furniture', model: sofaModel,      x: 95,  y: 8,    liftZ: 0,  selfAngle: Math.PI / 2, scale: 1.45, radius: 42, isSofa: true, visible: true },
+      { id: 'coffee_table',  name: 'Mesinha de Centro',    icon: '🪵', category: 'furniture', model: coffeeTableModel,x: 45,  y: 8,    liftZ: 0,  selfAngle: Math.PI / 2, scale: 1.45, radius: 26, isCoffeeTable: true, visible: true }
     ];
 
     const roomState = {
@@ -1367,30 +1370,38 @@
         }
       }
 
-      // Tapete central dependendo do cômodo
+      // Tapete central dependendo do cômodo (100% Projetado em 3D e travado no chão!)
       if (currentRoomId === 'living') {
-        // Tapete Escandinavo Retangular da Sala de Estar
-        const rugP = project(-15, 12, 0);
-        lowCtx.save();
-        lowCtx.translate(rugP.x, rugP.y);
-        lowCtx.scale(1, squash * 0.95);
+        // Tapete Escandinavo Retangular em espaço de mundo 3D real: rotaciona perfeito com a câmera!
+        const rx0 = 12, rx1 = 82;
+        const ry0 = -30, ry1 = 46;
 
-        // Borda bege trançada com franjas
-        lowCtx.fillStyle = '#E8DEC8';
-        lowCtx.fillRect(-48, -34, 96, 68);
-        // Franjas nas bordas laterais
-        lowCtx.fillStyle = '#F4EDE2';
-        for (let fy = -32; fy < 32; fy += 4) {
-          lowCtx.fillRect(-51, fy, 3, 2);
-          lowCtx.fillRect(48, fy, 3, 2);
+        const pA = project(rx0, ry0, 0.1);
+        const pB = project(rx1, ry0, 0.1);
+        const pC = project(rx1, ry1, 0.1);
+        const pD = project(rx0, ry1, 0.1);
+        drawQuad(pA, pB, pC, pD, '#E8DEC8'); // Borda de tear artesanal
+
+        // Franjas nas bordas projetadas em 3D
+        lowCtx.fillStyle = '#FAF7F2';
+        for (let fy = ry0 + 4; fy < ry1 - 4; fy += 5) {
+          const fr1 = project(rx0 - 3, fy, 0.15);
+          lowCtx.fillRect(fr1.x - 1, fr1.y - 1, 2, 2);
+          const fr2 = project(rx1 + 3, fy, 0.15);
+          lowCtx.fillRect(fr2.x - 1, fr2.y - 1, 2, 2);
         }
-        // Centro acolhedor com textura geométrica suave
-        lowCtx.fillStyle = '#F5EFE6';
-        lowCtx.fillRect(-42, -28, 84, 56);
-        lowCtx.fillStyle = '#EADCC9';
-        lowCtx.fillRect(-36, -22, 72, 44);
 
-        lowCtx.restore();
+        const pA2 = project(rx0 + 5, ry0 + 5, 0.15);
+        const pB2 = project(rx1 - 5, ry0 + 5, 0.15);
+        const pC2 = project(rx1 - 5, ry1 - 5, 0.15);
+        const pD2 = project(rx0 + 5, ry1 - 5, 0.15);
+        drawQuad(pA2, pB2, pC2, pD2, '#F5EFE6'); // Centro creme acolhedor
+
+        const pA3 = project(rx0 + 10, ry0 + 10, 0.2);
+        const pB3 = project(rx1 - 10, ry0 + 10, 0.2);
+        const pC3 = project(rx1 - 10, ry1 - 10, 0.2);
+        const pD3 = project(rx0 + 10, ry1 - 10, 0.2);
+        drawQuad(pA3, pB3, pC3, pD3, '#EADCC9'); // Detalhe geométrico
       } else {
         // Tapete Nuvem Redondo do Quarto
         const rugP = project(0, 0, 0);
@@ -1649,23 +1660,23 @@
     // --- QUADROS DECORATIVOS DA SALA DE ESTAR (PAREDE NORTE: y = -ROOM_R) ---
     function drawLivingRoomArt() {
       const yWall = -ROOM_R;
-      // Quadro 1: Paisagem Retrô Sunset (x=-40..-10, z=55..80)
-      const q1A = project(-40, yWall + 1, 55);
-      const q1B = project(-10, yWall + 1, 55);
-      const q1C = project(-10, yWall + 1, 80);
-      const q1D = project(-40, yWall + 1, 80);
+      // Quadro 1: Paisagem Retrô Sunset (x=-40..-10, z=68..90)
+      const q1A = project(-40, yWall + 1, 68);
+      const q1B = project(-10, yWall + 1, 68);
+      const q1C = project(-10, yWall + 1, 90);
+      const q1D = project(-40, yWall + 1, 90);
       drawQuad(q1A, q1B, q1C, q1D, '#1E1B4B');
-      draw3DBox(-41, -9, yWall, yWall + 2, 54, 81, {
+      draw3DBox(-41, -9, yWall, yWall + 2, 67, 91, {
         top: '#5B371E', front: '#422817', back: '#5B371E', left: '#422817', right: '#422817', bottom: '#301B0E'
       });
 
-      // Quadro 2: Arte Geométrica Confortável (x=10..38, z=58..78)
-      const q2A = project(10, yWall + 1, 58);
-      const q2B = project(38, yWall + 1, 58);
-      const q2C = project(38, yWall + 1, 78);
-      const q2D = project(10, yWall + 1, 78);
+      // Quadro 2: Arte Geométrica Confortável (x=10..38, z=68..88)
+      const q2A = project(10, yWall + 1, 68);
+      const q2B = project(38, yWall + 1, 68);
+      const q2C = project(38, yWall + 1, 88);
+      const q2D = project(10, yWall + 1, 88);
       drawQuad(q2A, q2B, q2C, q2D, '#FDE68A');
-      draw3DBox(9, 39, yWall, yWall + 2, 57, 79, {
+      draw3DBox(9, 39, yWall, yWall + 2, 67, 89, {
         top: '#5B371E', front: '#422817', back: '#5B371E', left: '#422817', right: '#422817', bottom: '#301B0E'
       });
     }
@@ -1701,12 +1712,13 @@
       const H = item.height || 76;
       const liftZ = item.liftZ || 0;
       const isOpen = item.isOpen || false;
-      const openAngle = isOpen ? -0.42 : 0;
+      const openAngle = isOpen ? 0.95 : 0; // Ângulo positivo abrindo suavemente para DENTRO do cômodo!
 
       let pS1, pS2, pS3, pS4;
       let pB1, pB2, pT1, pT2;
       let d1, d2, d3, d4;
       let tipX, tipY, hingeX, hingeY;
+      const doorW = hw * 2;
       const isGarden = (item.id === 'door_garden');
 
       if (wall === 'east') {
@@ -1723,16 +1735,36 @@
         pT2 = project(wallX, cy + hw + 2, liftZ + H + 3);
 
         hingeX = wallX; hingeY = cy + hw;
-        const doorW = hw * 2;
-        const cosO = Math.cos(openAngle);
-        const sinO = Math.sin(openAngle);
-        tipX = wallX - sinO * doorW;
-        tipY = (cy - hw) + (1 - cosO) * doorW;
+        // Abre para DENTRO do quarto (-X):
+        tipX = wallX - doorW * Math.sin(openAngle);
+        tipY = hingeY - doorW * Math.cos(openAngle);
 
-        d1 = project(wallX, hingeY, liftZ);
+        d1 = project(hingeX, hingeY, liftZ);
         d2 = project(tipX, tipY, liftZ);
         d3 = project(tipX, tipY, liftZ + H);
-        d4 = project(wallX, hingeY, liftZ + H);
+        d4 = project(hingeX, hingeY, liftZ + H);
+      } else if (wall === 'north') {
+        const wallY = item.y || -ROOM_R;
+        const cx = item.x;
+        pS1 = project(cx - hw - 2, wallY, liftZ);
+        pS2 = project(cx - hw - 2, wallY + 3, liftZ);
+        pS3 = project(cx + hw + 2, wallY + 3, liftZ);
+        pS4 = project(cx + hw + 2, wallY, liftZ);
+
+        pB1 = project(cx - hw - 2, wallY, liftZ);
+        pB2 = project(cx + hw + 2, wallY, liftZ);
+        pT1 = project(cx - hw - 2, wallY, liftZ + H + 3);
+        pT2 = project(cx + hw + 2, wallY, liftZ + H + 3);
+
+        hingeX = cx - hw; hingeY = wallY;
+        // Abre para DENTRO do quarto (+Y):
+        tipX = hingeX + doorW * Math.cos(openAngle);
+        tipY = wallY + doorW * Math.sin(openAngle);
+
+        d1 = project(hingeX, hingeY, liftZ);
+        d2 = project(tipX, tipY, liftZ);
+        d3 = project(tipX, tipY, liftZ + H);
+        d4 = project(hingeX, hingeY, liftZ + H);
       } else if (wall === 'west') {
         const wallX = item.x || -ROOM_R;
         const cy = item.y;
@@ -1747,17 +1779,15 @@
         pT2 = project(wallX, cy + hw + 2, liftZ + H + 3);
 
         hingeX = wallX; hingeY = cy - hw;
-        const doorW = hw * 2;
-        const cosO = Math.cos(openAngle);
-        const sinO = Math.sin(openAngle);
-        tipX = wallX + sinO * doorW;
-        tipY = (cy + hw) - (1 - cosO) * doorW;
+        // Abre para DENTRO (+X):
+        tipX = wallX + doorW * Math.sin(openAngle);
+        tipY = hingeY + doorW * Math.cos(openAngle);
 
-        d1 = project(wallX, hingeY, liftZ);
+        d1 = project(hingeX, hingeY, liftZ);
         d2 = project(tipX, tipY, liftZ);
         d3 = project(tipX, tipY, liftZ + H);
-        d4 = project(wallX, hingeY, liftZ + H);
-      } else if (wall === 'south') {
+        d4 = project(hingeX, hingeY, liftZ + H);
+      } else { // south
         const wallY = item.y || ROOM_R;
         const cx = item.x;
         pS1 = project(cx - hw - 2, wallY, liftZ);
@@ -1771,104 +1801,91 @@
         pT2 = project(cx + hw + 2, wallY, liftZ + H + 3);
 
         hingeX = cx + hw; hingeY = wallY;
-        const doorW = hw * 2;
-        const cosO = Math.cos(openAngle);
-        const sinO = Math.sin(openAngle);
-        tipX = (cx - hw) + (1 - cosO) * doorW;
-        tipY = wallY - sinO * doorW;
+        // Abre para DENTRO (-Y):
+        tipX = hingeX - doorW * Math.cos(openAngle);
+        tipY = wallY - doorW * Math.sin(openAngle);
 
-        d1 = project(hingeX, wallY, liftZ);
+        d1 = project(hingeX, hingeY, liftZ);
         d2 = project(tipX, tipY, liftZ);
         d3 = project(tipX, tipY, liftZ + H);
-        d4 = project(hingeX, wallY, liftZ + H);
-      } else { // north
-        const wallY = item.y || -ROOM_R;
-        const cx = item.x;
-        pS1 = project(cx - hw - 2, wallY, liftZ);
-        pS2 = project(cx - hw - 2, wallY + 3, liftZ);
-        pS3 = project(cx + hw + 2, wallY + 3, liftZ);
-        pS4 = project(cx + hw + 2, wallY, liftZ);
-
-        pB1 = project(cx - hw - 2, wallY, liftZ);
-        pB2 = project(cx + hw + 2, wallY, liftZ);
-        pT1 = project(cx - hw - 2, wallY, liftZ + H + 3);
-        pT2 = project(cx + hw + 2, wallY, liftZ + H + 3);
-
-        hingeX = cx - hw; hingeY = wallY;
-        const doorW = hw * 2;
-        const cosO = Math.cos(openAngle);
-        const sinO = Math.sin(openAngle);
-        tipX = (cx + hw) - (1 - cosO) * doorW;
-        tipY = wallY + sinO * doorW;
-
-        d1 = project(hingeX, wallY, liftZ);
-        d2 = project(tipX, tipY, liftZ);
-        d3 = project(tipX, tipY, liftZ + H);
-        d4 = project(hingeX, wallY, liftZ + H);
+        d4 = project(hingeX, hingeY, liftZ + H);
       }
 
-      // Soleira
-      lowCtx.fillStyle = '#4A2E1B';
-      lowCtx.beginPath();
-      lowCtx.moveTo(pS1.x, pS1.y); lowCtx.lineTo(pS2.x, pS2.y);
-      lowCtx.lineTo(pS3.x, pS3.y); lowCtx.lineTo(pS4.x, pS4.y);
-      lowCtx.closePath(); lowCtx.fill();
+      // 1. Soleira da porta
+      drawQuad(pS1, pS2, pS3, pS4, '#4A2E1B');
 
-      // Portal / Batente
-      lowCtx.fillStyle = '#5A341A';
-      lowCtx.beginPath();
-      lowCtx.moveTo(pB1.x, pB1.y); lowCtx.lineTo(pB2.x, pB2.y);
-      lowCtx.lineTo(pT2.x, pT2.y); lowCtx.lineTo(pT1.x, pT1.y);
-      lowCtx.closePath(); lowCtx.fill();
+      // 2. Batente estrutural de madeira
+      drawQuad(pB1, pB2, pT2, pT1, '#5A341A');
 
-      // Vão se aberta
+      // 3. Vão interno escuro quando aberta
       if (isOpen) {
-        lowCtx.fillStyle = isGarden ? '#BAE6FD' : '#1A1412';
-        lowCtx.beginPath();
-        lowCtx.moveTo(pB1.x, pB1.y); lowCtx.lineTo(pB2.x, pB2.y);
-        lowCtx.lineTo(pT2.x, pT2.y); lowCtx.lineTo(pT1.x, pT1.y);
-        lowCtx.closePath(); lowCtx.fill();
+        const vB1 = project(hingeX, hingeY, liftZ);
+        const vB2 = project(wall === 'east' || wall === 'west' ? hingeX : (hingeX + (tipX > hingeX ? -doorW : doorW)), wall === 'south' || wall === 'north' ? hingeY : (hingeY + (tipY > hingeY ? -doorW : doorW)), liftZ);
+        const vT2 = project(vB2.x, vB2.y, liftZ + H);
+        const vT1 = project(vB1.x, vB1.y, liftZ + H);
+        drawQuad(pB1, pB2, pT2, pT1, isGarden ? '#93C5FD' : '#1A1412');
       }
 
-      // Folha da porta
-      lowCtx.fillStyle = '#8B542F';
-      lowCtx.beginPath();
-      lowCtx.moveTo(d1.x, d1.y); lowCtx.lineTo(d2.x, d2.y);
-      lowCtx.lineTo(d3.x, d3.y); lowCtx.lineTo(d4.x, d4.y);
-      lowCtx.closePath(); lowCtx.fill();
-      lowCtx.strokeStyle = '#4A2A14';
-      lowCtx.lineWidth = 1;
-      lowCtx.stroke();
+      // 4. Folha da porta de madeira
+      drawQuad(d1, d2, d3, d4, '#8B542F', '#4A2A14', 1.2);
 
-      // Painéis (se for porta do jardim, o painel superior tem vidro com vista!)
+      // 5. Painéis entalhados em relevo
+      const uX = (tipX - hingeX) / doorW;
+      const uY = (tipY - hingeY) / doorW;
+
       function drawDoorPanel(zBot, zTop, isGlass = false) {
-        const panHinge = project(hingeX, hingeY, liftZ + zBot);
-        const panTip = project(tipX, tipY, liftZ + zBot);
-        const panTipTop = project(tipX, tipY, liftZ + zTop);
-        const panHingeTop = project(hingeX, hingeY, liftZ + zTop);
+        const m = 3;
+        const p1 = project(hingeX + uX * m, hingeY + uY * m, liftZ + zBot);
+        const p2 = project(tipX - uX * m, tipY - uY * m, liftZ + zBot);
+        const p3 = project(tipX - uX * m, tipY - uY * m, liftZ + zTop);
+        const p4 = project(hingeX + uX * m, hingeY + uY * m, liftZ + zTop);
 
-        lowCtx.fillStyle = isGlass ? 'rgba(186, 230, 253, 0.85)' : '#784320';
-        lowCtx.beginPath();
-        lowCtx.moveTo(panHinge.x, panHinge.y); lowCtx.lineTo(panTip.x, panTip.y);
-        lowCtx.lineTo(panTipTop.x, panTipTop.y); lowCtx.lineTo(panHingeTop.x, panHingeTop.y);
-        lowCtx.closePath(); lowCtx.fill();
-
-        lowCtx.strokeStyle = isGlass ? '#7DD3FC' : '#522A0F';
-        lowCtx.lineWidth = 0.8;
-        lowCtx.stroke();
+        const col = isGlass ? 'rgba(186, 230, 253, 0.85)' : '#784320';
+        const strk = isGlass ? '#7DD3FC' : '#522A0F';
+        drawQuad(p1, p2, p3, p4, col, strk, 0.8);
       }
 
       drawDoorPanel(6, 32, false);
       drawDoorPanel(40, 68, isGarden);
 
-      // Maçaneta Dourada
-      const knobP = project(tipX, tipY, liftZ + 36);
+      // 6. Maçaneta Dourada de latão
+      const knobX = tipX - uX * 4;
+      const knobY = tipY - uY * 4;
+      const knobP = project(knobX, knobY, liftZ + 36);
+
       lowCtx.fillStyle = '#3B2219';
       lowCtx.fillRect(knobP.x - 1, knobP.y - 4, 3, 8);
       lowCtx.fillStyle = '#F4B846';
       lowCtx.beginPath();
       lowCtx.arc(knobP.x, knobP.y, 3, 0, Math.PI * 2);
       lowCtx.fill();
+
+      // 7. Plaquinha de madeira artesanal sobre o batente indicando o destino
+      const plaqueLabel = item.id === 'door_kitchen' ? '🍽️ COZINHA' :
+                          item.id === 'door_bedroom' ? '🛏️ QUARTO' :
+                          item.id === 'door_garden' ? '🌳 JARDIM' :
+                          (item.targetRoom === 'living' || item.id === 'door') ? '🛋️ SALA' : null;
+      if (plaqueLabel) {
+        const midX = (hingeX + tipX) / 2;
+        const midY = (hingeY + tipY) / 2;
+        const plP = project(midX, midY, liftZ + H + 8);
+        lowCtx.save();
+        lowCtx.font = 'bold 8px sans-serif';
+        const plTw = lowCtx.measureText(plaqueLabel).width;
+        const plW = plTw + 8;
+        const plH = 12;
+        const plX = Math.round(plP.x - plW / 2);
+        const plY = Math.round(plP.y - plH / 2);
+
+        // Moldura rústica da placa
+        lowCtx.fillStyle = '#4A2A14';
+        lowCtx.fillRect(plX - 1, plY - 1, plW + 2, plH + 2);
+        lowCtx.fillStyle = '#D4A373';
+        lowCtx.fillRect(plX, plY, plW, plH);
+        lowCtx.fillStyle = '#2C1810';
+        lowCtx.fillText(plaqueLabel, plX + 4, plY + 9);
+        lowCtx.restore();
+      }
     }
 
     function drawShelfItem(shelf) {
@@ -2243,11 +2260,19 @@
     }
 
     function drawCatSpeech(cat) {
-      if (!cat.speech || cat.speech.timer <= 0) return;
+      if (!cat.speech) return;
+      if (typeof cat.speech === 'string') {
+        cat.speech = { text: cat.speech, timer: 160 };
+      }
+      if (cat.speech.timer <= 0) {
+        cat.speech = null;
+        return;
+      }
       cat.speech.timer--;
 
       const p = project(cat.x, cat.y, 26 * cat.scale);
       const text = cat.speech.text;
+      if (!text || text === 'undefined') return;
 
       lowCtx.save();
       lowCtx.font = 'bold 9px sans-serif';
@@ -3163,21 +3188,21 @@
         cat.surface = null; cat.liftZ = 0;
         cat.targetX = door.x * 0.75; cat.targetY = door.y * 0.75;
         cat.state = 'walk'; cat.posture = 'walk';
-        cat.speech = "Nya~! Vamos lá! 🚪";
+        cat.speech = { text: "Nya~! Vamos lá! 🚪", timer: 160 };
         setTimeout(() => cat.speech = null, 2500);
       }
       if (chicken) {
         chicken.surface = null; chicken.liftZ = 0;
         chicken.targetX = door.x * 0.70; chicken.targetY = door.y * 0.70;
         chicken.state = 'walk';
-        chicken.speech = "Có có! 💕";
+        chicken.speech = { text: "Có có! 💕", timer: 160 };
         setTimeout(() => chicken.speech = null, 2500);
       }
       if (chick) {
         chick.surface = null; chick.liftZ = 0;
         chick.targetX = door.x * 0.65; chick.targetY = door.y * 0.65;
         chick.state = 'walk';
-        chick.speech = "Piu! ❤️";
+        chick.speech = { text: "Piu! ❤️", timer: 160 };
         setTimeout(() => chick.speech = null, 2500);
       }
 
@@ -3214,24 +3239,21 @@
         const chick = PETS.find(it => it.id === 'chick');
 
         if (targetRoomId === 'living') {
-          // Entrando na Sala vindo da porta Sul (Quarto)
+          // Entrando na Sala vindo da Porta do Quarto na Parede Norte (x=75, y=-ROOM_R)
           if (cat) {
-            cat.x = 45; cat.y = ROOM_R - 35; cat.liftZ = 0;
-            cat.targetX = -10; cat.targetY = 25; cat.state = 'walk'; cat.posture = 'walk';
-            cat.speech = "Nya~! Chegamos na Sala! ✨";
-            setTimeout(() => cat.speech = null, 3000);
+            cat.x = 68; cat.y = -ROOM_R + 38; cat.liftZ = 0;
+            cat.targetX = 25; cat.targetY = -15; cat.state = 'walk'; cat.posture = 'walk';
+            cat.speech = { text: "Nya~! Chegamos na Sala! ✨", timer: 180 };
           }
           if (chicken) {
-            chicken.x = 55; chicken.y = ROOM_R - 30; chicken.liftZ = 0;
-            chicken.targetX = -15; chicken.targetY = 30; chicken.state = 'walk';
-            chicken.speech = "Có có! 🛋️";
-            setTimeout(() => chicken.speech = null, 3000);
+            chicken.x = 78; chicken.y = -ROOM_R + 42; chicken.liftZ = 0;
+            chicken.targetX = 15; chicken.targetY = 0; chicken.state = 'walk';
+            chicken.speech = { text: "Có có! 🛋️", timer: 180 };
           }
           if (chick) {
-            chick.x = 50; chick.y = ROOM_R - 20; chick.liftZ = 0;
-            chick.targetX = -10; chick.targetY = 38; chick.state = 'walk';
-            chick.speech = "Piu piu! ❤️";
-            setTimeout(() => chick.speech = null, 3000);
+            chick.x = 74; chick.y = -ROOM_R + 48; chick.liftZ = 0;
+            chick.targetX = 20; chick.targetY = 8; chick.state = 'walk';
+            chick.speech = { text: "Piu piu! ❤️", timer: 180 };
           }
 
           WALLS[0].decor = 'living_art'; // North
@@ -3243,8 +3265,7 @@
           if (cat) {
             cat.x = ROOM_R - 35; cat.y = 50; cat.liftZ = 0;
             cat.targetX = 10; cat.targetY = 0; cat.state = 'walk'; cat.posture = 'walk';
-            cat.speech = "De volta ao quartinho! 🛏️";
-            setTimeout(() => cat.speech = null, 3000);
+            cat.speech = { text: "De volta ao quartinho! 🛏️", timer: 180 };
           }
           if (chicken) {
             chicken.x = ROOM_R - 30; chicken.y = 65; chicken.liftZ = 0;
@@ -3428,7 +3449,7 @@
         drawSingleFrame(item, 'corkboard');
       } else if (item.id === 'frame_plant') {
         drawSingleFrame(item, 'plant');
-      } else if (item.id === 'door') {
+      } else if (item.isDoor || item.id === 'door' || (item.id && item.id.startsWith('door_'))) {
         drawDoor(item);
       }
 
