@@ -72,11 +72,13 @@ function drawStack(
    - Never drop below `0.60`, or horizontal roofs become paper-thin and artifacted.
 2. **Nearest-Neighbor Scaling Only**:
    - Set `ctx.imageSmoothingEnabled = false` on every canvas and buffer.
-3. **Low-Res Offscreen Buffer + Integer Upscale**:
-   - Never render directly to high-res display pixels.
-   - Render the scene into an offscreen canvas at logical resolution (e.g. `270x480` for 9:16 mobile reels, `320x180` or `480x270` for landscape).
+3. **Low-Res Offscreen Buffer + Integer Upscale (e Regra Obrigatória de Texto Hi-Res)**:
+   - Never render 3D geometry directly to high-res display pixels.
+   - Render the scene into an offscreen canvas (`lowCanvas`) at logical resolution (e.g. `270x480` for 9:16 mobile reels, `320x180`, `440x440`, or `480x300` for landscape/diorama).
    - Upscale onto the screen canvas by an integer multiplier (`x2`, `x3`, `x4`) with `imageSmoothingEnabled = false`.
    - Snap all entity coordinates to integer values (`Math.round`) inside the low-res buffer to stop subpixel jitter and shimmering.
+   - **NUNCA Pixelizar Letras nem Balões**: É **proibido** desenhar balões de fala, textos ou emojis dentro do `lowCanvas` (`440x440` ou `480x300`) antes do upscale *nearest-neighbor* — isso pixeliza e borra as letras e pode cortar o balão atrás de paredes ou penhascos. Sempre use o padrão obrigatório **Overlay Pass Hi-Res** (ver snippet 5 abaixo).
+   - **Regra de Viewport Responsivo 1:1 (Sem Distorção de Pixels)**: Nunca estique um `lowCanvas` de razão de aspecto fixa (`480x300`) diretamente para `window.innerWidth x window.innerHeight` — isso achata ou alonga pixels em telas quadradas, ultrawide ou celulares verticais. No resize, calcule uma escala inteira quadrada (`pixelScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2))`), dimensione `LOW_W = Math.ceil(viewW / pixelScale)` e `LOW_H = Math.ceil(viewH / pixelScale)`, configure `canvas.width = Math.round(viewW * dpr)` com `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)`, escale para `LOW_W * pixelScale` por `LOW_H * pixelScale` mantendo **pixels 1:1 quadrados** em qualquer tela, e calcule o raio de culling dinamicamente (`Math.ceil(Math.hypot(LOW_W, LOW_H) / (TILE * 1.45)) + 5`).
 4. **Single Silhouette Outline (Crucial Rule)**:
    - **NEVER outline individual slices** (this creates horizontal striped lines through the body).
    - Draw the finished stack into its own offscreen canvas.
@@ -355,6 +357,74 @@ function drawHollowCabinetWithOcclusion(shelfItem, propsByTier, renderItem) {
   }
   drawShelfSlices(topZ0, shelfItem.model.count - 1);
   for (const prop of propsByTier.top) renderItem(prop);
+}
+```
+
+#### 5. Regra Obrigatória de Texto Hi-Res (`Overlay Pass Hi-Res`)
+**PROIBIDO** desenhar balões de fala, textos ou emojis dentro do `lowCanvas` (`440x440` ou `480x300`) antes do upscale *nearest-neighbor* — isso pixeliza e borra as letras e pode cortar o balão atrás de paredes/penhascos. Use sempre o fluxo em 3 passos:
+
+1. Durante a passada de render 3D no `lowCanvas`, apenas enfileire `{ lowX, lowY, text }` em `speechQueue`.
+2. Faça o `ctx.drawImage(lowCanvas, 0, 0, canvas.width, canvas.height)` no canvas principal da tela.
+3. **Depois** do upscale (usando a API vetorial do `ctx` principal em alta resolução, escalando `sx = item.lowX * (canvas.width / LOW_W)` e `sy = item.lowY * (canvas.height / LOW_H)`), desenhe todos os balões de fala com `roundRect`, borda `#3B2219`, fonte nítida (`13px bold`) e rabicho apontando para o personagem. Resultado: texto 100% legível e sempre acima de qualquer penhasco ou mobília!
+
+```javascript
+const speechQueue = [];
+
+// Passo 1 (durante o render 3D no lowCanvas): apenas enfileira coordenadas lógicas
+function queueSpeechBubble(worldX, worldY, headZ, text) {
+  const p = project(worldX, worldY, headZ);
+  speechQueue.push({ lowX: p.x, lowY: p.y, text });
+}
+
+// Passo 2 + Passo 3 (no loop principal de render):
+function renderFrame(ctx, canvas, lowCanvas) {
+  // ... renderiza todo o mundo 3D no lowCanvas (chamando queueSpeechBubble) ...
+
+  // 2. Upscale nearest-neighbor do lowCanvas para o canvas principal
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(lowCanvas, 0, 0, canvas.width, canvas.height);
+
+  // 3. Overlay Pass Hi-Res: desenha textos e balões vetoriais em alta resolução
+  const scaleX = canvas.width / LOW_W;
+  const scaleY = canvas.height / LOW_H;
+  ctx.save();
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textBaseline = 'middle';
+
+  while (speechQueue.length > 0) {
+    const item = speechQueue.shift();
+    const sx = item.lowX * scaleX;
+    const sy = item.lowY * scaleY;
+    const padX = 10;
+    const textW = ctx.measureText(item.text).width;
+    const boxW = textW + padX * 2;
+    const boxH = 26;
+    const bx = Math.round(sx - boxW / 2);
+    const by = Math.round(sy - boxH - 12);
+
+    // Balão com roundRect e borda #3B2219
+    ctx.fillStyle = '#FFFDF7';
+    ctx.strokeStyle = '#3B2219';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, boxW, boxH, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Rabicho apontando para o personagem
+    ctx.beginPath();
+    ctx.moveTo(sx - 5, by + boxH - 1);
+    ctx.lineTo(sx, by + boxH + 7);
+    ctx.lineTo(sx + 5, by + boxH - 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Texto nítido em alta resolução
+    ctx.fillStyle = '#3B2219';
+    ctx.fillText(item.text, bx + padX, by + boxH / 2);
+  }
+  ctx.restore();
 }
 ```
 
@@ -726,6 +796,50 @@ const worldMoveX = ix * Math.cos(turn) + iy * Math.sin(turn);
 const worldMoveY = -ix * Math.sin(turn) + iy * Math.cos(turn);
 const targetAngle = Math.atan2(-worldMoveX, worldMoveY);
 ```
+
+### 6. Overlay Pass Hi-Res para Balões e Textos de Terreno (NUNCA no `lowCanvas`)
+- **Proibido** desenhar balões de fala, textos ou emojis dentro do `lowCanvas` (`440x440` ou `480x300`) antes do upscale *nearest-neighbor* — isso pixeliza/borra as letras e pode cortar o balão atrás de paredes ou penhascos.
+- **Padrão Obrigatório (`Overlay Pass Hi-Res`)**:
+  1. Durante a passada de render 3D no `lowCanvas`, apenas enfileire `{ lowX, lowY, text }` em `speechQueue`.
+  2. Faça o `ctx.drawImage(lowCanvas, 0, 0, canvas.width, canvas.height)` no canvas principal da tela.
+  3. **Depois** do upscale (usando a API vetorial do `ctx` principal em alta resolução, escalando `sx = item.lowX * (canvas.width / LOW_W)` e `sy = item.lowY * (canvas.height / LOW_H)`), desenhe todos os balões de fala com `roundRect`, borda `#3B2219`, fonte nítida (`13px bold`) e rabicho apontando para o personagem. Assim o texto fica 100% legível e sempre acima de qualquer penhasco ou mobília!
+
+### 7. 4 Modos de Collider para Props de Terreno (`propColliders`) + Desobstrução de Trilhas
+Todo prop colocado sobre o terreno deve declarar explicitamente seu modo em `propColliders`:
+
+| Modo | Geometria / Regra de Colisão | Exemplos |
+|---|---|---|
+| `'solid'` | Cilindro `(wx, wy, colR, baseZ, colH)` bloqueando quando `cat.z < baseZ + colH - 1.5`. | Árvores, cabanas, faróis, fogueiras, placas, pilares, lanternas, barcos. |
+| `'platform'` | Bloqueia lateralmente abaixo de `topZ - 2` e fornece superfície de pouso sólida no topo `topZ` ao pular. **Atenção**: nunca disparar `AUTO_STEP` se `topZ - cat.z > 4` para props altos. | Cogumelos gigantes, pedras grandes, fardos de feno, tocos de árvore. |
+| `'arch'` | Dois cilindros apenas nas colunas laterais, deixando o vão central 100% livre para passar por baixo. | Portal Torii. |
+| `'none'` | Decorativo atravessável (sem bloqueio físico). | Florzinhas, tufos de grama. |
+
+- **Desobstrução Automática de Trilhas e Escadas**: Implemente um validador explícito em `addProp(...)` que impeça gerar props sólidos (`'solid'`, `'platform'` ou colunas de `'arch'`) sobre células com `type === 'path'`, `type === 'bridge'` ou degraus estreitos de escada, garantindo rotas de circulação sempre livres:
+
+```javascript
+function addProp(prop) {
+  const gx = clamp(Math.floor(prop.wx / TILE), 0, GRID_W - 1);
+  const gy = clamp(Math.floor(prop.wy / TILE), 0, GRID_H - 1);
+  const cell = grid[gx][gy];
+  const blocksRoute = prop.colliderMode && prop.colliderMode !== 'none';
+  if (blocksRoute && (cell.type === 'path' || cell.type === 'bridge' || cell.isNarrowStair)) {
+    return false; // Protege trilhas, pontes e escadas estreitas contra obstrução
+  }
+  props.push(prop);
+  return true;
+}
+```
+
+### 8. Sistema de Lâminas de Grama Voxel (2–3px de Altura no mesmo Sprite Stacking)
+Para vegetação baixa densa e leve diretamente no motor de Sprite Stacking:
+- **Modelagem em `3–4` fatias finas**:
+  - `z = 0`: base verde-escuro `#2F7A2B` dando ancoragem visual sem contorno.
+  - `z = 1`: corpo verde médio `#4DB848`.
+  - `z = 2..3`: pontinhas `1px` em verde claro `#8BE064`.
+- **Renderização com `noOutline: true`**: Sem contorno `#3B2219`, pois `1px` de contorno transformaria uma lâmina fina de `1px` num bloco grosso de `3px`.
+- **Pré-cache em 3 frames de vento (8 FPS)** por ângulo quantizado `qAngle`:
+  - Desloque as fatias superiores conforme a fase do vento `wf` em `+0.5 * wf`, `+1.0 * wf`, `+1.5 * wf` para `z = 1, 2, 3`.
+  - Aplique nos tiles `grass` com onda espacial baseada em `(gx + gy)` + efeito de ***rustle*** (inclinação extra + partícula verde) quando o personagem pisa no tile.
 
 ---
 

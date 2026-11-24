@@ -1,4 +1,5 @@
 import json
+import math
 from collections import deque
 
 
@@ -864,6 +865,923 @@ def build_flower_tuft():
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
+def build_cozy_cabin():
+    """11. cozy_cabin (26 x 24 x 28)"""
+    w, h, z_count = 26, 24, 28
+    palette = [
+        'rgba(0,0,0,0)',
+        '#3B2219',  # 1: porta marrom escura / sombra vigas
+        '#6B4226',  # 2: vigas marrom / molduras
+        '#D99B4E',  # 3: macaneta dourada / madeira clara
+        '#E6D5BE',  # 4: parede creme sombra
+        '#FAF3E8',  # 5: parede creme clara
+        '#FDE68A',  # 6: janelinha amarela quente acesa
+        '#9E4429',  # 7: telhado terracota sombra
+        '#C25E3E',  # 8: telhado terracota principal
+        '#7A3222',  # 9: tijolinho chamine escuro
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Corpo principal da cabana: x=2..23, y=2..23, z=0..14 (y=23 = H-1 e a fachada frontal)
+    for z in range(15):
+        for y in range(2, h):
+            for x in range(2, w - 2):
+                is_wall = (x in (2, w - 3) or y in (2, h - 1))
+                is_corner = (x in (2, 3, w - 4, w - 3)) and (y in (2, 3, h - 2, h - 1))
+                is_beam = (
+                    is_corner
+                    or (is_wall and z in (0, 7, 14))
+                    or (y in (2, h - 1) and x in (9, 16) and z <= 14)
+                    or (x in (2, w - 3) and y in (12, 13))
+                )
+                if not is_wall and z > 0:
+                    # Interior preenchido nas camadas visiveis ou estruturais (economiza mas mantem solido)
+                    if z == 14:
+                        vol[z][y][x] = 4
+                    continue
+                if z == 0 and not is_wall:
+                    vol[z][y][x] = 2  # piso conectado em z=0
+                elif is_beam:
+                    vol[z][y][x] = 1 if z == 0 else 2
+                else:
+                    vol[z][y][x] = 5 if (y >= 12 or x >= 13) else 4
+
+    # Porta marrom escura na frente (y = H - 1 = 23, x=10..15, z=0..10) com macaneta
+    for z in range(11):
+        for x in range(10, 16):
+            if x in (10, 15) or z == 10:
+                vol[z][h - 1][x] = 2  # batente marrom
+            else:
+                vol[z][h - 1][x] = 1  # folha da porta marrom escura
+            # Reforca batente interno em y=22 para solidez
+            vol[z][h - 2][x] = 1
+    vol[4][h - 1][14] = 3
+    vol[5][h - 1][14] = 3  # macaneta
+
+    # Janelinhas amarelas quentes acesas (#FDE68A) na frente e laterais
+    def carve_window_y(y_pos, x0, x1, z0, z1):
+        for z in range(z0 - 1, z1 + 2):
+            for x in range(x0 - 1, x1 + 2):
+                if x0 <= x <= x1 and z0 <= z <= z1:
+                    # Caixilho fino cruzado opcional ou vidro aceso
+                    vol[z][y_pos][x] = 6
+                else:
+                    vol[z][y_pos][x] = 2
+
+    def carve_window_x(x_pos, y0, y1, z0, z1):
+        for z in range(z0 - 1, z1 + 2):
+            for y in range(y0 - 1, y1 + 2):
+                if y0 <= y <= y1 and z0 <= z <= z1:
+                    vol[z][y][x_pos] = 6
+                else:
+                    vol[z][y][x_pos] = 2
+
+    # Frente (y = H - 1 = 23)
+    carve_window_y(h - 1, 5, 7, 5, 8)
+    carve_window_y(h - 1, 18, 20, 5, 8)
+    # Costas (y = 2)
+    carve_window_y(2, 6, 8, 5, 8)
+    carve_window_y(2, 17, 19, 5, 8)
+    # Laterais (x = 2 e x = 23)
+    carve_window_x(2, 6, 9, 5, 8)
+    carve_window_x(2, 16, 19, 5, 8)
+    carve_window_x(w - 3, 6, 9, 5, 8)
+    carve_window_x(w - 3, 16, 19, 5, 8)
+
+    # Telhado inclinado dois-aguas terracota (z=15..25), cumeeira ao longo de Y (x=12..13)
+    for z in range(15, 26):
+        dz = z - 15  # 0..10
+        half_span = 12.5 - dz * 1.2  # 12.5 em z=15 (x=0..25), 0.5 em z=25 (x=12..13)
+        x_min = max(0, int(round(12.5 - half_span)))
+        x_max = min(w - 1, int(round(12.5 + half_span)))
+        inner_min = max(2, x_min + 2)
+        inner_max = min(w - 3, x_max - 2)
+
+        for y in range(1, h):
+            for x in range(x_min, x_max + 1):
+                is_roof_shell = (
+                    x <= x_min + 1
+                    or x >= x_max - 1
+                    or z == 25
+                    or y in (1, h - 1)
+                )
+                # Paredes triangulares do oitao na frente (y=23) e atras (y=2)
+                if y in (2, h - 1) and inner_min <= x <= inner_max and z < 24:
+                    vol[z][y][x] = 2 if x in (inner_min, inner_max) else (5 if y == h - 1 else 4)
+                elif is_roof_shell:
+                    # Padrao de telhas terracota
+                    tile = ((x + y + z) % 3 == 0) or (z == 15) or (z == 25)
+                    vol[z][y][x] = 7 if (tile or x < 12) else 8
+                elif 2 <= y <= h - 2 and inner_min <= x <= inner_max:
+                    # Preenchimento solido abaixo da cumeeira nas bordas do oitao
+                    if y in (3, h - 2):
+                        vol[z][y][x] = 4
+
+    # Janelinha iluminada no oitao frontal (y=23, x=12..13, z=17..18)
+    for z in (17, 18):
+        for x in (12, 13):
+            vol[z][h - 1][x] = 6
+    vol[16][h - 1][12] = 2
+    vol[16][h - 1][13] = 2
+
+    # Chamine de tijolinho (x=17..20, y=6..9, z=16..27) conectada firmemente ao telhado
+    for z in range(16, 28):
+        is_rim = (z == 26)
+        x0, x1 = (17, 20) if not is_rim else (16, 21)
+        y0, y1 = (6, 9) if not is_rim else (5, 10)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if z == 27 and 18 <= x <= 19 and 7 <= y <= 8:
+                    vol[z][y][x] = 1  # boca da chamine escura
+                else:
+                    brick_alt = (x + y + z * 2) % 3
+                    vol[z][y][x] = 9 if brick_alt == 0 else (7 if brick_alt == 1 else 8)
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_torii_gate():
+    """12. torii_gate (22 x 10 x 26)"""
+    w, h, z_count = 22, 10, 26
+    palette = [
+        'rgba(0,0,0,0)',
+        '#24140F',  # 1: sombra base escura
+        '#3B2219',  # 2: base escura / detalhe escuro topo kasagi
+        '#7F1D1D',  # 3: vermelho sombra profunda
+        '#991B1B',  # 4: vermelho escuro
+        '#DC2626',  # 5: vermelho vivo principal
+        '#EF4444',  # 6: vermelho iluminado
+        '#F59E0B',  # 7: detalhe dourado placa central
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # APENAS 2 pilares laterais nas pontas (x=3..5 e x=16..18 em y=3..6)
+    # Vao central x=6..15 fica 100% VAZIO e ABERTO de z=0 ate z=17!
+    for z in range(23):
+        for x0, x1 in ((3, 5), (16, 18)):
+            if z <= 1:
+                # Sapata escura mantendo x=6..15 completamente livre
+                bx0 = x0 - 1 if x0 == 3 else x0
+                bx1 = x1 if x0 == 3 else x1 + 1
+                for y in range(2, 8):
+                    for x in range(bx0, bx1 + 1):
+                        vol[z][y][x] = 1 if (z == 0 or y in (2, 7)) else 2
+            elif z <= 3:
+                for y in range(3, 7):
+                    for x in range(x0, x1 + 1):
+                        vol[z][y][x] = 2
+            else:
+                for y in range(3, 7):
+                    for x in range(x0, x1 + 1):
+                        if y == 6:
+                            vol[z][y][x] = 6 if x in (x0 + 1, x1) else 5
+                        elif y == 3:
+                            vol[z][y][x] = 4
+                        else:
+                            vol[z][y][x] = 5
+
+    # Viga horizontal inferior (nuki) em z=18..20
+    for z in range(18, 21):
+        for y in range(4, 6):
+            for x in range(1, w - 1):
+                if x in (1, w - 2):
+                    vol[z][y][x] = 3 if z == 18 else 4
+                elif z == 20:
+                    vol[z][y][x] = 6 if y == 5 else 5
+                elif z == 18:
+                    vol[z][y][x] = 4
+                else:
+                    vol[z][y][x] = 5
+
+    # Suporte central (gakuzuka) entre nuki (z=20) e kasagi (z=22)
+    for z in range(20, 23):
+        for y in range(3, 7):
+            for x in (10, 11):
+                if y in (3, 6) and z == 21:
+                    vol[z][y][x] = 7 if y == 6 else 2
+                else:
+                    vol[z][y][x] = 2 if (y in (3, 6)) else 4
+
+    # Viga superior curva (kasagi) em z=22..25 com pontas arrebitadas e detalhe escuro no topo
+    for x in range(w):
+        dist_c = abs(x - 10.5)
+        if dist_c <= 7.5:
+            z_bot, z_top_red, z_cap = 22, 23, 24
+        elif dist_c <= 9.5:
+            z_bot, z_top_red, z_cap = 23, 24, 25
+        else:
+            z_bot, z_top_red, z_cap = 24, 24, 25  # pontas extremas x=0 e x=21 arrebitadas
+
+        for y in range(2, 8):
+            # Chanfro sutil nas pontas
+            if dist_c > 9.5 and y in (2, 7):
+                continue
+            for z in range(z_bot, z_top_red + 1):
+                if z == z_bot:
+                    vol[z][y][x] = 4
+                elif y >= 6:
+                    vol[z][y][x] = 6
+                elif y <= 3:
+                    vol[z][y][x] = 4
+                else:
+                    vol[z][y][x] = 5
+            # Detalhe escuro no topo do kasagi
+            vol[z_cap][y][x] = 1 if y in (2, 7) else 2
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_stone_lantern():
+    """13. stone_lantern (10 x 10 x 18)"""
+    w, h, z_count = 10, 10, 18
+    palette = [
+        'rgba(0,0,0,0)',
+        '#374151',  # 1: pedra sombra profunda
+        '#4B5563',  # 2: pedra cinza escura
+        '#6B7280',  # 3: pedra cinza media
+        '#9CA3AF',  # 4: pedra cinza clara
+        '#D1D5DB',  # 5: quina iluminada
+        '#FDE68A',  # 6: luz amarela da janela
+        '#FEF9C3',  # 7: miolo luminoso
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    def fill_chamfer_square(z, pad, col_edge, col_fill, col_hi=None):
+        lo, hi = pad, w - 1 - pad
+        for y in range(lo, hi + 1):
+            for x in range(lo, hi + 1):
+                if pad <= 2 and (x in (lo, hi) and y in (lo, hi)):
+                    continue
+                is_edge = (x in (lo, hi) or y in (lo, hi))
+                if col_hi and is_edge and (x + y >= w - 1):
+                    vol[z][y][x] = col_hi
+                elif is_edge:
+                    vol[z][y][x] = col_edge
+                else:
+                    vol[z][y][x] = col_fill
+
+    # z=0..3: base larga de pedra
+    fill_chamfer_square(0, 1, 1, 2)
+    fill_chamfer_square(1, 1, 2, 3, 4)
+    fill_chamfer_square(2, 2, 2, 3, 4)
+    fill_chamfer_square(3, 3, 3, 4, 5)
+
+    # z=4..8: haste fina
+    for z in range(4, 9):
+        for y in (4, 5):
+            for x in (4, 5):
+                vol[z][y][x] = 4 if (x == 5 and y == 5) else (2 if (x == 4 and y == 4) else 3)
+
+    # z=9..12: camara com janela luminosa amarela (#FDE68A)
+    fill_chamfer_square(9, 2, 3, 4, 5)  # plataforma inferior da camara
+    for z in (10, 11):
+        for y in range(3, 7):
+            for x in range(3, 7):
+                is_corner = (x in (3, 6) and y in (3, 6))
+                if is_corner:
+                    vol[z][y][x] = 4 if (x == 6 or y == 6) else 2
+                elif x in (4, 5) and y in (4, 5):
+                    vol[z][y][x] = 7
+                else:
+                    vol[z][y][x] = 6  # janela luminosa nas 4 faces
+    fill_chamfer_square(12, 2, 2, 3, 4)
+
+    # z=13..17: telhadinho piramidal de pedra com pinaculo
+    fill_chamfer_square(13, 1, 3, 4, 5)
+    # Pontas levemente arrebitadas nos 4 cantos em z=13
+    for cx, cy in ((1, 1), (8, 1), (1, 8), (8, 8)):
+        vol[13][cy][cx] = 4
+    fill_chamfer_square(14, 2, 3, 4, 5)
+    fill_chamfer_square(15, 3, 4, 4, 5)
+    for y in (4, 5):
+        for x in (4, 5):
+            vol[16][y][x] = 5 if (x + y >= 9) else 4
+    vol[17][4][4] = 5
+    vol[17][5][4] = 5
+    vol[17][4][5] = 5
+    vol[17][5][5] = 5
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_lighthouse():
+    """14. lighthouse (18 x 18 x 42)"""
+    w, h, z_count = 18, 18, 42
+    palette = [
+        'rgba(0,0,0,0)',
+        '#231F28',  # 1: porta escura / varanda escura
+        '#4B5563',  # 2: base octogonal cinza escura
+        '#8491A3',  # 3: base octogonal cinza clara
+        '#CBD5E1',  # 4: branco sombra da torre
+        '#F8FAFC',  # 5: branco vivo da torre
+        '#991B1B',  # 6: vermelho sombra
+        '#DC2626',  # 7: vermelho vivo
+        '#F59E0B',  # 8: vidro dourado medio / macaneta
+        '#FEF08A',  # 9: vidro dourado brilhante
+    ]
+    vol = make_volume(w, h, z_count, 0)
+    cx, cy = 8.5, 8.5
+
+    # Base octogonal cinza (z=0..3)
+    for z in range(4):
+        lim = 6.6 if z <= 1 else 6.1
+        oct_lim = 10.0 if z <= 1 else 9.2
+        for y in range(h):
+            for x in range(w):
+                dx = abs(x - cx)
+                dy = abs(y - cy)
+                if dx <= lim and dy <= lim and (dx + dy) <= oct_lim:
+                    vol[z][y][x] = 3 if (x + y >= 17 and z >= 1) else 2
+
+    # Torre cilindrica listrada branco (#F8FAFC) e vermelho (#DC2626) a cada 6 fatias (z=4..29)
+    for z in range(4, 30):
+        rad = 5.3 - 1.5 * ((z - 4) / 25.0)
+        stripe = ((z - 4) // 6) % 2  # 0: branco, 1: vermelho
+        for y in range(h):
+            for x in range(w):
+                dx = x - cx
+                dy = y - cy
+                if dx * dx + dy * dy <= rad * rad:
+                    lit = (dx + dy) > -0.5
+                    if stripe == 0:
+                        vol[z][y][x] = 5 if lit else 4
+                    else:
+                        vol[z][y][x] = 7 if lit else 6
+
+    # Portinha escura na frente (y = H - 1 = 17, z=1..7) com moldura conectada a base/torre
+    for z in range(9):
+        for y in range(13, h):
+            for x in range(6, 12):
+                if z == 0:
+                    vol[z][y][x] = 2
+                elif z <= 7 and y == h - 1 and 7 <= x <= 10:
+                    if x in (7, 10) or z == 7:
+                        vol[z][y][x] = 3
+                    else:
+                        vol[z][y][x] = 1  # folha da porta escura
+                elif z <= 7 and 7 <= x <= 10 and y == h - 2:
+                    vol[z][y][x] = 1
+                elif z <= 8:
+                    vol[z][y][x] = 3 if (y >= 16 or x >= 9) else 2
+    vol[4][h - 1][9] = 8  # macaneta dourada
+
+    # Pequenas janelinhas na frente da torre
+    for jz in (13, 23):
+        for z in (jz, jz + 1):
+            for x in (8, 9):
+                for y in range(12, h):
+                    if vol[z][y][x] != 0 and (y == h - 1 or vol[z][y + 1][x] == 0):
+                        vol[z][y][x] = 9 if z == jz + 1 else 8
+                        break
+
+    # Varanda circular escura (z=30..32)
+    for z in range(30, 33):
+        for y in range(h):
+            for x in range(w):
+                dist = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+                if z == 30:
+                    if dist <= 5.5:
+                        vol[z][y][x] = 1
+                elif z == 31:
+                    if 4.5 <= dist <= 5.5 or dist <= 3.3:
+                        vol[z][y][x] = 1
+                else:  # z == 32: postes da grade + piso da lanterna
+                    if dist <= 3.3 or (4.5 <= dist <= 5.5 and (abs(x - cx) < 1.2 or abs(y - cy) < 1.2)):
+                        vol[z][y][x] = 1
+
+    # Lanterna de vidro dourado brilhante (z=33..37)
+    for z in range(33, 38):
+        for y in range(h):
+            for x in range(w):
+                dx = x - cx
+                dy = y - cy
+                dist = (dx * dx + dy * dy) ** 0.5
+                if dist <= 3.3:
+                    is_mullion = (dist >= 2.2) and (abs(abs(dx) - abs(dy)) <= 0.6)
+                    if is_mullion or z == 37 and dist >= 2.5:
+                        vol[z][y][x] = 1
+                    elif dist <= 1.8:
+                        vol[z][y][x] = 9
+                    else:
+                        vol[z][y][x] = 9 if (z in (34, 35) and dx + dy > 0) else 8
+
+    # Cupula vermelha com ponta (z=38..41)
+    dome_radii = {38: 4.1, 39: 3.0, 40: 1.8}
+    for z, drad in dome_radii.items():
+        for y in range(h):
+            for x in range(w):
+                dx = x - cx
+                dy = y - cy
+                if dx * dx + dy * dy <= drad * drad:
+                    vol[z][y][x] = 7 if (dx + dy >= 0 or z >= 39) else 6
+    # Ponta da cupula em z=41
+    for y in (8, 9):
+        for x in (8, 9):
+            vol[41][y][x] = 8 if (x == 9 and y == 9) else 7
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_beach_umbrella():
+    """15. beach_umbrella (18 x 18 x 18)"""
+    w, h, z_count = 18, 18, 18
+    palette = [
+        'rgba(0,0,0,0)',
+        '#5C3A21',  # 1: mastro madeira sombra
+        '#8C5835',  # 2: mastro madeira media
+        '#B87B4B',  # 3: mastro madeira clara / pinaculo
+        '#B91C1C',  # 4: vermelho sombra
+        '#EF4444',  # 5: vermelho vivo
+        '#CBD5E1',  # 6: branco sombra
+        '#FFFDF7',  # 7: branco vivo
+    ]
+    vol = make_volume(w, h, z_count, 0)
+    cx, cy = 8.5, 8.5
+
+    # Mastro fino de madeira no centro (x=8..9, y=8..9, z=0..14)
+    for z in range(15):
+        for y in (8, 9):
+            for x in (8, 9):
+                vol[z][y][x] = 3 if (x == 9 and y == 9) else (1 if (x == 8 and y == 8) else 2)
+
+    # Cupula octogonal listrada radialmente de vermelho (#EF4444) e branco (#FFFDF7) de z=12..17
+    shells = {
+        17: (0.0, 1.5),
+        16: (0.0, 3.3),
+        15: (0.0, 5.2),
+        14: (4.0, 6.9),
+        13: (5.8, 8.2),
+        12: (7.0, 8.5),
+    }
+    for z, (r_min, r_max) in shells.items():
+        for y in range(h):
+            for x in range(w):
+                dx = x - cx
+                dy = y - cy
+                oct_d = max(abs(dx), abs(dy), (abs(dx) + abs(dy)) * 0.72)
+                if r_min <= oct_d <= r_max:
+                    if z == 17 and oct_d <= 0.8:
+                        vol[z][y][x] = 3
+                        continue
+                    ang = math.atan2(dy, dx)
+                    sector = int(((ang + math.pi) / (2.0 * math.pi)) * 8.0) % 8
+                    is_red = (sector % 2 == 0)
+                    is_shaded = (z == 12) or (dx + dy < -2.0)
+                    if is_red:
+                        vol[z][y][x] = 4 if is_shaded else 5
+                    else:
+                        vol[z][y][x] = 6 if is_shaded else 7
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_wood_boat():
+    """16. wood_boat (20 x 12 x 8)"""
+    w, h, z_count = 20, 12, 8
+    palette = [
+        'rgba(0,0,0,0)',
+        '#3B2219',  # 1: borda marrom escura / sombra quilha
+        '#5C3A21',  # 2: madeira escura casco externo
+        '#7C4D2B',  # 3: madeira media casco / interior
+        '#A66E4E',  # 4: madeira clara / bancos
+        '#C88E65',  # 5: realce bancos / borda interna
+    ]
+    vol = make_volume(w, h, z_count, 0)
+    cy = 5.5
+
+    # Perfil de largura por X (popa x=0..2, meio x=3..15, proa x=16..19)
+    half_widths = {
+        0: 0.9, 1: 1.9, 2: 3.1,
+        3: 4.1, 4: 4.6, 5: 4.8, 6: 4.9, 7: 4.9, 8: 4.9, 9: 4.9,
+        10: 4.9, 11: 4.9, 12: 4.9, 13: 4.8, 14: 4.6, 15: 4.1,
+        16: 3.4, 17: 2.6, 18: 1.7, 19: 0.8,
+    }
+    z_scales = {
+        0: 0.48, 1: 0.68, 2: 0.84,
+        3: 0.92, 4: 0.96, 5: 0.99, 6: 1.00, 7: 1.02,
+    }
+
+    for z in range(z_count):
+        zs = z_scales[z]
+        for x in range(w):
+            hw = half_widths[x] * zs
+            # Fundo solido em z=0..2; oco em z=3..7 mantendo espessura da parede
+            inner_hw = -1.0 if z <= 2 else max(0.0, hw - 1.35)
+            # Proa (x>=18) e popa (x<=1) fechadas com bico
+            if x <= 1 or x >= 18:
+                inner_hw = -1.0
+            for y in range(h):
+                dy = abs(y - cy)
+                if dy <= hw and dy >= inner_hw:
+                    if z == 7:
+                        vol[z][y][x] = 1  # borda marrom escura em cima
+                    elif z == 0:
+                        vol[z][y][x] = 1
+                    elif z <= 2:
+                        vol[z][y][x] = 3 if (dy < hw - 1.0) else 2
+                    elif dy >= hw - 0.8:
+                        vol[z][y][x] = 3 if y >= cy else 2
+                    else:
+                        vol[z][y][x] = 4 if z >= 5 else 3
+
+    # Dois bancos transversais (x=6 e x=12 em z=4)
+    for bx in (6, 12):
+        hw_seat = half_widths[bx] * z_scales[4]
+        for y in range(h):
+            if abs(y - cy) <= hw_seat - 0.5:
+                vol[4][y][bx] = 5 if y >= cy else 4
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_sunflower():
+    """17. sunflower (10 x 10 x 16)"""
+    w, h, z_count = 10, 10, 16
+    palette = [
+        'rgba(0,0,0,0)',
+        '#1E4D2B',  # 1: caule/folha verde escuro
+        '#2E7D32',  # 2: caule/folha verde medio
+        '#4CAF50',  # 3: folha verde clara
+        '#4A2C1D',  # 4: disco central marrom escuro
+        '#784421',  # 5: textura disco marrom
+        '#F59E0B',  # 6: petala laranja-ouro
+        '#FACC15',  # 7: petala amarelo-ouro
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Caule verde fino (z=0..12) com leve inclinacao (com sobreposicao para 6-conectividade)
+    prev_sy = 4
+    for z in range(13):
+        sy = 4 if z < 4 else (5 if z < 8 else (6 if z < 11 else 7))
+        for x in (4, 5):
+            vol[z][sy][x] = 2 if x == 5 else 1
+            if sy != prev_sy:
+                vol[z][prev_sy][x] = 1
+            if z <= 2:
+                vol[z][sy + 1][x] = 2
+        prev_sy = sy
+
+    # Duas folhinhas horizontais (z=4..5)
+    for z in (4, 5):
+        # Folha esquerda
+        for x, y in ((3, 5), (2, 5), (2, 6), (1, 6)):
+            vol[z][y][x] = 3 if z == 5 else 2
+        # Folha direita
+        for x, y in ((6, 5), (7, 5), (7, 6), (8, 6)):
+            vol[z][y][x] = 3 if z == 5 else 2
+
+    # Calice verde atras da cabeca da flor (y=7..8, z=11..14)
+    for z in range(11, 15):
+        for x in range(3, 7):
+            if (x in (3, 6)) and (z in (11, 14)):
+                continue
+            vol[z][8][x] = 2 if z <= 12 else 3
+            if z in (12, 13) and x in (4, 5):
+                vol[z][7][x] = 1
+
+    # Flor voltada para a frente (y = H - 1 = 9, z=10..15)
+    fcx, fcz = 4.5, 12.5
+    for z in range(10, 16):
+        for x in range(1, 9):
+            dx = x - fcx
+            dz = z - fcz
+            dist = (dx * dx + dz * dz) ** 0.5
+            ang = math.atan2(dz, dx)
+            petal_flare = 0.45 * abs(math.cos(ang * 4.0))
+            if dist <= 1.9:
+                # Disco central marrom escuro (#4A2C1D)
+                vol[z][h - 1][x] = 5 if ((x + z) % 2 == 0 and dist < 1.3) else 4
+            elif dist <= 3.7 + petal_flare:
+                # Anel de petalas amarelo-ouro (#FACC15 / #F59E0B) em y=8..9
+                col = 7 if (z >= 13 or (x + z) % 2 == 0) else 6
+                vol[z][h - 1][x] = col
+                if dist <= 3.1:
+                    vol[z][h - 2][x] = 6
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_hay_bale():
+    """18. hay_bale (14 x 14 x 10)"""
+    w, h, z_count = 14, 14, 10
+    palette = [
+        'rgba(0,0,0,0)',
+        '#4A2C1D',  # 1: corda sombra escura
+        '#6B4226',  # 2: corda marrom amarrada
+        '#92610A',  # 3: feno sombra escura
+        '#CA8A04',  # 4: feno dourado medio
+        '#EAB308',  # 5: feno dourado claro
+        '#FACC15',  # 6: palha iluminada
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Fardo principal x=1..12, y=1..12, z=0..9 com bordas levemente arredondadas e topo plano (z=9)
+    for z in range(z_count):
+        for y in range(1, h - 1):
+            for x in range(1, w - 1):
+                # Cantos verticais suavizados (1px)
+                if x in (1, w - 2) and y in (1, h - 2):
+                    continue
+                is_rope = x in (4, 9) and (
+                    z in (0, z_count - 1) or y in (1, h - 2) or
+                    (x in (4, 9) and (x in (1, w - 2) or y in (2, h - 3) and (x in (1, w - 2))))
+                )
+                if is_rope:
+                    vol[z][y][x] = 1 if z == 0 or y == 1 else 2
+                else:
+                    straw = hash3(x, y, z) % 5
+                    if z == z_count - 1:
+                        vol[z][y][x] = 6 if straw == 0 else (5 if straw <= 3 else 4)
+                    elif z == 0 or y <= 2:
+                        vol[z][y][x] = 3 if straw == 0 else 4
+                    else:
+                        vol[z][y][x] = 6 if (z >= 7 and straw == 0) else (5 if straw <= 2 else 4)
+
+    # Fiapinhos sutis de feno nas laterais (z=2..7) conectados ao fardo
+    tufts = [
+        (0, 3, 3), (0, 7, 5), (0, 10, 4),
+        (13, 4, 6), (13, 8, 3), (13, 10, 5),
+    ]
+    for tx, ty, tz in tufts:
+        vol[tz][ty][tx] = 5 if tz >= 5 else 4
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_tree_stump():
+    """19. tree_stump (14 x 14 x 10)"""
+    w, h, z_count = 14, 14, 10
+    palette = [
+        'rgba(0,0,0,0)',
+        '#2E1A12',  # 1: casca sombra profunda
+        '#4B2E1E',  # 2: casca marrom escura
+        '#6D442B',  # 3: casca marrom media
+        '#8C5A38',  # 4: casca iluminada
+        '#C49A6C',  # 5: anel madeira escura no topo
+        '#E7C697',  # 6: madeira clara no topo
+    ]
+    vol = make_volume(w, h, z_count, 0)
+    cx, cy = 6.5, 6.5
+
+    root_dirs = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
+
+    for z in range(z_count):
+        base_r = 5.1 if z == 0 else (4.8 if z == 1 else (4.4 if z <= 8 else 4.5))
+        for y in range(h):
+            for x in range(w):
+                dx = x - cx
+                dy = y - cy
+                dist = (dx * dx + dy * dy) ** 0.5
+
+                # Raizes nas 4 quinas (z=0..2)
+                in_root = False
+                if z <= 2:
+                    reach = 1.0 - z * 0.3
+                    for rdx, rdy in root_dirs:
+                        rx = cx + rdx * (3.6 + 1.6 * reach)
+                        ry = cy + rdy * (3.6 + 1.6 * reach)
+                        for step in range(4):
+                            s = step / 3.0
+                            px = cx + (rx - cx) * s
+                            py = cy + (ry - cy) * s
+                            rr = 1.55 - 0.45 * s
+                            if (x - px) ** 2 + (y - py) ** 2 <= rr * rr:
+                                in_root = True
+                                break
+
+                if dist <= base_r or in_root:
+                    if z == z_count - 1:
+                        # Topo plano (z=9) com aneis concentricos de madeira clara (#E7C697 / #C49A6C)
+                        if dist >= base_r - 1.05:
+                            vol[z][y][x] = 3 if (dx + dy >= 0) else 2
+                        else:
+                            ring = int(round(dist)) % 2
+                            vol[z][y][x] = 6 if ring == 0 else 5
+                    else:
+                        groove = ((int(round(math.atan2(dy, dx) * 4.5)) + x + y) % 4 == 0)
+                        if z == 0 or (dx + dy < -2.5) or (groove and dist >= base_r - 1.2):
+                            vol[z][y][x] = 1 if (z == 0 and dx + dy < 0) else 2
+                        elif dx + dy > 1.8 and not groove:
+                            vol[z][y][x] = 4
+                        else:
+                            vol[z][y][x] = 3
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_pumpkin_patch():
+    """20. pumpkin_patch (14 x 14 x 8)"""
+    w, h, z_count = 14, 14, 8
+    palette = [
+        'rgba(0,0,0,0)',
+        '#1E4D2B',  # 1: folha/cabo verde escuro
+        '#2E7D32',  # 2: folha/cabo verde medio
+        '#4DB848',  # 3: folha iluminada / vinha
+        '#9A3412',  # 4: sombra gomos abobora
+        '#EA580C',  # 5: abobora laranja media
+        '#F97316',  # 6: abobora laranja viva
+        '#FDBA74',  # 7: realce laranja claro
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Folhagem verde na base (z=0..1) conectando todo o canteiro
+    foliage_blobs = [
+        (5.0, 5.0, 4.4),
+        (9.5, 8.5, 3.8),
+        (3.8, 10.0, 3.3),
+        (7.2, 6.8, 3.4),
+    ]
+    for z in (0, 1):
+        scale = 1.0 if z == 0 else 0.78
+        for y in range(h):
+            for x in range(w):
+                for fx, fy, fr in foliage_blobs:
+                    dist = ((x - fx) ** 2 + (y - fy) ** 2) ** 0.5
+                    flare = 0.45 if ((x + y) % 2 == 0) else 0.0
+                    if dist <= fr * scale - flare:
+                        if z == 0:
+                            vol[z][y][x] = 1 if dist > fr * 0.7 else 2
+                        else:
+                            vol[z][y][x] = 3 if (x + y) % 3 == 0 else 2
+                        break
+
+    # Trio de aboboras laranjas (#F97316 / #EA580C) gordinhas com gomos
+    pumpkins = [
+        # (px, py, pz_center, rx, ry, rz, stem_top_z, stem_dx)
+        (5.0, 5.0, 3.1, 3.3, 3.3, 2.7, 7, 1),   # abobora grande
+        (9.5, 8.5, 2.7, 2.8, 2.8, 2.3, 6, -1),  # abobora media
+        (3.8, 10.0, 2.4, 2.4, 2.4, 2.0, 6, 1),  # abobora pequena
+    ]
+    for px, py, pz, rx, ry, rz, stem_z, sdx in pumpkins:
+        for z in range(1, z_count):
+            for y in range(h):
+                for x in range(w):
+                    dx = (x - px) / rx
+                    dy = (y - py) / ry
+                    dz = (z - pz) / rz
+                    if dx * dx + dy * dy + dz * dz <= 1.0:
+                        ang = math.atan2(dy, dx)
+                        rib = abs(math.sin(ang * 4.0))
+                        if rib < 0.28 or z == 1:
+                            vol[z][y][x] = 4 if (dx + dy < 0 or z == 1) else 5
+                        elif z >= pz + rz * 0.45 and (dx + dy > 0):
+                            vol[z][y][x] = 7
+                        elif dx + dy < -0.2:
+                            vol[z][y][x] = 5
+                        else:
+                            vol[z][y][x] = 6
+        # Garante apoio em z=0 sob o centro caso algum pixel lateral precise
+        sx, sy = int(round(px)), int(round(py))
+        vol[0][sy][sx] = 2
+        # Cabinho verde curvo no topo
+        top_body_z = int(round(pz + rz * 0.85))
+        for cz in range(top_body_z, stem_z + 1):
+            cur_x = sx + (sdx if cz == stem_z else 0)
+            if 0 <= cur_x < w:
+                vol[cz][sy][cur_x] = 3 if cz == stem_z else (2 if cz == stem_z - 1 else 1)
+                if cz == stem_z and sx != cur_x:
+                    # Garante 6-conectividade na curva do cabo
+                    vol[cz - 1][sy][cur_x] = 2
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_grass_tuft_short():
+    """21. grass_tuft_short (14 x 14 x 3)"""
+    w, h, z_count = 14, 14, 3
+    palette = [
+        'rgba(0,0,0,0)',
+        '#1E541B',  # 1: sombra raiz
+        '#2F7A2B',  # 2: verde-escuro (z=0)
+        '#4DB848',  # 3: verde medio (z=1)
+        '#8BE064',  # 4: verde-limao (z=2)
+        '#BEF264',  # 5: realce claro
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # 7 tufinhos variados dentro de 1..12 (1px da borda), de 2 a 3px de altura
+    tufts = [
+        # (base_coords, mid_coords, tip_coords)
+        ([(2, 3), (3, 3)], [(2, 3), (3, 3)], [(3, 3)]),
+        ([(6, 2), (7, 2)], [(6, 2)], [(6, 2)]),
+        ([(11, 3)], [(11, 3), (11, 4)], []),                 # 2px de altura
+        ([(4, 7), (4, 8)], [(4, 7), (5, 7)], [(5, 7)]),
+        ([(9, 6), (10, 6)], [(9, 6)], [(9, 6)]),
+        ([(3, 11)], [(3, 11), (4, 11)], []),                 # 2px de altura
+        ([(10, 11), (11, 11)], [(11, 11)], [(11, 11)]),
+    ]
+    for base_pts, mid_pts, tip_pts in tufts:
+        for x, y in base_pts:
+            vol[0][y][x] = 2
+        for x, y in mid_pts:
+            vol[1][y][x] = 3
+        for x, y in tip_pts:
+            vol[2][y][x] = 4
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_grass_tuft_tall():
+    """22. grass_tuft_tall (14 x 14 x 4)"""
+    w, h, z_count = 14, 14, 4
+    palette = [
+        'rgba(0,0,0,0)',
+        '#2F7A2B',  # 1: verde-escuro (z=0)
+        '#4DB848',  # 2: verde medio (z=1)
+        '#8BE064',  # 3: verde-limao (z=2)
+        '#A7F3D0',  # 4: ponta verde-menta (z=3)
+        '#FDE047',  # 5: micro-flor amarela (z=3)
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # 7 tufos de 3 a 4px de altura; 4 laminas chegam a z=3 com #A7F3D0 / #FDE047
+    tufts = [
+        # (z0_pts, z1_pts, z2_pts, z3_pts_with_col)
+        ([(2, 2), (3, 2)], [(2, 2), (3, 2)], [(2, 2)], [(2, 2, 4)]),
+        ([(7, 2), (7, 3)], [(7, 2), (8, 2)], [(8, 2)], [(8, 2, 5)]),
+        ([(11, 4), (11, 5)], [(11, 4)], [(11, 4)], []),
+        ([(4, 6), (5, 6)], [(4, 6)], [(4, 6)], [(4, 6, 4)]),
+        ([(8, 8), (9, 8)], [(8, 8), (9, 8)], [(9, 8)], []),
+        ([(2, 11), (3, 11)], [(2, 11)], [(2, 11)], []),
+        ([(10, 11), (11, 11)], [(10, 11), (10, 10)], [(10, 10)], [(10, 10, 5)]),
+    ]
+    for z0_pts, z1_pts, z2_pts, z3_pts in tufts:
+        for x, y in z0_pts:
+            vol[0][y][x] = 1
+        for x, y in z1_pts:
+            vol[1][y][x] = 2
+        for x, y in z2_pts:
+            vol[2][y][x] = 3
+        for x, y, col in z3_pts:
+            vol[3][y][x] = col
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_baby_chick():
+    """23. baby_chick (10 x 10 x 8)"""
+    w, h, z_count = 10, 10, 8
+    palette = [
+        'rgba(0,0,0,0)',
+        '#1E1B18',  # 1: olhinho preto suave
+        '#FFFDF5',  # 2: brilho branco do olho
+        '#EA580C',  # 3: laranja sombra
+        '#F97316',  # 4: biquinho e patinhas laranja
+        '#EAB308',  # 5: amarelo sombra ventre/asas
+        '#FACC15',  # 6: amarelo medio fofo
+        '#FDE047',  # 7: amarelo claro cabeca/topo
+    ]
+    vol = make_volume(w, h, z_count, 0)
+    cx, cy, cz = 4.5, 5.0, 3.8
+
+    # 2 pontinhos de patinhas laranjas em z=0
+    vol[0][5][3] = 4
+    vol[0][5][6] = 4
+
+    # Corpinho esferico/ovoide amarelo fofo (z=1..7) SEM crista
+    for z in range(1, z_count):
+        for y in range(h):
+            for x in range(w):
+                dx = (x - cx) / 3.2
+                dy = (y - cy) / 3.4
+                dz = (z - cz) / 3.5
+                if dx * dx + dy * dy + dz * dz <= 1.0:
+                    if z >= 6 or (z == 5 and y >= 5):
+                        vol[z][y][x] = 7
+                    elif z == 1 or (z == 2 and y <= 4):
+                        vol[z][y][x] = 5
+                    else:
+                        vol[z][y][x] = 6
+
+    # Rabinho sutil atras (y=1, z=3) conectado ao corpo
+    vol[3][1][4] = 5
+    vol[3][1][5] = 5
+
+    # Asinhas sutis nas laterais (z=3..4)
+    for z in (3, 4):
+        for y in (4, 5):
+            vol[z][y][1] = 5 if z == 3 else 6
+            vol[z][y][8] = 5 if z == 3 else 6
+
+    # Rosto voltado para frente (y = H - 1 = 9) em z=4..5:
+    # Biquinho laranja (#F97316) em y=9 (z=4..5) conectado a y=8
+    for x in (4, 5):
+        vol[4][h - 1][x] = 3
+        vol[5][h - 1][x] = 4
+        vol[4][h - 2][x] = 6
+        vol[5][h - 2][x] = 7
+
+    # Olhinhos pretos com brilho branco na face frontal (y=8 conectado ao corpo e visivel na frente)
+    for ex in (3, 6):
+        vol[5][h - 2][ex] = 1  # pupila preta
+        vol[6][h - 2][ex] = 2  # brilho branco acima da pupila
+        # Garante suporte atras/abaixo do olho se a esfera arredondar
+        if vol[4][h - 2][ex] == 0:
+            vol[4][h - 2][ex] = 6
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
 EXPECTED_SPECS = {
     'pine_tree': (20, 20, 34),
     'sakura_oak': (32, 32, 42),
@@ -875,6 +1793,19 @@ EXPECTED_SPECS = {
     'golden_fish': (12, 8, 6),
     'ruin_pillar': (12, 12, 18),
     'flower_tuft': (10, 10, 5),
+    'cozy_cabin': (26, 24, 28),
+    'torii_gate': (22, 10, 26),
+    'stone_lantern': (10, 10, 18),
+    'lighthouse': (18, 18, 42),
+    'beach_umbrella': (18, 18, 18),
+    'wood_boat': (20, 12, 8),
+    'sunflower': (10, 10, 16),
+    'hay_bale': (14, 14, 10),
+    'tree_stump': (14, 14, 10),
+    'pumpkin_patch': (14, 14, 8),
+    'grass_tuft_short': (14, 14, 3),
+    'grass_tuft_tall': (14, 14, 4),
+    'baby_chick': (10, 10, 8),
 }
 
 
@@ -911,7 +1842,8 @@ def validate_pack(pack):
                     if ch != '0':
                         solid_coords.add((x, y, z))
 
-        # Checa que z=0 nao esta vazio e que todos os voxels estao conectados (6-conectividade) ao chao
+        # Checa que z=0 nao esta vazio e usa BFS 6-conectado a partir de TODOS os voxels em z=0
+        # (permite multiplos componentes independentes apoiados no chao, sem nenhum voxel flutuante em z > 0)
         ground = [p for p in solid_coords if p[2] == 0]
         assert ground, f"{name}: nenhum voxel na base z=0"
         visited = set(ground)
@@ -923,8 +1855,8 @@ def validate_pack(pack):
                 if nb in solid_coords and nb not in visited:
                     visited.add(nb)
                     q.append(nb)
-        floating = solid_coords - visited
-        assert not floating, f"{name}: {len(floating)} voxels desconectados/flutuando! ex: {next(iter(floating))}"
+        floating = [p for p in (solid_coords - visited) if p[2] > 0]
+        assert not floating, f"{name}: {len(floating)} voxels desconectados/flutuando em z>0! ex: {floating[0]}"
 
         results[name] = {
             'dims': (exp_w, exp_h, exp_z),
@@ -946,6 +1878,19 @@ def main():
         'golden_fish': build_golden_fish(),
         'ruin_pillar': build_ruin_pillar(),
         'flower_tuft': build_flower_tuft(),
+        'cozy_cabin': build_cozy_cabin(),
+        'torii_gate': build_torii_gate(),
+        'stone_lantern': build_stone_lantern(),
+        'lighthouse': build_lighthouse(),
+        'beach_umbrella': build_beach_umbrella(),
+        'wood_boat': build_wood_boat(),
+        'sunflower': build_sunflower(),
+        'hay_bale': build_hay_bale(),
+        'tree_stump': build_tree_stump(),
+        'pumpkin_patch': build_pumpkin_patch(),
+        'grass_tuft_short': build_grass_tuft_short(),
+        'grass_tuft_tall': build_grass_tuft_tall(),
+        'baby_chick': build_baby_chick(),
     }
 
     out_path = 'C:/github/PixelArt/terrain_props_pack.json'
