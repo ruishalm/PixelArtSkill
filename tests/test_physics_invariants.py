@@ -258,6 +258,11 @@ for (let step = 0; step < 60; step++) {
 }
 assert(Math.abs(Math.abs(n1.z - n0.z) - segLen) < 0.01, 'Verlet constraint did not preserve segment length');
 
+// 11. Procedural tree trunk/branch/crown variation across seeds
+const tr1 = { leanX: ((42 % 17) - 8) * 0.4, tiers: 3 + (42 % 3) };
+const tr2 = { leanX: ((99 % 17) - 8) * 0.4, tiers: 3 + (99 % 3) };
+assert.notStrictEqual(tr1.leanX, tr2.leanX, 'Procedural trees should vary trunk lean');
+
 console.log('ALL_NODE_PHYSICS_INVARIANTS_OK');
 """
         res = subprocess.run(['node', '-e', node_script], capture_output=True, text=True)

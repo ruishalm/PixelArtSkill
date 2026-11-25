@@ -92,6 +92,282 @@
       }
     }
 
+    // =========================================================================
+    // 5B. GERADOR PROCEDURAL DE ÁRVORES (Troncos curvos, Galhos & Copas únicas)
+    // =========================================================================
+    function buildSliceSheetFromVoxels(vol, w, h, count, paletteHex) {
+      const sheet = document.createElement('canvas');
+      sheet.width = w * count;
+      sheet.height = h;
+      const sctx = sheet.getContext('2d');
+      sctx.imageSmoothingEnabled = false;
+      const img = sctx.createImageData(sheet.width, h);
+      const buf = new Uint32Array(img.data.buffer);
+      const isLE = (new Uint8Array(new Uint32Array([0x11223344]).buffer))[0] === 0x44;
+      const palU32 = paletteHex.map(hex => {
+        if (!hex || hex.startsWith('rgba')) return 0;
+        const n = parseInt(hex.slice(1), 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        return isLE ? ((255 << 24) | (b << 16) | (g << 8) | r) : ((r << 24) | (g << 16) | (b << 8) | 255);
+      });
+      const stride = w * count;
+      for (let z = 0; z < count; z++) {
+        const sl = vol[z];
+        const xOff = z * w;
+        for (let y = 0; y < h; y++) {
+          const dstRow = y * stride + xOff;
+          const srcRow = y * w;
+          for (let x = 0; x < w; x++) {
+            const v = sl[srcRow + x];
+            if (v > 0) buf[dstRow + x] = palU32[v];
+          }
+        }
+      }
+      sctx.putImageData(img, 0, 0);
+      return { sheet, count, w, h };
+    }
+
+    function buildProceduralPineVariant(variantIdx) {
+      const rng = mulberry32((WORLD_SEED ^ Math.imul(variantIdx + 1, 2654435761)) >>> 0);
+      const w = 42, h = 42;
+      const count = 62 + Math.floor(rng() * 17); // 62..78 fatias de altura
+      const palSets = [
+        ['rgba(0,0,0,0)', '#3B2219', '#6B4226', '#8C5A38', '#143628', '#1B4332', '#2D6A4F', '#40916C', '#74C69D'],
+        ['rgba(0,0,0,0)', '#3B2219', '#5E3A22', '#7D5132', '#123124', '#183D2D', '#255D44', '#378260', '#63B88D'],
+        ['rgba(0,0,0,0)', '#3B2219', '#6E462A', '#94623E', '#193822', '#224A2E', '#357343', '#4D9B5A', '#83CC7E'],
+        ['rgba(0,0,0,0)', '#3B2219', '#643E24', '#855635', '#13352D', '#1A443A', '#2B6C5E', '#3E9481', '#73C7B3']
+      ];
+      const palette = palSets[variantIdx % palSets.length];
+      const vol = Array.from({ length: count }, () => new Uint8Array(w * h));
+      const cx0 = w * 0.5 - 0.5, cy0 = h * 0.5 - 0.5;
+      const leanX = (rng() - 0.5) * 4.4;
+      const leanY = (rng() - 0.5) * 4.4;
+      const trunkTop = Math.floor(count * 0.80);
+
+      // 1. Raízes + tronco curvo orgânico
+      const numRoots = 3 + Math.floor(rng() * 3);
+      const rootAngles = Array.from({ length: numRoots }, (_, i) => (i / numRoots) * Math.PI * 2 + (rng() - 0.5) * 0.6);
+      for (let z = 0; z <= trunkTop; z++) {
+        const tz = z / Math.max(1, trunkTop);
+        const cx = cx0 + leanX * tz * tz;
+        const cy = cy0 + leanY * tz * tz;
+        const rad = z <= 3 ? (5.4 - z * 0.4) : (z <= 16 ? 4.2 : 3.0 * (1 - 0.45 * tz));
+        const sl = vol[z];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const dx = x - cx, dy = y - cy;
+            let hit = (dx * dx + dy * dy <= rad * rad);
+            if (!hit && z <= 4) {
+              const reach = (1 - z / 5) * 4.5;
+              for (let r = 0; r < numRoots; r++) {
+                const rx = cx0 + Math.cos(rootAngles[r]) * reach;
+                const ry = cy0 + Math.sin(rootAngles[r]) * reach;
+                if ((x - rx) * (x - rx) + (y - ry) * (y - ry) <= 4.5) { hit = true; break; }
+              }
+            }
+            if (hit) {
+              sl[y * w + x] = (dx + dy > 1.4) ? 3 : ((dx + dy < -1.4) ? 1 : 2);
+            }
+          }
+        }
+      }
+
+      // 2. Galhos lenhosos saindo entre as camadas inferiores
+      const branchCount = 4 + Math.floor(rng() * 4);
+      for (let b = 0; b < branchCount; b++) {
+        const bz0 = Math.floor(count * (0.20 + rng() * 0.34));
+        const tz = bz0 / Math.max(1, trunkTop);
+        const bx0 = cx0 + leanX * tz * tz;
+        const by0 = cy0 + leanY * tz * tz;
+        const bAng = (b / branchCount) * Math.PI * 2 + (rng() - 0.5) * 0.7;
+        const bLen = 6 + rng() * 6;
+        const bLift = 2 + rng() * 3.5;
+        for (let s = 0; s <= 10; s++) {
+          const u = s / 10;
+          const bx = bx0 + Math.cos(bAng) * bLen * u;
+          const by = by0 + Math.sin(bAng) * bLen * u;
+          const bz = Math.round(bz0 + bLift * u);
+          if (bz < 0 || bz >= count) continue;
+          const br = 1.6 * (1 - 0.5 * u);
+          const sl = vol[bz];
+          for (let yy = Math.max(0, Math.floor(by - br)); yy <= Math.min(h - 1, Math.ceil(by + br)); yy++) {
+            for (let xx = Math.max(0, Math.floor(bx - br)); xx <= Math.min(w - 1, Math.ceil(bx + br)); xx++) {
+              if ((xx - bx) * (xx - bx) + (yy - by) * (yy - by) <= br * br) {
+                sl[yy * w + xx] = u > 0.5 ? 2 : 1;
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Camadas cônicas assimétricas de copa (3..5 níveis)
+      const tierCount = 3 + Math.floor(rng() * 3);
+      const lobeFreq = 5 + Math.floor(rng() * 5);
+      const canopyStart = Math.floor(count * 0.19);
+      const canopySpan = count - 1 - canopyStart;
+      for (let ti = 0; ti < tierCount; ti++) {
+        const f0 = ti / tierCount;
+        const f1 = Math.min(1, (ti + 1.22) / tierCount);
+        const zStart = canopyStart + Math.floor(f0 * canopySpan);
+        const zEnd = Math.min(count - 1, canopyStart + Math.floor(f1 * canopySpan));
+        const rBot = (17.5 - ti * (10.5 / tierCount)) * (0.90 + rng() * 0.22);
+        const rTop = ti === tierCount - 1 ? 0.7 : rBot * (0.32 + rng() * 0.12);
+        const tierOffX = (rng() - 0.5) * 2.4;
+        const tierOffY = (rng() - 0.5) * 2.4;
+        const lobePhase = rng() * Math.PI * 2;
+        const span = Math.max(1, zEnd - zStart);
+
+        for (let z = zStart; z <= zEnd; z++) {
+          const t = (z - zStart) / span;
+          const tz = Math.min(1, z / Math.max(1, trunkTop));
+          const cx = cx0 + leanX * tz * tz + tierOffX * (1 - t * 0.4);
+          const cy = cy0 + leanY * tz * tz + tierOffY * (1 - t * 0.4);
+          const baseR = rBot * (1 - t) + rTop * t;
+          const sl = vol[z];
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const dx = x - cx, dy = y - cy;
+              const dist = Math.hypot(dx, dy);
+              const ang = Math.atan2(dy, dx);
+              const wave = z >= count - 4 ? 0 : (1.25 * Math.cos(ang * lobeFreq + lobePhase) + 0.55 * Math.sin(ang * 3 - lobePhase));
+              const effR = Math.max(0.7, baseR + wave * (1 - 0.65 * t));
+              if (dist <= effR) {
+                const isEdge = dist >= effR - 1.6;
+                const isLit = (dx + dy) > 1.0;
+                const isDeepUnder = (z <= zStart + 1) && (dist > effR * 0.50);
+                let col;
+                if (z >= count - 3) col = 8;
+                else if (isDeepUnder) col = 4;
+                else if (isEdge && isLit && t > 0.15) col = 8;
+                else if (isEdge && (dx >= -1 || dy >= -1)) col = 7;
+                else if (t < 0.30 && !isLit) col = 5;
+                else if (t > 0.65 || isLit) col = (((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) & 3) === 0 ? 7 : 6;
+                else col = (dx + dy >= -2.5) ? 6 : 5;
+                sl[y * w + x] = col;
+              }
+            }
+          }
+        }
+      }
+      return buildSliceSheetFromVoxels(vol, w, h, count, palette);
+    }
+
+    function buildProceduralSakuraVariant(variantIdx) {
+      const rng = mulberry32((WORLD_SEED ^ Math.imul(variantIdx + 17, 2246822519)) >>> 0);
+      const w = 74, h = 74;
+      const count = 94 + Math.floor(rng() * 14); // 94..107 fatias
+      const palette = [
+        'rgba(0,0,0,0)', '#3B2219', '#5C3A28', '#80533B',
+        '#9D174D', '#DB2777', '#F472B6', '#F9A8D4', '#FCE7F3', '#FFFFFF'
+      ];
+      const vol = Array.from({ length: count }, () => new Uint8Array(w * h));
+      const cx0 = w * 0.5 - 0.5, cy0 = h * 0.5 - 0.5;
+      const leanX = (rng() - 0.5) * 6.0;
+      const leanY = (rng() - 0.5) * 6.0;
+      const trunkTop = Math.floor(count * 0.44);
+
+      // 1. Raízes & tronco retorcido
+      const numRoots = 5 + Math.floor(rng() * 3);
+      const rootAngs = Array.from({ length: numRoots }, (_, i) => (i / numRoots) * Math.PI * 2 + (rng() - 0.5) * 0.5);
+      for (let z = 0; z <= trunkTop; z++) {
+        const tz = z / Math.max(1, trunkTop);
+        const cx = cx0 + leanX * tz * tz;
+        const cy = cy0 + leanY * tz * tz;
+        const trunkR = z <= 9 ? (10.5 - z * 0.35) : (7.4 - 1.5 * tz);
+        const sl = vol[z];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const dx = x - cx, dy = y - cy;
+            const ang = Math.atan2(dy, dx);
+            const flute = 0.55 * Math.sin(ang * 7 + z * 0.12 + variantIdx);
+            let hit = (dx * dx + dy * dy <= (trunkR + flute) * (trunkR + flute));
+            if (!hit && z <= 8) {
+              const reach = (1 - z / 9.5) * 14.5;
+              for (let r = 0; r < numRoots; r++) {
+                const rx = cx0 + Math.cos(rootAngs[r]) * reach;
+                const ry = cy0 + Math.sin(rootAngs[r]) * reach;
+                if ((x - rx) * (x - rx) + (y - ry) * (y - ry) <= 11.0) { hit = true; break; }
+              }
+            }
+            if (hit) {
+              sl[y * w + x] = (dx + dy > 2.5) ? 3 : ((dx + dy < -2.5) ? 1 : 2);
+            }
+          }
+        }
+      }
+
+      // 2. Galhos principais + nuvens de florada nas pontas
+      const lobes = [];
+      const bCount = 7 + Math.floor(rng() * 4);
+      for (let b = 0; b < bCount; b++) {
+        const bAng = (b / bCount) * Math.PI * 2 + (rng() - 0.5) * 0.45;
+        const bLen = 14 + rng() * 11;
+        const bz0 = Math.floor(count * (0.28 + rng() * 0.12));
+        const tz = bz0 / Math.max(1, trunkTop);
+        const bx0 = cx0 + leanX * tz * tz;
+        const by0 = cy0 + leanY * tz * tz;
+        const bx1 = bx0 + Math.cos(bAng) * bLen;
+        const by1 = by0 + Math.sin(bAng) * bLen;
+        const bz1 = bz0 + 14 + rng() * 14;
+        const rB = 3.2 + rng() * 1.2;
+
+        for (let s = 0; s <= 20; s++) {
+          const u = s / 20;
+          const bx = bx0 + (bx1 - bx0) * u;
+          const by = by0 + (by1 - by0) * u;
+          const bz = bz0 + (bz1 - bz0) * u;
+          const rad = rB * (1 - 0.42 * u);
+          for (let zz = Math.max(0, Math.floor(bz - rad)); zz <= Math.min(count - 1, Math.ceil(bz + rad)); zz++) {
+            const sl = vol[zz];
+            for (let yy = Math.max(0, Math.floor(by - rad)); yy <= Math.min(h - 1, Math.ceil(by + rad)); yy++) {
+              for (let xx = Math.max(0, Math.floor(bx - rad)); xx <= Math.min(w - 1, Math.ceil(bx + rad)); xx++) {
+                if ((xx - bx) ** 2 + (yy - by) ** 2 + (zz - bz) ** 2 <= rad * rad) {
+                  sl[yy * w + xx] = (zz > bz && yy >= by) ? 3 : (zz < bz - 0.5 ? 1 : 2);
+                }
+              }
+            }
+          }
+        }
+        const lr = 11 + rng() * 5.5;
+        lobes.push([bx1, by1, bz1 + 7 + rng() * 6, lr, lr, lr * 0.95]);
+      }
+      // Cúpula central + sub-nuvens altas
+      lobes.push([cx0 + leanX * 0.8, cy0 + leanY * 0.8, count * 0.68, 22, 22, 20]);
+      lobes.push([cx0 + leanX * 0.9, cy0 + leanY * 0.9, count * 0.82, 16, 16, 14]);
+
+      const zCanopyMin = Math.floor(count * 0.34);
+      for (let z = zCanopyMin; z < count; z++) {
+        const sl = vol[z];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let bestD = 999;
+            for (let li = 0; li < lobes.length; li++) {
+              const [lx, ly, lz, rx, ry, rz] = lobes[li];
+              const d = ((x - lx) / rx) ** 2 + ((y - ly) / ry) ** 2 + ((z - lz) / rz) ** 2;
+              if (d < bestD) bestD = d;
+            }
+            const ripple = 0.05 * Math.sin(x * 0.42 + variantIdx) * Math.cos(y * 0.42);
+            if (bestD <= 1.0 + ripple) {
+              if (z <= zCanopyMin + 8 && sl[y * w + x] >= 1 && sl[y * w + x] <= 3) continue;
+              const hv = ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0;
+              const light = (z - count * 0.55) * 0.032 + (y - cy0) * 0.015 + (x - cx0) * 0.015;
+              let col;
+              if (z <= zCanopyMin + 5 || (z < count * 0.52 && bestD > 0.85 && light < -0.1)) col = 4;
+              else if (z >= count * 0.86 || (z >= count * 0.72 && light > 0.32)) {
+                col = (hv % 6 === 0 || (z >= count - 6 && hv % 3 === 0)) ? 9 : ((hv % 3 === 0 || z >= count - 9) ? 8 : 7);
+              } else if (light < -0.25) col = 5;
+              else col = (hv % 14 === 0 && z >= count * 0.6) ? 9 : ((hv % 5 === 0) ? 8 : (light > 0.12 ? 7 : 6));
+              sl[y * w + x] = col;
+            }
+          }
+        }
+      }
+      return buildSliceSheetFromVoxels(vol, w, h, count, palette);
+    }
+
+    const pineTreeVariants = Array.from({ length: 10 }, (_, i) => buildProceduralPineVariant(i));
+    const sakuraOakVariants = Array.from({ length: 4 }, (_, i) => buildProceduralSakuraVariant(i));
+
     function addProp(modelKey, wx, wy, options = {}) {
       const c = getCellAt(wx, wy);
       if (!c || !propModels[modelKey]) return;
@@ -103,10 +379,20 @@
         }
       }
 
-      const scale = options.scale || 1.0;
+      const scale = options.scale || (
+        (modelKey === 'pine_tree' || modelKey === 'sakura_oak')
+          ? (0.90 + worldRand() * 0.22)
+          : 1.0
+      );
       const liftZ = options.liftZ !== undefined ? options.liftZ : c.h;
-      const angle = options.angle || 0;
-      const model = propModels[modelKey];
+      const angle = options.angle !== undefined
+        ? options.angle
+        : ((modelKey === 'pine_tree' || modelKey === 'sakura_oak') ? (worldRand() * Math.PI * 2) : 0);
+      const model = modelKey === 'pine_tree'
+        ? pineTreeVariants[Math.floor(worldRand() * pineTreeVariants.length)]
+        : (modelKey === 'sakura_oak'
+          ? sakuraOakVariants[Math.floor(worldRand() * sakuraOakVariants.length)]
+          : propModels[modelKey]);
       const baseZ = Math.round(liftZ);
       const topZ = baseZ + Math.ceil(model.count * scale);
 
