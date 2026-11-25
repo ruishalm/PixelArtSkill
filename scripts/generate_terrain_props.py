@@ -1,6 +1,11 @@
 import json
 import math
+import os
 from collections import Counter, deque
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 
 def make_grid(w, h, fill=0):
@@ -2028,6 +2033,361 @@ def build_baby_chick():
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
+def build_tool_axe():
+    """24. tool_axe (14 x 14 x 18)"""
+    w, h, z_count = 14, 14, 18
+    palette = [
+        'rgba(0,0,0,0)',
+        '#3B2219',  # 1: madeira carvalho sombra
+        '#6B4226',  # 2: madeira carvalho media
+        '#8C5A38',  # 3: madeira carvalho iluminada
+        '#334155',  # 4: colar ferro forjado escuro
+        '#64748B',  # 5: aco sombra
+        '#94A3B8',  # 6: aco medio
+        '#CBD5E1',  # 7: aco claro
+        '#F8FAFC',  # 8: fio brilhante da lamina
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Pomel arredondado e alargado na base (z=0..1)
+    for z in (0, 1):
+        for y in range(5, 9):
+            for x in range(5, 9):
+                if (x in (5, 8)) and (y in (5, 8)):
+                    continue
+                if z == 0:
+                    vol[z][y][x] = 1 if (x + y <= 12) else 2
+                else:
+                    vol[z][y][x] = 3 if (x + y >= 14) else 2
+
+    # Cabo torneado de carvalho (x=6..7, y=6..7, z=2..16)
+    for z in range(2, 17):
+        for y in (6, 7):
+            for x in (6, 7):
+                if z == 2 or z == 16:
+                    vol[z][y][x] = 1 if (x == 6 and y == 6) else 2
+                elif x == 7 and y == 7:
+                    vol[z][y][x] = 3
+                elif x == 6 and y == 6:
+                    vol[z][y][x] = 1
+                else:
+                    vol[z][y][x] = 2
+
+    # Colar de ferro forjado escuro envolvendo o topo do cabo (z=12..15)
+    for z in range(12, 16):
+        for y in range(5, 9):
+            for x in range(5, 9):
+                if (x in (5, 8)) and (y in (5, 8)):
+                    continue
+                if x in (6, 7) and y in (6, 7):
+                    continue
+                vol[z][y][x] = 4 if (x == 5 or y == 5 or z == 12) else 5
+
+    # Lamina curva de aco estendendo em +X (x=7..12, z=10..16, y=6..7)
+    blade_spans = {
+        7: (12, 15),
+        8: (12, 15),
+        9: (11, 15),
+        10: (10, 16),
+        11: (10, 16),
+        12: (11, 15),
+    }
+    for x, (z_min, z_max) in blade_spans.items():
+        for z in range(z_min, z_max + 1):
+            for y in (6, 7):
+                is_edge = (x == 12) or (x == 11 and z in (10, 16))
+                if is_edge:
+                    vol[z][y][x] = 8
+                elif x == 7:
+                    vol[z][y][x] = 4
+                elif x == 8:
+                    vol[z][y][x] = 5 if z == 12 else 6
+                elif x == 9:
+                    vol[z][y][x] = 5 if z == 11 else (7 if z >= 14 and y == 7 else 6)
+                elif x == 10:
+                    vol[z][y][x] = 7 if (y == 7 or z >= 15) else 6
+                else:  # x == 11 corpo proximo ao fio
+                    vol[z][y][x] = 7
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_tool_pickaxe():
+    """25. tool_pickaxe (16 x 14 x 18)"""
+    w, h, z_count = 16, 14, 18
+    palette = [
+        'rgba(0,0,0,0)',
+        '#3B2219',  # 1: madeira carvalho sombra
+        '#6B4226',  # 2: madeira carvalho media
+        '#8C5A38',  # 3: madeira carvalho iluminada
+        '#334155',  # 4: ferro escuro colar / sombra inferior
+        '#64748B',  # 5: aco sombra
+        '#94A3B8',  # 6: aco medio
+        '#CBD5E1',  # 7: aco claro
+        '#E2E8F0',  # 8: reflexo especular pontas e crista
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Cabo vertical de madeira (x=7..8, y=6..7, z=0..15)
+    for z in range(0, 16):
+        for y in (6, 7):
+            for x in (7, 8):
+                if z == 0:
+                    vol[z][y][x] = 1 if x == 7 else 2
+                elif x == 8 and y == 7:
+                    vol[z][y][x] = 3
+                elif x == 7 and y == 6:
+                    vol[z][y][x] = 1
+                else:
+                    vol[z][y][x] = 2
+
+    # Colar cruzado no topo do cabo (z=13..15)
+    for z in range(13, 16):
+        for y in range(5, 9):
+            for x in range(6, 10):
+                if (x in (6, 9)) and (y in (5, 8)):
+                    continue
+                if x in (7, 8) and y in (6, 7):
+                    continue
+                vol[z][y][x] = 4 if (z == 13 or y == 5) else 5
+
+    # Cabeca arqueada de duas pontas (x=1..14, y=6..8, z=12..16)
+    arch_profile = {
+        1: (12, 12, (6, 7)),
+        2: (12, 13, (6, 7)),
+        3: (13, 14, (6, 7)),
+        4: (13, 15, (6, 7)),
+        5: (13, 15, (6, 7, 8)),
+        6: (14, 16, (6, 7, 8)),
+        7: (14, 16, (6, 7, 8)),
+        8: (14, 16, (6, 7, 8)),
+        9: (14, 16, (6, 7, 8)),
+        10: (13, 15, (6, 7, 8)),
+        11: (13, 15, (6, 7)),
+        12: (13, 14, (6, 7)),
+        13: (12, 13, (6, 7)),
+        14: (12, 12, (6, 7)),
+    }
+    for x, (z_min, z_max, y_vals) in arch_profile.items():
+        for z in range(z_min, z_max + 1):
+            for y in y_vals:
+                if x in (1, 2, 13, 14) and z == 12:
+                    vol[z][y][x] = 8
+                elif x in (1, 2, 13, 14):
+                    vol[z][y][x] = 7
+                elif z == z_max and (y >= 7 or 6 <= x <= 9):
+                    vol[z][y][x] = 8 if (6 <= x <= 9 and y >= 7) else 7
+                elif z == z_min and (x <= 5 or x >= 10):
+                    vol[z][y][x] = 4 if z == 12 else 5
+                elif y == 8:
+                    vol[z][y][x] = 7 if z >= 15 else 6
+                else:
+                    vol[z][y][x] = 6 if z >= 14 else 5
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_tool_hoe():
+    """26. tool_hoe (14 x 14 x 18)"""
+    w, h, z_count = 14, 14, 18
+    palette = [
+        'rgba(0,0,0,0)',
+        '#3B2219',  # 1: madeira carvalho sombra
+        '#6B4226',  # 2: madeira carvalho media
+        '#8C5A38',  # 3: madeira carvalho iluminada
+        '#334155',  # 4: ferro escuro colar / verso lamina
+        '#64748B',  # 5: aco sombra
+        '#94A3B8',  # 6: aco medio
+        '#CBD5E1',  # 7: aco claro
+        '#F1F5F9',  # 8: fio cortante frontal
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Cabo longo levemente inclinado para frente (x=6..7, y=4..6, z=0..16)
+    for z in range(0, 17):
+        y_span = (4, 5) if z <= 5 else (5, 6)
+        for y in y_span:
+            for x in (6, 7):
+                if z == 0 or z == 16:
+                    vol[z][y][x] = 1 if x == 6 else 2
+                elif x == 7 and y == y_span[1]:
+                    vol[z][y][x] = 3
+                elif x == 6 and y == y_span[0]:
+                    vol[z][y][x] = 1
+                else:
+                    vol[z][y][x] = 2
+
+    # Colar envolvendo o cabo e haste avancando em +Y (z=13..15, x=5..8, y=5..10)
+    for z in range(13, 16):
+        for y in range(5, 8):
+            for x in range(5, 9):
+                if (x in (5, 8)) and (y in (5, 7)):
+                    continue
+                if x in (6, 7) and y in (5, 6):
+                    continue
+                vol[z][y][x] = 4 if (z == 13 or x == 5) else 5
+
+    # Braco frontal do colar conectando para a lamina em y=7..10
+    for y in range(7, 11):
+        z_span = (14, 15) if y <= 8 else (13, 15)
+        x_span = (6, 7) if y <= 8 else range(5, 9)
+        for z in range(z_span[0], z_span[1] + 1):
+            for x in x_span:
+                if y <= 8:
+                    vol[z][y][x] = 4 if z == 14 else 5
+                else:
+                    vol[z][y][x] = 6 if (z == 15 or x >= 7) else 5
+
+    # Lamina curvada para baixo e alargada (y=10..12, z=10..14)
+    # Transicao curva em y=10..11, x=5..8, z=12..14
+    for z in range(12, 15):
+        for x in range(5, 9):
+            vol[z][10][x] = 6 if z >= 13 else 5
+            if z <= 13:
+                vol[z][11][x] = 6 if z == 13 else 7
+
+    # Face frontal inclinada da lamina de enxada (y=11..12, x=4..9, z=10..13)
+    for z in range(10, 14):
+        for x in range(4, 10):
+            if z >= 11:
+                vol[z][11][x] = 5 if z == 11 else 6
+            if z <= 12:
+                if z == 10:
+                    vol[z][11][x] = 8
+                    vol[z][12][x] = 8
+                elif z == 11:
+                    vol[z][12][x] = 7
+                else:
+                    vol[z][12][x] = 6 if x <= 6 else 7
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_wood_log():
+    """27. wood_log (12 x 16 x 8)"""
+    w, h, z_count = 12, 16, 8
+    palette = [
+        'rgba(0,0,0,0)',
+        '#2E1A12',  # 1: fenda profunda / sombra base
+        '#4A2C1D',  # 2: casca marrom escura
+        '#6B4226',  # 3: casca marrom media
+        '#8C5A37',  # 4: casca iluminada
+        '#A67B5B',  # 5: borda interna madeira
+        '#C6986B',  # 6: anel de crescimento escuro
+        '#E7C9A9',  # 7: madeira clara exposta nas pontas
+    ]
+    vol = make_volume(w, h, z_count, 0)
+    cx, cz = 5.5, 3.1
+    rad = 3.35
+
+    for y in range(1, 15):
+        is_cap = (y == 1 or y == 14)
+        for z in range(z_count):
+            for x in range(w):
+                dx = x - cx
+                dz = z - cz
+                dist = (dx * dx + dz * dz) ** 0.5
+                # Base plana apoiada firmemente em z=0 (x=4..7)
+                on_flat_base = (z == 0 and 4 <= x <= 7)
+                if dist <= rad or on_flat_base:
+                    if is_cap:
+                        if dist >= rad - 0.85 or on_flat_base:
+                            vol[z][y][x] = 3 if (dx + dz >= 0 and not on_flat_base) else 2
+                        elif dist < 1.1:
+                            vol[z][y][x] = 6
+                        elif dist < 2.0:
+                            vol[z][y][x] = 7
+                        else:
+                            vol[z][y][x] = 6 if int(round(dist * 2.0)) % 2 == 0 else 7
+                    else:
+                        furrow = ((x * 5 + z * 3 + (y // 2)) % 7 == 0)
+                        if z == 0 or (dz < -1.8 and dx < 0):
+                            vol[z][y][x] = 1 if (z == 0 and dx <= 0) else 2
+                        elif furrow and z < 5:
+                            vol[z][y][x] = 2
+                        elif dz >= 1.4 or (dx > 1.2 and z >= 2):
+                            vol[z][y][x] = 4 if not furrow else 3
+                        elif dx < -1.5:
+                            vol[z][y][x] = 2
+                        else:
+                            vol[z][y][x] = 3
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
+def build_stone_chunk():
+    """28. stone_chunk (10 x 10 x 8)"""
+    w, h, z_count = 10, 10, 8
+    palette = [
+        'rgba(0,0,0,0)',
+        '#3E3B37',  # 1: fenda / sombra profunda base
+        '#5C5852',  # 2: pedra escura
+        '#847F77',  # 3: pedra media
+        '#ADA79E',  # 4: pedra clara
+        '#CFC9BE',  # 5: quina iluminada
+        '#3B6E38',  # 6: musgo escuro
+        '#68A352',  # 7: musgo claro
+    ]
+    vol = make_volume(w, h, z_count, 0)
+
+    # Facetas assimetricas de pedra de ruina apoiada em z=0
+    facets = [
+        (4.6, 4.8, 1.8, 3.6, 3.5, 2.5),  # massa principal baixa
+        (3.8, 4.0, 3.8, 2.8, 2.7, 2.9),  # bloco superior esquerdo/traseiro (ate z=6..7)
+        (6.2, 5.8, 2.2, 2.5, 2.4, 2.2),  # degrau lateral direito
+        (4.5, 6.6, 1.4, 2.4, 2.0, 1.8),  # degrau frontal baixo
+    ]
+
+    for z in range(z_count):
+        for y in range(h):
+            for x in range(w):
+                inside = False
+                for fx, fy, fz, rx, ry, rz in facets:
+                    nx = abs(x - fx) / rx
+                    ny = abs(y - fy) / ry
+                    nz = abs(z - fz) / rz
+                    if (nx + ny + nz) <= 1.50 and max(nx, ny, nz) <= 1.0:
+                        inside = True
+                        break
+                if inside:
+                    vol[z][y][x] = 3
+
+    # Sombreamento facetado, rachadura diagonal e mancha sutil de musgo
+    for z in range(z_count):
+        for y in range(h):
+            for x in range(w):
+                if vol[z][y][x] == 0:
+                    continue
+                is_top = (z == z_count - 1) or (vol[z + 1][y][x] == 0)
+                is_front = (y == h - 1) or (vol[z][y + 1][x] == 0)
+                is_right = (x == w - 1) or (vol[z][y][x + 1] == 0)
+                is_back = (y == 0) or (vol[z][y - 1][x] == 0)
+                is_left = (x == 0) or (vol[z][y][x - 1] == 0)
+
+                # Mancha sutil de musgo na faceta superior esquerda/frontal
+                in_moss = ((x - 3) ** 2 + (y - 4) ** 2 <= 3) and z >= 4
+                is_crack = (x - y == 1 and 2 <= z <= 5) or (x + y == 11 and 1 <= z <= 3)
+
+                if is_top and in_moss:
+                    vol[z][y][x] = 7 if (x + y >= 7) else 6
+                elif is_crack and not is_top:
+                    vol[z][y][x] = 1
+                elif is_top and (is_front or is_right):
+                    vol[z][y][x] = 5
+                elif is_top:
+                    vol[z][y][x] = 4
+                elif z == 0 or (is_back and is_left):
+                    vol[z][y][x] = 1 if z == 0 else 2
+                elif is_back or is_left:
+                    vol[z][y][x] = 2
+                elif is_front or is_right:
+                    vol[z][y][x] = 4 if z >= 4 else 3
+                else:
+                    vol[z][y][x] = 3
+
+    return {'palette': palette, 'slices': to_strings(vol)}
+
+
 BASE_SPECS = {
     'pine_tree': (28, 28, 48),
     'sakura_oak': (54, 54, 68),
@@ -2052,6 +2412,11 @@ BASE_SPECS = {
     'grass_tuft_short': (14, 14, 3),
     'grass_tuft_tall': (14, 14, 4),
     'baby_chick': (10, 10, 8),
+    'tool_axe': (14, 14, 18),
+    'tool_pickaxe': (16, 14, 18),
+    'tool_hoe': (14, 14, 18),
+    'wood_log': (12, 16, 8),
+    'stone_chunk': (10, 10, 8),
 }
 
 SCALE_FACTORS = {
@@ -2075,6 +2440,12 @@ SCALE_FACTORS = {
     'campfire': 1.4,
     'wood_sign': 1.4,
     'pumpkin_patch': 1.4,
+    # 1.0x Tools & Gatherable Resources
+    'tool_axe': 1.0,
+    'tool_pickaxe': 1.0,
+    'tool_hoe': 1.0,
+    'wood_log': 1.0,
+    'stone_chunk': 1.0,
 }
 
 EXPECTED_SPECS = {
@@ -2174,12 +2545,18 @@ def main():
         'grass_tuft_short': build_grass_tuft_short(),
         'grass_tuft_tall': build_grass_tuft_tall(),
         'baby_chick': build_baby_chick(),
+        'tool_axe': build_tool_axe(),
+        'tool_pickaxe': build_tool_pickaxe(),
+        'tool_hoe': build_tool_hoe(),
+        'wood_log': build_wood_log(),
+        'stone_chunk': build_stone_chunk(),
     }
 
     for name, factor in SCALE_FACTORS.items():
-        pack[name]['slices'] = upscale_voxel_model(pack[name]['slices'], factor)
+        if factor != 1.0:
+            pack[name]['slices'] = upscale_voxel_model(pack[name]['slices'], factor)
 
-    out_path = 'C:/github/PixelArt/terrain_props_pack.json'
+    out_path = os.path.join(VOXELS_DIR, 'terrain_props_pack.json')
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(pack, f, indent=2)
 

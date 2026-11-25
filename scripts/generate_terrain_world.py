@@ -2,7 +2,9 @@ import json
 import os
 import re
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 _RLE_RE = re.compile(r'(.)\1{2,}')
 
 
@@ -18,16 +20,16 @@ def rle_compress_props(pack):
         }
     return compressed
 
-with open(os.path.join(ROOT, 'slices_v5.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'slices_v5.json'), 'r', encoding='utf-8') as f:
     cat_slices = json.load(f)
 
-with open(os.path.join(ROOT, 'hats_pack.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'hats_pack.json'), 'r', encoding='utf-8') as f:
     hats_pack = json.load(f)
 
-with open(os.path.join(ROOT, 'chicken_slices.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'chicken_slices.json'), 'r', encoding='utf-8') as f:
     chicken_data = json.load(f)
 
-with open(os.path.join(ROOT, 'terrain_props_pack.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'terrain_props_pack.json'), 'r', encoding='utf-8') as f:
     props_pack = json.load(f)
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -253,6 +255,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .obs-jump { background: #FEF3C7; color: #92400E; border-color: #F59E0B; }
     .obs-high { background: #FEE2E2; color: #991B1B; border-color: #EF4444; }
     .obs-water { background: #DBEAFE; color: #1E40AF; border-color: #3B82F6; }
+    .obs-shallow { background: #CFFAFE; color: #0E7490; border-color: #06B6D4; }
 
     .keys-hint {
       font-size: 11px;
@@ -356,8 +359,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="controls-row">
         <button class="pill-btn" id="btnSkin">🐱 Mochi</button>
         <button class="pill-btn" id="btnHat">🎩 Sem Chapéu</button>
+        <button class="pill-btn" id="btnTool" title="Trocar Ferramenta">🐾 Patada</button>
+        <button class="pill-btn" id="btnAction" title="Patada / Usar Ferramenta (E)">⚡ E Ação</button>
         <button class="pill-btn" id="btnRotL" title="Girar Câmera (Q)">⟲ Q</button>
-        <button class="pill-btn" id="btnRotR" title="Girar Câmera (E)">E ⟳</button>
+        <button class="pill-btn" id="btnRotR" title="Girar Câmera (C)">C ⟳</button>
         <button class="pill-btn travel" id="btnTravel" title="Viajar pelos Biomas">🧭 Viagem</button>
         <button class="pill-btn primary" id="btnReset" title="Voltar ao Spawn (R)">🏠 Spawn</button>
       </div>
@@ -388,7 +393,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Mover •
         <kbd>Shift</kbd> Correr •
         <kbd>Espaço</kbd> Pular •
-        <kbd>Q</kbd>/<kbd>E</kbd> Girar •
+        <kbd>E</kbd> Ação •
+        <kbd>Q</kbd>/<kbd>C</kbd> Girar •
         <kbd>M</kbd> Miar •
         <kbd>R</kbd> Spawn
       </span>
@@ -514,6 +520,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       setTimeout(() => playTone(659.25, 880, 0.16, 'sine', 0.07), 85);
     };
     const sfxMeow = () => playTone(660, 490, 0.16, 'sine', 0.07);
+    const sfxChop = () => {
+      playTone(210, 75, 0.09, 'triangle', 0.10);
+      setTimeout(() => playTone(140, 55, 0.07, 'square', 0.05), 20);
+    };
+    const sfxCrumble = () => {
+      playTone(135, 48, 0.18, 'sawtooth', 0.09);
+      setTimeout(() => playTone(95, 40, 0.22, 'triangle', 0.08), 55);
+    };
+    const sfxShallowStep = () => {
+      playTone(420, 240, 0.055, 'sine', 0.035);
+      playTone(680, 380, 0.04, 'triangle', 0.02);
+    };
 
     // =========================================================================
     // 4. HEIGHTFIELD MICRO-VOXEL 1080×1080 & ESCULTURA ORGÂNICA "PULL-CHAIN"
@@ -547,9 +565,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       'Bosque Cogumelos',
       'Pico Sakura'
     ];
-    // Materiais: 0: grass, 1: path, 2: sand, 3: stone, 4: water, 5: bridge, 6: peak, 7: lilypad
+    // Materiais: 0: grass, 1: path, 2: sand, 3: stone, 4: water, 5: bridge, 6: peak, 7: lilypad, 8: shallow
     const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
-          MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7;
+          MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7, MAT_SHALLOW = 8;
+    function isWetMat(m) { return m === MAT_WATER || m === MAT_SHALLOW; }
 
     const hmap = new Int16Array(mw * mh);
     const biomeMap = new Uint8Array(mw * mh);
@@ -995,7 +1014,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const n = fbm2dFast(wx * 0.028 + 4.2, wy * 0.028 - 2.1) * 4.8;
             if (d <= halfWidth + n) {
               const idx = row + mx;
-              if (matMap[idx] !== MAT_WATER && matMap[idx] !== MAT_BRIDGE) {
+              if (!isWetMat(matMap[idx]) && matMap[idx] !== MAT_BRIDGE) {
                 matMap[idx] = mat;
                 if (forceFlatZ !== null && !getBridgeAt(wx, wy)) hmap[idx] = forceFlatZ;
               }
@@ -1113,7 +1132,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           for (let mx = 1; mx < mw - 1; mx++) {
             const idx = row + mx;
             const m = matMap[idx];
-            if (cliffMask[idx] || m === MAT_WATER || m === MAT_BRIDGE || m === MAT_LILYPAD) continue;
+            if (cliffMask[idx] || isWetMat(m) || m === MAT_BRIDGE || m === MAT_LILYPAD) continue;
             const talus = (m === MAT_STONE) ? 4 : 2;
             const nb0 = idx - 1, nb1 = idx + 1, nb2 = idx - mw, nb3 = idx + mw;
             let lowNb = nb0, lowH = hmap[nb0];
@@ -1122,7 +1141,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (hmap[nb3] < lowH) { lowH = hmap[nb3]; lowNb = nb3; }
             if (hmap[idx] - lowH > talus) {
               const nbMat = matMap[lowNb];
-              if (!cliffMask[lowNb] && nbMat !== MAT_WATER && nbMat !== MAT_BRIDGE && nbMat !== MAT_LILYPAD) {
+              if (!cliffMask[lowNb] && !isWetMat(nbMat) && nbMat !== MAT_BRIDGE && nbMat !== MAT_LILYPAD) {
                 const delta = Math.max(1, Math.round(((hmap[idx] - lowH) - talus) * 0.30));
                 tmp[idx] = Math.max(0, tmp[idx] - delta);
                 tmp[lowNb] = Math.min(64, tmp[lowNb] + delta);
@@ -1145,7 +1164,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const tx = 8 + Math.floor(nextRand() * (mw - 16));
           const ty = 8 + Math.floor(nextRand() * (mh - 16));
           const tidx = ty * mw + tx;
-          if (hmap[tidx] >= 14 && !cliffMask[tidx] && matMap[tidx] !== MAT_PATH && matMap[tidx] !== MAT_WATER) {
+          if (hmap[tidx] >= 14 && !cliffMask[tidx] && matMap[tidx] !== MAT_PATH && !isWetMat(matMap[tidx])) {
             mx = tx;
             my = ty;
             found = true;
@@ -1175,7 +1194,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           }
           const drop = curH - lowH;
           const nbMat = matMap[lowNb];
-          if (drop <= 0 || cliffMask[lowNb] || nbMat === MAT_WATER || nbMat === MAT_BRIDGE || nbMat === MAT_LILYPAD) {
+          if (drop <= 0 || cliffMask[lowNb] || isWetMat(nbMat) || nbMat === MAT_BRIDGE || nbMat === MAT_LILYPAD) {
             if (sediment > 0 && !cliffMask[idx] && matMap[idx] !== MAT_PATH) {
               hmap[idx] = Math.min(64, hmap[idx] + 1);
             }
@@ -1202,7 +1221,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const row = my * mw;
           for (let mx = 1; mx < mw - 1; mx++) {
             const idx = row + mx;
-            if (cliffMask[idx] || matMap[idx] === MAT_WATER || matMap[idx] === MAT_BRIDGE || matMap[idx] === MAT_LILYPAD) {
+            if (cliffMask[idx] || isWetMat(matMap[idx]) || matMap[idx] === MAT_BRIDGE || matMap[idx] === MAT_LILYPAD) {
               continue;
             }
             const hC = hmap[idx];
@@ -1241,7 +1260,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             standableMap[idx] = 0;
             continue;
           }
-          if (mat === MAT_BRIDGE || mat === MAT_LILYPAD) {
+          if (mat === MAT_BRIDGE || mat === MAT_LILYPAD || mat === MAT_SHALLOW) {
             standableMap[idx] = 1;
             continue;
           }
@@ -1298,7 +1317,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const y1 = Math.min(mh - 1, my + 5);
         for (let mx = 0; mx < mw; mx++) {
           const idx = row + mx;
-          if (standableMap[idx] !== 0 || matMap[idx] === MAT_WATER) continue;
+          if (standableMap[idx] !== 0 || isWetMat(matMap[idx])) continue;
           const x0 = Math.max(0, mx - 5);
           const x1 = Math.min(mw - 1, mx + 5);
           let maxH = hmap[idx];
@@ -1385,6 +1404,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 1080×1080
+    const RIVER_WAYPOINTS = [
+      [120, -1078], [156, -795], [144, -495], [148, -345],
+      [102, -165], [134, 108], [144, 435], [120, 665], [120, 770]
+    ];
+    const RIVER_SEGMENTS = [];
+    for (let i = 0; i < RIVER_WAYPOINTS.length - 1; i++) {
+      const [ax, ay] = RIVER_WAYPOINTS[i];
+      const [bx, by] = RIVER_WAYPOINTS[i + 1];
+      const dx = bx - ax, dy = by - ay;
+      const len = Math.hypot(dx, dy) || 1;
+      RIVER_SEGMENTS.push({ ax, ay, bx, by, dx, dy, len2: dx * dx + dy * dy, tx: dx / len, ty: dy / len });
+    }
+
     function initOrganicWorld() {
       // Base inicial: plano verde Z=0
       hmap.fill(0);
@@ -1508,17 +1540,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       // ---------------------------------------------------------------------
       // BIOMA 5: RIO SINUOSO & CACHOEIRA ORGÂNICA (largura ~76u)
       // ---------------------------------------------------------------------
-      const riverPts = [
-        [120, -1078], [156, -795], [144, -495], [148, -345],
-        [102, -165], [134, 108], [144, 435], [120, 665], [120, 770]
-      ];
+      const riverPts = RIVER_WAYPOINTS;
       carveRiverPath(riverPts, 76, -6);
 
       // Cachoeira Vertical na Falésia Oeste (wy=-495) + Poço + Riacho Plano até o Rio
       // Parte C1: Riacho plano (Z=-5) ligando o pé da cachoeira (wx=225) ao rio principal (wx=144)
       carveRiverPath([[225, -495], [185, -490], [144, -488]], 32, -5);
 
-      // Parte C2: Poço circular com borda rasa arenosa ao pé da falésia (sem corroer a rocha alta h > 10)
+      // Parte C2: Poço circular com borda rasa caminhável (MAT_SHALLOW, d in [16..26]) ao pé da falésia
       {
         const gx0 = Math.max(0, Math.floor(204 / VOX + HALF_GRID));
         const gx1 = Math.min(mw - 1, Math.ceil(282 / VOX + HALF_GRID));
@@ -1532,12 +1561,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             const idx = row + mx;
             if (hmap[idx] > 10) continue;
             const d = Math.hypot(wx - 238, wy + 495) + fbm2d(wx * 0.12, wy * 0.12) * 1.6;
-            if (d <= 22) {
+            if (d <= 16) {
               hmap[idx] = -5;
               matMap[idx] = MAT_WATER;
               biomeMap[idx] = 5;
               cliffMask[idx] = 1;
-            } else if (d <= 27 && matMap[idx] !== MAT_WATER && hmap[idx] <= 2) {
+            } else if (d <= 26) {
+              hmap[idx] = -2;
+              matMap[idx] = MAT_SHALLOW;
+              biomeMap[idx] = 5;
+              cliffMask[idx] = 1;
+            } else if (d <= 30 && !isWetMat(matMap[idx]) && hmap[idx] <= 2) {
               hmap[idx] = Math.min(hmap[idx], 0);
               matMap[idx] = MAT_SAND;
               biomeMap[idx] = 5;
@@ -1546,33 +1580,45 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
 
-      // Partes A & B: Nascente rebaixada no platô (h>=44 -> 46) + Cortina vertical colada à encosta da falésia (1<=h<=48)
+      // Partes A & B: Nascente no platô (wx>=309) + Calha úmida escura de pedra (wx=250..308, SEM MAT_WATER estático!)
+      // + Terraços Z=48 acessíveis ao norte e sul (incluindo (298, -468))
       {
-        const gx0 = Math.max(0, Math.floor(224 / VOX + HALF_GRID));
-        const gx1 = Math.min(mw - 1, Math.ceil(348 / VOX + HALF_GRID));
-        const gy0 = Math.max(0, Math.floor(-525 / VOX + HALF_GRID));
-        const gy1 = Math.min(mh - 1, Math.ceil(-465 / VOX + HALF_GRID));
+        const gx0 = Math.max(0, Math.floor(248 / VOX + HALF_GRID));
+        const gx1 = Math.min(mw - 1, Math.ceil(354 / VOX + HALF_GRID));
+        const gy0 = Math.max(0, Math.floor(-534 / VOX + HALF_GRID));
+        const gy1 = Math.min(mh - 1, Math.ceil(-456 / VOX + HALF_GRID));
         for (let my = gy0; my <= gy1; my++) {
           const wy = (my - HALF_GRID + 0.5) * VOX;
+          const dy = Math.abs(wy + 495);
           const row = my * mw;
           for (let mx = gx0; mx <= gx1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const idx = row + mx;
-            const curH = hmap[idx];
-            const n = fbm2d(wx * 0.05, wy * 0.05) * 4.5;
-            if (Math.abs(wy + 495 + n) <= 15.0) {
-              if (wx >= 265 && curH >= 44) {
-                // Parte A: Nascente encaixada 2u abaixo da borda Z=48 da montanha
+            if (dy <= 17.0) {
+              if (wx >= 309 && wx <= 346) {
                 hmap[idx] = 46;
                 matMap[idx] = MAT_WATER;
                 biomeMap[idx] = 7;
                 cliffMask[idx] = 1;
-              } else if (wx <= 315 && curH >= 1 && curH <= 48) {
-                // Parte B: Cortina vertical acompanhando o relevo real da falésia (zero rampa flutuante)
-                matMap[idx] = MAT_WATER;
+              } else if (wx >= 272 && wx <= 308) {
+                hmap[idx] = wx >= 286 ? 46 : 44;
+                matMap[idx] = MAT_STONE;
+                shadowMask[idx] = Math.max(shadowMask[idx], 26);
+                biomeMap[idx] = 7;
+                cliffMask[idx] = 1;
+              } else if (wx >= 250 && wx < 272) {
+                hmap[idx] = Math.max(0, Math.min(43, Math.round(43 * (wx - 250) / 22)));
+                matMap[idx] = MAT_STONE;
+                shadowMask[idx] = Math.max(shadowMask[idx], 26);
                 biomeMap[idx] = 7;
                 cliffMask[idx] = 1;
               }
+            } else if (wx >= 284 && wx <= 348) {
+              // Margens Z=48 firmes e caminháveis (acesso ao topo da cachoeira em (298, -468) e margem norte)
+              hmap[idx] = 48;
+              matMap[idx] = MAT_STONE;
+              biomeMap[idx] = 7;
+              cliffMask[idx] = 1;
             }
           }
         }
@@ -1594,26 +1640,31 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const wy = (my - HALF_GRID + 0.5) * VOX;
         const row = my * mw;
         for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
           const idx = row + mx;
           const shoreY = shoreYByCol[mx];
           const sandStart = sandStartByCol[mx];
 
-          if (wy >= shoreY + 8) {
+          const shallowWidth = 56 + fbm2d(wx * 0.018 + 3.1, 7.4) * 18;
+          const shallowEndY = Math.min(842, shoreY + shallowWidth);
+          if (wy >= shallowEndY) {
             hmap[idx] = -6;
             matMap[idx] = MAT_WATER;
             biomeMap[idx] = 3;
           } else if (wy >= shoreY) {
-            hmap[idx] = -4;
-            matMap[idx] = MAT_WATER;
-            biomeMap[idx] = 3;
-          } else if (wy >= shoreY - 10) {
             if (matMap[idx] !== MAT_WATER) {
+              hmap[idx] = -2;
+              matMap[idx] = MAT_SHALLOW;
+              biomeMap[idx] = 3;
+            }
+          } else if (wy >= shoreY - 10) {
+            if (!isWetMat(matMap[idx])) {
               hmap[idx] = -1;
               matMap[idx] = MAT_SAND;
               biomeMap[idx] = 3;
             }
           } else if (wy >= sandStart) {
-            if (matMap[idx] !== MAT_WATER) {
+            if (!isWetMat(matMap[idx])) {
               hmap[idx] = Math.max(0, hmap[idx]);
               matMap[idx] = MAT_SAND;
               biomeMap[idx] = 3;
@@ -1658,6 +1709,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         setCirclePatch(sx, 495, 12.0, 2, MAT_STONE, 5, true);
       }
 
+      // Vau Raso Orgânico do Rio perto da Vila (sul da Ponte Central) -> MAT_SHALLOW caminhável com contorno fbm2d
+      {
+        const gx0 = Math.max(0, Math.floor(72 / VOX + HALF_GRID));
+        const gx1 = Math.min(mw - 1, Math.ceil(208 / VOX + HALF_GRID));
+        const gy0 = Math.max(0, Math.floor(195 / VOX + HALF_GRID));
+        const gy1 = Math.min(mh - 1, Math.ceil(330 / VOX + HALF_GRID));
+        for (let my = gy0; my <= gy1; my++) {
+          const wy = (my - HALF_GRID + 0.5) * VOX;
+          const tSeg = Math.max(0, Math.min(1, (wy - 108) / (435 - 108)));
+          const centerWx = 134 + (144 - 134) * tSeg;
+          const row = my * mw;
+          for (let mx = gx0; mx <= gx1; mx++) {
+            const wx = (mx - HALF_GRID + 0.5) * VOX;
+            const idx = row + mx;
+            if (!isWetMat(matMap[idx]) && hmap[idx] > 1) continue;
+            const dRiver = Math.abs(wx - centerWx);
+            const diagTilt = (wx - centerWx) * 0.28;
+            const yNorth = 226 + diagTilt + fbm2d(wx * 0.028 + 1.3, 4.1) * 26 + Math.sin(wx * 0.055) * 6;
+            const ySouth = 296 + diagTilt + fbm2d(wx * 0.028 + 7.7, 9.2) * 26 - Math.cos(wx * 0.05) * 6;
+            const inMainSandbar = (wy >= yNorth && wy <= ySouth) && (matMap[idx] === MAT_WATER || dRiver <= 38);
+            const inBankShoal = (dRiver >= 27 && dRiver <= 39) && (wy >= yNorth - 22 && wy <= ySouth + 22) && (matMap[idx] === MAT_WATER) && (fbm2d(wx * 0.06, wy * 0.06) > -0.15);
+            if (inMainSandbar || inBankShoal) {
+              hmap[idx] = -2;
+              matMap[idx] = MAT_SHALLOW;
+              biomeMap[idx] = 5;
+              cliffMask[idx] = 1;
+            }
+          }
+        }
+      }
+
       // ---------------------------------------------------------------------
       // BIOMA 2: RUÍNAS ORGÂNICAS & 4 BLOCOS ERODIOS DE TESTE (cliffMask=1)
       // ---------------------------------------------------------------------
@@ -1674,7 +1756,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           for (let mx = gx0; mx <= gx1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const idx = row + mx;
-            if (matMap[idx] !== MAT_WATER) {
+            if (!isWetMat(matMap[idx])) {
               hmap[idx] = 0;
               biomeMap[idx] = 2;
               cliffMask[idx] = 1;
@@ -1781,11 +1863,50 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       grass_tuft_tall: { mode: 'none' }
     };
 
+    const FOLIAGE_META = {
+      pine_tree:     { isFoliage: true, rigidity: 0.62, windScale: 3.2, pushRadius: 16, pushStrength: 3.5, leafColors: ['#2D6A4F', '#40916C', '#52B788'] },
+      sakura_oak:    { isFoliage: true, rigidity: 0.58, windScale: 3.6, pushRadius: 24, pushStrength: 3.0, leafColors: ['#F9A8D4', '#F472B6', '#FBCFE8'] },
+      bush_berry:    { isFoliage: true, rigidity: 0.25, windScale: 2.6, pushRadius: 14, pushStrength: 6.5, leafColors: ['#3A7D44', '#65B85B', '#EF4444'] },
+      sunflower:     { isFoliage: true, rigidity: 0.18, windScale: 3.8, pushRadius: 12, pushStrength: 7.5, leafColors: ['#FACC15', '#EAB308', '#4D7C0F'] },
+      flower_tuft:   { isFoliage: true, rigidity: 0.12, windScale: 2.4, pushRadius: 10, pushStrength: 6.0, leafColors: ['#FACC15', '#F472B6', '#FFFFFF'] },
+      pumpkin_patch: { isFoliage: true, rigidity: 0.72, windScale: 1.0, pushRadius: 12, pushStrength: 2.5, leafColors: ['#EA580C', '#65B85B'] }
+    };
+
+    const TOOLS_META = {
+      none:         { label: '🐾 Patada',   modelKey: null },
+      tool_axe:     { label: '🪓 Machado',  modelKey: 'tool_axe' },
+      tool_pickaxe: { label: '⛏️ Picareta', modelKey: 'tool_pickaxe' },
+      tool_hoe:     { label: '🌾 Enxada',   modelKey: 'tool_hoe' }
+    };
+    const TOOL_ORDER = ['none', 'tool_axe', 'tool_pickaxe', 'tool_hoe'];
+
+    const DESTRUCTIBLE_META = {
+      pine_tree:     { mode: 'chop',    hp: 3, zCut: 8,  drops: 3, dropKey: 'wood_log',    bestTool: 'tool_axe',     colors: ['#2D6A4F', '#40916C', '#6B4226', '#8C5A37'] },
+      sakura_oak:    { mode: 'chop',    hp: 4, zCut: 10, drops: 4, dropKey: 'wood_log',    bestTool: 'tool_axe',     colors: ['#F9A8D4', '#F472B6', '#FBCFE8', '#6B4226'] },
+      ruin_pillar:   { mode: 'crumble', hp: 3, zCut: 9,  drops: 3, dropKey: 'stone_chunk', bestTool: 'tool_pickaxe', colors: ['#847F77', '#ADA79E', '#CFC9BE', '#68A352'] },
+      boulder_large: { mode: 'crumble', hp: 3, zCut: 5,  drops: 3, dropKey: 'stone_chunk', bestTool: 'tool_pickaxe', colors: ['#5C5852', '#847F77', '#ADA79E'] },
+      stone_lantern: { mode: 'crumble', hp: 2, zCut: 7,  drops: 2, dropKey: 'stone_chunk', bestTool: 'tool_pickaxe', colors: ['#847F77', '#FDE68A', '#CFC9BE'] },
+      bush_berry:    { mode: 'trim',    hp: 2, drops: 0, bestTool: 'tool_hoe', colors: ['#3A7D44', '#65B85B', '#EF4444'] },
+      sunflower:     { mode: 'trim',    hp: 1, drops: 0, bestTool: 'tool_hoe', colors: ['#FACC15', '#EAB308', '#4D7C0F'] },
+      pumpkin_patch: { mode: 'trim',    hp: 2, drops: 0, bestTool: 'tool_hoe', colors: ['#EA580C', '#F97316', '#65B85B'] }
+    };
+
     const props = [];
+    let damBoulder = null;
+    const foliageProps = [];
     const propColliders = [];
     const platformColliders = [];
     const fishes = [];
     const npcs = [];
+    const toolPickups = [];
+    const fallingBodies = [];
+    const debrisDrops = [];
+    const destructStats = {
+      hits: 0,
+      choppedCount: 0,
+      crumbledCount: 0,
+      trimmedCount: 0
+    };
 
     function stampPropShadowAndClearGrass(wx, wy, shadowR, footprintR) {
       const rMax = Math.max(shadowR || 0, footprintR || 0);
@@ -1814,8 +1935,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       if (!c || !propModels[modelKey]) return;
       const meta = PROP_COLLIDER_META[modelKey] || { mode: 'none' };
 
-      if (!options.allowOnPath && meta.mode !== 'none' && meta.mode !== 'arch') {
-        if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || c.mat === MAT_WATER || c.mat === MAT_LILYPAD || getBridgeAt(wx, wy, 2)) {
+      if (!options.allowOnPath && !options.allowInWater && meta.mode !== 'none' && meta.mode !== 'arch') {
+        if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || isWetMat(c.mat) || c.mat === MAT_LILYPAD || getBridgeAt(wx, wy, 2)) {
           return;
         }
       }
@@ -1838,9 +1959,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         selfAngle: angle,
         scale,
         isFire: modelKey === 'campfire' || modelKey === 'stone_lantern',
+        isDamBoulder: !!options.isDamBoulder,
         isPlatform: meta.mode === 'platform',
         platTopZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ
       };
+      if (item.isDamBoulder) damBoulder = item;
+      const fMeta = FOLIAGE_META[modelKey];
+      if (fMeta) {
+        item.foliage = fMeta;
+        item.bx = 0;
+        item.by = 0;
+        item.vx = 0;
+        item.vy = 0;
+        item.rustleCd = 0;
+        foliageProps.push(item);
+      }
+      const dMeta = DESTRUCTIBLE_META[modelKey];
+      if (dMeta) {
+        item.destr = { ...dMeta, maxHp: dMeta.hp, hp: dMeta.hp, hitFlash: 0, chopped: false };
+      }
       props.push(item);
 
       const footR = meta.mode === 'box'
@@ -1849,21 +1986,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       stampPropShadowAndClearGrass(wx, wy, (meta.shadowR || 0) * scale, meta.mode !== 'none' ? footR : 0);
 
       if (meta.mode === 'solid') {
-        propColliders.push({
+        const sc = {
           shape: 'circle', wx, wy,
-          r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey
-        });
+          r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey,
+          disabled: false
+        };
+        propColliders.push(sc);
+        item.solidCollider = sc;
       } else if (meta.mode === 'box') {
-        propColliders.push({
+        const sc = {
           shape: 'box', wx, wy,
           halfW: meta.halfW * scale, halfD: meta.halfD * scale,
-          angle, baseZ: liftZ, colH: meta.h * scale, modelKey
-        });
+          angle, baseZ: liftZ, colH: meta.h * scale, modelKey,
+          disabled: false
+        };
+        propColliders.push(sc);
+        item.solidCollider = sc;
       } else if (meta.mode === 'platform') {
-        platformColliders.push({
+        const pc = {
           wx, wy, r: meta.r * scale,
-          baseZ: liftZ, topZ: liftZ + meta.h * scale, modelKey
-        });
+          baseZ: liftZ, topZ: liftZ + meta.h * scale, modelKey,
+          disabled: false
+        };
+        platformColliders.push(pc);
+        item.platCollider = pc;
       } else if (meta.mode === 'arch') {
         const cosA = Math.cos(angle);
         const sinA = Math.sin(angle);
@@ -1901,7 +2047,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           if (getBridgeAt(wx + dx, wy + dy, 0)) return true;
           const c = getCellAt(wx + dx, wy + dy);
           if (!c) return true;
-          if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || c.mat === MAT_WATER || c.mat === MAT_LILYPAD) {
+          if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || isWetMat(c.mat) || c.mat === MAT_LILYPAD) {
             return true;
           }
         }
@@ -1915,9 +2061,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const meta = PROP_COLLIDER_META[modelKey] || { r: 5 };
       const minGap = (meta.r || 5) + 6;
       for (const sc of propColliders) {
+        if (sc.disabled) continue;
         if (isPointInPropCollider(wx, wy, sc, minGap)) return;
       }
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         if (Math.hypot(wx - pc.wx, wy - pc.wy) < pc.r + minGap) return;
       }
       addProp(modelKey, wx, wy, options);
@@ -1985,7 +2133,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       addProp('wood_boat', 345,  720, { angle: 0.16 });
       addProp('wood_boat', -465, 726, { angle: -0.22 });
       addProp('boulder_large', 234, 870);
-      addProp('boulder_large', -540, 756);
+      addProp('boulder_large', -540, 756, { allowInWater: true });
+
+      // Obstáculos Fluídicos Dinâmicos no Rio & Cachoeira (desvio Rankine Dipole + Barragem Quebrável)
+      addProp('boulder_large', 112, 258, { allowInWater: true });
+      addProp('boulder_large', 132, -80, { allowInWater: true, liftZ: -4 });
+      addProp('boulder_large', 278, -495, { allowInWater: true, allowOnPath: true, liftZ: 44, isDamBoulder: true });
+      addProp('ruin_pillar', 154, 375, { allowInWater: true, liftZ: -3 });
 
       // 4. Jardim Zen & Portal Torii Gigante
       addProp('torii_gate', -435, -405, { angle: 0, allowOnPath: true });
@@ -2106,6 +2260,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           selfAngle: 0, walkPhase: 0, timer: 0.8 + Math.random(), moving: true, dirX: -1, dirY: 0.5,
           speech: null
         });
+      }
+
+      // Pickups das Ferramentas próximos ao Spawn da Vila
+      for (const [toolId, wx, wy] of [
+        ['tool_axe', -295, 62],
+        ['tool_pickaxe', -270, 62],
+        ['tool_hoe', -245, 62]
+      ]) {
+        const baseZ = getHeightAt(wx, wy) || 0;
+        toolPickups.push({ toolId, wx, wy, baseZ, inside: false });
       }
     }
     populateWorldObjects();
@@ -2249,6 +2413,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             }
             continue;
           }
+          if (mat === MAT_SHALLOW) {
+            const zStartBed = Math.max(Z_MIN, min8 - 2);
+            for (let z = zStartBed; z <= h; z++) markT(z, mx, my);
+            markT(h < 0 ? -1 : h, mx, my);
+            continue;
+          }
 
           const zStart = min8 - 2 > Z_MIN ? min8 - 2 : Z_MIN;
           if (zStart <= h) {
@@ -2358,6 +2528,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const COL_DROP_FOAM = packRGBA(224, 242, 254, 255);
       const COL_DROP_TOP = packRGBA(56, 189, 248, 240);
       const COL_DROP_BODY = packRGBA(28, 158, 224, 255);
+      const COL_SHALLOW_BED_A = packRGBA(198, 178, 134, 255);
+      const COL_SHALLOW_BED_B = packRGBA(182, 162, 120, 255);
+      const COL_SHALLOW_SURF_A = packRGBA(103, 232, 249, 200);
+      const COL_SHALLOW_SURF_B = packRGBA(125, 240, 252, 200);
+      const COL_SHALLOW_SHIMMER = packRGBA(224, 252, 255, 225);
 
       // Passo 2: Preenche diretamente os buffers recortados (Tight-Crop)
       for (let my = 0; my < mh; my++) {
@@ -2381,13 +2556,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               }
               const siSurf = -2 - Z_MIN;
               const isShallow = h > -6;
-              const wxSurf = (mx - HALF_GRID + 0.5) * VOX;
-              const isPlungeFoam = (Math.hypot(wxSurf - 242, wySurf + 495) < 20) && ((nHash & 3) === 0);
-              terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isPlungeFoam
-                ? COL_FOAM_PLUNGE
-                : (isShallow
-                  ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
-                  : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B));
+              terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isShallow
+                ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
+                : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B);
             } else {
               const isWaterfallDrop = (h - min8) > 4;
               if (!isWaterfallDrop) {
@@ -2413,6 +2584,22 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 }
               }
             }
+            continue;
+          }
+
+          if (mat === MAT_SHALLOW) {
+            const zStartBed = Math.max(Z_MIN, min8 - 2);
+            const bedCol = (nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B;
+            for (let z = zStartBed; z <= h; z++) {
+              const si = z - Z_MIN;
+              terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = bedCol;
+            }
+            const surfZ = h < 0 ? -1 : h;
+            const siSurf = surfZ - Z_MIN;
+            const shimmer = (nHash % 17) === 0;
+            terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = shimmer
+              ? COL_SHALLOW_SHIMMER
+              : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B);
             continue;
           }
 
@@ -2619,7 +2806,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       { wx: -615, wy: 795,  label: '🗼 Farol Monumental' },
       { wx: -435, wy: -315, label: '⛩️ Jardim Zen & Torii' },
       { wx: 426,  wy: 228,  label: '🍄 Bosque Cogumelos' },
+      { wx: 112,  wy: 232,  label: '💧 Vau Raso do Rio' },
       { wx: 615,  wy: -66,  label: '🥾 Base da Montanha' },
+      { wx: 298,  wy: -468, label: '🌊 Topo da Cachoeira (Pedra)' },
       { wx: 480,  wy: -495, label: '🌸 Pico Sakura (Z=64)' }
     ];
     let travelIdx = 0;
@@ -2635,7 +2824,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     const particles = [];
-    function spawnParticles(wx, wy, wz, count, colors, speed = 28) {
+    function spawnParticles(wx, wy, wz, count, colors, speed = 28, opts = {}) {
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
         const sp = (0.35 + Math.random() * 0.65) * speed;
@@ -2643,8 +2832,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           x: wx, y: wy, z: wz,
           vx: Math.cos(a) * sp,
           vy: Math.sin(a) * sp,
-          vz: 20 + Math.random() * 42,
-          life: 0.42 + Math.random() * 0.32,
+          vz: opts.vz !== undefined ? opts.vz : (20 + Math.random() * 42),
+          life: opts.life !== undefined ? opts.life : (0.42 + Math.random() * 0.32),
+          grav: opts.grav !== undefined ? opts.grav : 260,
+          isLeaf: !!opts.isLeaf,
           color: colors[i % colors.length],
           size: 2
         });
@@ -2656,6 +2847,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function waterSurfZ(cell) {
+      if (!cell) return -2;
+      if (cell.mat === MAT_SHALLOW) return cell.h < 0 ? -1 : cell.h;
       return cell.h < 0 ? -2 : cell.h;
     }
 
@@ -2686,6 +2879,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         const d = Math.hypot(wx - pc.wx, wy - pc.wy);
         const pClimb = onGround ? 4.0 : 1.5;
         if (d <= pc.r && pc.topZ <= currentZ + pClimb) {
@@ -2781,6 +2975,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const sc of propColliders) {
+        if (sc.disabled) continue;
         if (catZ >= sc.baseZ - 2 && catZ < sc.baseZ + sc.colH - 1.5) {
           if (isPointInPropCollider(nx, ny, sc, 3.0)) {
             blocked = true;
@@ -2792,6 +2987,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         const d = Math.hypot(nx - pc.wx, ny - pc.wy);
         const curD = Math.hypot(cat.x - pc.wx, cat.y - pc.wy);
         if (d < pc.r + 1.2 && d <= curD + 0.05 && catZ < pc.topZ - 2.0 && catZ >= pc.baseZ - 4.0) {
@@ -2850,6 +3046,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const sc of propColliders) {
+        if (sc.disabled) continue;
         if (cat.groundZ < sc.baseZ + sc.colH - 1.5 && isPointInPropCollider(probeX, probeY, sc, 3.2)) {
           cat.obstacleHint = 'high';
           cat.obstacleLabel = sc.shape === 'box' ? '🏠 Parede / Estrutura' : '🌲 Obstáculo Sólido';
@@ -2861,13 +3058,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         ? getBridgeDeckZ(probeBr, probeX, probeY)
         : ((!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) ? Math.max(c.h, c.cliffTop) : c.h);
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 && pc.topZ > targetH) {
           targetH = pc.topZ;
         }
       }
 
       const dz = targetH - cat.groundZ;
-      if (dz <= AUTO_STEP_MAX) {
+      const curCell = getCellAt(cat.x, cat.y);
+      const onCurBr = curBr && cat.groundZ >= getBridgeDeckZ(curBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround && dz <= AUTO_STEP_MAX) {
+        cat.obstacleHint = 'shallow';
+        cat.obstacleLabel = '💧 Água Rasa (Molhando as Patas!)';
+      } else if (dz <= AUTO_STEP_MAX) {
         cat.obstacleHint = 'ok';
         cat.obstacleLabel = dz > 0.5 ? '✅ Rampa Suave (≤0.35H)' : '✅ Caminho Livre';
       } else if (dz <= CAT_HEIGHT * 2.0 + 0.5) {
@@ -2890,6 +3093,715 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     let camY = cat.y;
     let camZ = cat.z;
     let blockedCooldown = 0;
+
+    // =========================================================================
+    // 8B. FLUIDOS 2.5D: WINDFIELD + WATERFLOW (DRAIN SINK) + WAVEBUFFER
+    // =========================================================================
+    let fluidTime = 0;
+    const windImpulses = [];
+    function injectWindImpulse(wx, wy, vx, vy, r = 42, life = 0.75) {
+      if (windImpulses.length >= 16) windImpulses.shift();
+      windImpulses.push({ wx, wy, vx, vy, r, life, maxLife: life });
+    }
+
+    function sampleWind(wx, wy, t = fluidTime) {
+      const gust = Math.sin((wx * 0.009 + wy * 0.006) - t * 2.1) * 0.55 + 0.55;
+      const turb = fbm2dFast(wx * 0.008 - t * 0.25, wy * 0.008 + t * 0.14) * 0.45;
+      let vx = 0.72 + gust * 0.52 + turb * 0.35;
+      let vy = 0.34 + gust * 0.24 - turb * 0.25;
+
+      const h = getHeightAt(wx, wy) || 0;
+      const hL = getHeightAt(wx - 4, wy) ?? h;
+      const hR = getHeightAt(wx + 4, wy) ?? h;
+      const hU = getHeightAt(wx, wy - 4) ?? h;
+      const hD = getHeightAt(wx, wy + 4) ?? h;
+      const altBoost = 1 + Math.max(0, h) / 75;
+      const windDotGrad = (hR - hL) * vx + (hD - hU) * vy;
+      const shelter = windDotGrad < -6 ? 0.38 : 1.0;
+      vx *= altBoost * shelter;
+      vy *= altBoost * shelter;
+
+      for (let i = 0; i < windImpulses.length; i++) {
+        const imp = windImpulses[i];
+        const dx = wx - imp.wx;
+        const dy = wy - imp.wy;
+        const d2 = dx * dx + dy * dy;
+        const r2 = imp.r * imp.r;
+        if (d2 < r2 * 6) {
+          const w = Math.exp(-d2 / r2) * (imp.life / imp.maxLife);
+          vx += imp.vx * w;
+          vy += imp.vy * w;
+        }
+      }
+      return { wx: vx, wy: vy, mag: Math.hypot(vx, vy) };
+    }
+
+    let cachedWaterObstacles = [];
+    let cachedWaterObstaclesNoCat = [];
+
+    function getActiveWaterObstacles(includeCat = true) {
+      const obs = [];
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        if (p.destroyed || (p.destr && p.destr.chopped) || p.isDamBoulder) continue;
+        const meta = PROP_COLLIDER_META[p.modelKey];
+        const sr = Math.min(7, ((meta && meta.r) || 6) * 0.7);
+        let inWet = false;
+        const c0 = getCellAt(p.wx, p.wy);
+        if (c0 && isWetMat(c0.mat)) {
+          inWet = true;
+        } else {
+          const c1 = getCellAt(p.wx + sr, p.wy);
+          const c2 = getCellAt(p.wx - sr, p.wy);
+          const c3 = getCellAt(p.wx, p.wy + sr);
+          const c4 = getCellAt(p.wx, p.wy - sr);
+          if ((c1 && isWetMat(c1.mat)) || (c2 && isWetMat(c2.mat)) || (c3 && isWetMat(c3.mat)) || (c4 && isWetMat(c4.mat))) {
+            inWet = true;
+          }
+        }
+        if (!inWet) continue;
+        let r = meta ? ((meta.r || Math.max(meta.halfW || 6, meta.halfD || 6)) * (p.scale || 1)) : 6.0;
+        if (p.modelKey === 'ruin_pillar') r = Math.max(11.5, r);
+        obs.push({ wx: p.wx, wy: p.wy, r });
+      }
+      for (let i = 0; i < debrisDrops.length; i++) {
+        const dr = debrisDrops[i];
+        if (dr.inWater) obs.push({ wx: dr.x, wy: dr.y, r: 5.2 });
+      }
+      if (includeCat) {
+        const cc = getCellAt(cat.x, cat.y);
+        const br = getBridgeAt(cat.x, cat.y);
+        const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+        if (cc && cc.mat === MAT_SHALLOW && !onBr && cat.onGround) {
+          obs.push({ wx: cat.x, wy: cat.y, r: 8.2, isCat: true });
+        }
+      }
+      return obs;
+    }
+
+    function refreshWaterObstaclesCache() {
+      cachedWaterObstaclesNoCat = getActiveWaterObstacles(false);
+      cachedWaterObstacles = cachedWaterObstaclesNoCat.slice();
+      const cc = getCellAt(cat.x, cat.y);
+      const br = getBridgeAt(cat.x, cat.y);
+      const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      if (cc && cc.mat === MAT_SHALLOW && !onBr && cat.onGround) {
+        cachedWaterObstacles.push({ wx: cat.x, wy: cat.y, r: 8.2, isCat: true });
+      }
+    }
+
+    function applyRankineDipole(wx, wy, ux0, uy0) {
+      const U0 = Math.hypot(ux0, uy0);
+      if (U0 < 0.001) return { vx: ux0, vy: uy0, speed: 0 };
+      const hx = ux0 / U0;
+      const hy = uy0 / U0;
+      const px = -hy;
+      const py = hx;
+      let vx = ux0;
+      let vy = uy0;
+
+      const obs = cachedWaterObstacles;
+      for (let i = 0; i < obs.length; i++) {
+        const o = obs[i];
+        const dx = wx - o.wx;
+        const dy = wy - o.wy;
+        const r2Raw = dx * dx + dy * dy;
+        const a = o.r * 1.18;
+        const cutR = a * 4.0;
+        if (r2Raw >= cutR * cutR) continue;
+        const rRaw = Math.sqrt(r2Raw);
+        const r = Math.max(rRaw, a * 1.04);
+        const r2 = r * r;
+        const r4 = r2 * r2;
+        const xPar = dx * hx + dy * hy;
+        const yPerp = dx * px + dy * py;
+        const a2 = a * a;
+        const falloff = rRaw > a * 3.0 ? Math.max(0, 1 - (rRaw - a * 3.0) / a) : 1.0;
+        const dvPar = -U0 * (a2 * (xPar * xPar - yPerp * yPerp) / r4) * falloff;
+        const dvPerp = -U0 * (2 * a2 * xPar * yPerp / r4) * falloff;
+        vx += (hx * dvPar + px * dvPerp);
+        vy += (hy * dvPar + py * dvPerp);
+        if (rRaw < a && rRaw > 0.001) {
+          const push = U0 * 0.55 * (1 - rRaw / a);
+          vx += (dx / rRaw) * push;
+          vy += (dy / rRaw) * push;
+        }
+      }
+      return { vx, vy, speed: Math.hypot(vx, vy) };
+    }
+
+    function sampleBaseWaterFlow(wx, wy) {
+      const c = getCellAt(wx, wy);
+      if (!c || !isWetMat(c.mat)) return { vx: 0, vy: 0, speed: 0 };
+
+      let drainFactor = 1.0;
+      if (wy >= 740) {
+        const t = Math.max(0, Math.min(1, (wy - 740) / 220));
+        drainFactor = 1 - t * t * (3 - 2 * t);
+        if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
+      }
+
+      const shallowScale = c.mat === MAT_SHALLOW ? 0.55 : 1.0;
+
+      if (wx < -450 && wy < -420 && c.h > 5) {
+        const dx = -690 - wx;
+        const dy = -585 - wy;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1) return { vx: 0, vy: 0, speed: 0 };
+        const rad = Math.min(1, dist / 48);
+        const speedScale = 7.5 * rad * rad * shallowScale;
+        if (speedScale < 0.02) return { vx: 0, vy: 0, speed: 0 };
+        const nx = dx / dist, ny = dy / dist;
+        const vx = (-ny * 0.78 + nx * 0.35) * speedScale;
+        const vy = (nx * 0.78 + ny * 0.35) * speedScale;
+        const speed = Math.hypot(vx, vy);
+        if (speed < 0.02) return { vx: 0, vy: 0, speed: 0 };
+        return { vx, vy, speed };
+      }
+
+      if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
+        const vx = -34 * drainFactor * shallowScale;
+        const vy = 4 * drainFactor * shallowScale;
+        return { vx, vy, speed: Math.hypot(vx, vy) };
+      }
+
+      let bestD2 = Infinity;
+      let bestTx = 0, bestTy = 1;
+      for (let i = 0; i < RIVER_SEGMENTS.length; i++) {
+        const seg = RIVER_SEGMENTS[i];
+        const t = seg.len2 > 0
+          ? Math.max(0, Math.min(1, ((wx - seg.ax) * seg.dx + (wy - seg.ay) * seg.dy) / seg.len2))
+          : 0;
+        const px = seg.ax + seg.dx * t;
+        const py = seg.ay + seg.dy * t;
+        const d2 = (wx - px) * (wx - px) + (wy - py) * (wy - py);
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          bestTx = seg.tx;
+          bestTy = seg.ty;
+        }
+      }
+      const speed = 26 * drainFactor * shallowScale;
+      return { vx: bestTx * speed, vy: bestTy * speed, speed };
+    }
+
+    function sampleWaterFlow(wx, wy) {
+      const base = sampleBaseWaterFlow(wx, wy);
+      if (base.speed <= 0.001) return base;
+      return applyRankineDipole(wx, wy, base.vx, base.vy);
+    }
+
+    const floatingItems = [];
+    const PETAL_COLORS = ['#FBCFE8', '#E0F2FE', '#FEF08A'];
+    let floatingSpawnAccum = 0;
+
+    function spawnFloatingPetal(wx, wy, color = null, z = -2) {
+      if (floatingItems.length >= 64) return;
+      floatingItems.push({
+        x: wx,
+        y: wy,
+        z,
+        life: 1.0,
+        phase: Math.random() * Math.PI * 2,
+        color: color || PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)]
+      });
+    }
+
+    const FLOW_STREAK_COUNT = 180;
+    const flowStreaks = [];
+
+    function seedFlowStreak(s, randomAge = false) {
+      let sx = 0, sy = 0, fc = null, found = false;
+      const visObs = [];
+      for (let i = 0; i < cachedWaterObstacles.length; i++) {
+        const o = cachedWaterObstacles[i];
+        if (Math.hypot(o.wx - camX, o.wy - camY) < 420) visObs.push(o);
+      }
+
+      if (visObs.length > 0 && Math.random() < 0.40) {
+        const o = visObs[Math.floor(Math.random() * visObs.length)];
+        const base = sampleBaseWaterFlow(o.wx, o.wy);
+        if (base.speed > 1.5) {
+          const ux = base.vx / base.speed;
+          const uy = base.vy / base.speed;
+          const px = -uy;
+          const py = ux;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            const distUp = 14 + Math.random() * 24;
+            const lat = (Math.random() * 2 - 1) * 1.6 * o.r;
+            const tx = o.wx - ux * distUp + px * lat;
+            const ty = o.wy - uy * distUp + py * lat;
+            const c = getCellAt(tx, ty);
+            if (c && isWetMat(c.mat) && sampleBaseWaterFlow(tx, ty).speed >= 1.2) {
+              sx = tx; sy = ty; fc = c; found = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!found) {
+        for (let attempt = 0; attempt < 16; attempt++) {
+          const tx = camX + (Math.random() * 2 - 1) * 340;
+          const ty = camY + (Math.random() * 2 - 1) * 240;
+          const c = getCellAt(tx, ty);
+          if (c && isWetMat(c.mat) && sampleBaseWaterFlow(tx, ty).speed >= 1.2) {
+            sx = tx; sy = ty; fc = c; found = true;
+            break;
+          }
+        }
+      }
+
+      if (!found) {
+        const tx = 128 + (Math.random() * 2 - 1) * 44;
+        const ty = 200 + (Math.random() * 2 - 1) * 140;
+        const c = getCellAt(tx, ty);
+        if (c && isWetMat(c.mat)) {
+          sx = tx; sy = ty; fc = c; found = true;
+        }
+      }
+
+      if (!found) {
+        s.hLen = 0;
+        s.age = 0;
+        s.maxAge = 0.5;
+        s.deflect = 0;
+        return;
+      }
+
+      s.x = sx;
+      s.y = sy;
+      s.z = waterSurfZ(fc);
+      s.hist[0] = sx;
+      s.hist[1] = sy;
+      s.hLen = 1;
+      s.histAccum = 0;
+      s.maxAge = 1.3 + Math.random() * 1.3;
+      s.age = randomAge ? Math.random() * s.maxAge * 0.5 : 0;
+      s.deflect = 0;
+    }
+
+    function stepFlowStreaks(dt) {
+      for (let i = 0; i < flowStreaks.length; i++) {
+        const s = flowStreaks[i];
+        if (s.hLen === 0 || s.age >= s.maxAge || Math.hypot(s.x - camX, s.y - camY) > 480) {
+          seedFlowStreak(s, false);
+          if (s.hLen === 0) continue;
+        }
+        const v1 = sampleWaterFlow(s.x, s.y);
+        if (v1.speed < 1.2) {
+          seedFlowStreak(s, false);
+          continue;
+        }
+        const v2 = sampleWaterFlow(s.x + 0.5 * v1.vx * dt, s.y + 0.5 * v1.vy * dt);
+        if (v2.speed < 1.2) {
+          seedFlowStreak(s, false);
+          continue;
+        }
+        s.x += v2.vx * dt;
+        s.y += v2.vy * dt;
+        s.age += dt;
+
+        const fc = getCellAt(s.x, s.y);
+        if (!fc || !isWetMat(fc.mat)) {
+          seedFlowStreak(s, false);
+          continue;
+        }
+        s.z = waterSurfZ(fc);
+
+        const base = sampleBaseWaterFlow(s.x, s.y);
+        s.deflect = base.speed > 0.5
+          ? Math.hypot(v2.vx - base.vx, v2.vy - base.vy) / Math.max(2, base.speed)
+          : 0;
+
+        s.histAccum += dt;
+        if (s.histAccum >= 0.045) {
+          s.histAccum -= 0.045;
+          if (s.hLen < 6) {
+            s.hist[s.hLen * 2] = s.x;
+            s.hist[s.hLen * 2 + 1] = s.y;
+            s.hLen++;
+          } else {
+            for (let k = 0; k < 10; k++) s.hist[k] = s.hist[k + 2];
+            s.hist[10] = s.x;
+            s.hist[11] = s.y;
+          }
+        }
+      }
+    }
+
+    function initFlowStreaks() {
+      refreshWaterObstaclesCache();
+      flowStreaks.length = 0;
+      for (let i = 0; i < FLOW_STREAK_COUNT; i++) {
+        const s = {
+          x: 0, y: 0, z: -2,
+          hist: new Float32Array(12),
+          hLen: 0, histAccum: 0,
+          age: 0, maxAge: 1.8, deflect: 0
+        };
+        seedFlowStreak(s, true);
+        flowStreaks.push(s);
+      }
+      for (let tick = 0; tick < 25; tick++) {
+        stepFlowStreaks(1 / 30);
+      }
+    }
+
+    const WAVE_W = 120, WAVE_H = 80, WAVE_CELL = 6;
+    let waveCurr = new Float32Array(WAVE_W * WAVE_H);
+    let wavePrev = new Float32Array(WAVE_W * WAVE_H);
+    let waveTmp = new Float32Array(WAVE_W * WAVE_H);
+    let waveOriginX = Math.floor(camX / WAVE_CELL) * WAVE_CELL - (WAVE_W * WAVE_CELL) * 0.5;
+    let waveOriginY = Math.floor(camY / WAVE_CELL) * WAVE_CELL - (WAVE_H * WAVE_CELL) * 0.5;
+    let waveAccum = 0;
+
+    function isWaterFast(wx, wy) {
+      const mx = Math.floor(wx / VOX + HALF_GRID);
+      const my = Math.floor(wy / VOX + HALF_GRID);
+      if (mx < 0 || my < 0 || mx >= mw || my >= mh) return false;
+      return isWetMat(matMap[my * mw + mx]);
+    }
+
+    function syncWaveOrigin() {
+      const targetOX = Math.floor(camX / WAVE_CELL) * WAVE_CELL - (WAVE_W * WAVE_CELL) * 0.5;
+      const targetOY = Math.floor(camY / WAVE_CELL) * WAVE_CELL - (WAVE_H * WAVE_CELL) * 0.5;
+      const shiftX = Math.round((targetOX - waveOriginX) / WAVE_CELL);
+      const shiftY = Math.round((targetOY - waveOriginY) / WAVE_CELL);
+      if (shiftX === 0 && shiftY === 0) return;
+
+      if (Math.abs(shiftX) >= WAVE_W || Math.abs(shiftY) >= WAVE_H) {
+        waveCurr.fill(0);
+        wavePrev.fill(0);
+        waveOriginX = targetOX;
+        waveOriginY = targetOY;
+        return;
+      }
+
+      const xStart = Math.max(0, -shiftX);
+      const xEnd = Math.min(WAVE_W, WAVE_W - shiftX);
+      const yStart = Math.max(0, -shiftY);
+      const yEnd = Math.min(WAVE_H, WAVE_H - shiftY);
+
+      waveTmp.fill(0);
+      for (let dy = yStart; dy < yEnd; dy++) {
+        const srcRow = (dy + shiftY) * WAVE_W;
+        const dstRow = dy * WAVE_W;
+        for (let dx = xStart; dx < xEnd; dx++) {
+          waveTmp[dstRow + dx] = waveCurr[srcRow + dx + shiftX];
+        }
+      }
+      waveCurr.set(waveTmp);
+
+      waveTmp.fill(0);
+      for (let dy = yStart; dy < yEnd; dy++) {
+        const srcRow = (dy + shiftY) * WAVE_W;
+        const dstRow = dy * WAVE_W;
+        for (let dx = xStart; dx < xEnd; dx++) {
+          waveTmp[dstRow + dx] = wavePrev[srcRow + dx + shiftX];
+        }
+      }
+      wavePrev.set(waveTmp);
+
+      waveOriginX = targetOX;
+      waveOriginY = targetOY;
+    }
+
+    function injectWaterRipple(wx, wy, strength = 1.0, radiusCells = 2) {
+      const cx = Math.floor((wx - waveOriginX) / WAVE_CELL);
+      const cy = Math.floor((wy - waveOriginY) / WAVE_CELL);
+      if (cx < -radiusCells || cx >= WAVE_W + radiusCells || cy < -radiusCells || cy >= WAVE_H + radiusCells) return;
+      const r2 = radiusCells * radiusCells + 0.25;
+      const y0 = Math.max(1, cy - radiusCells);
+      const y1 = Math.min(WAVE_H - 2, cy + radiusCells);
+      const x0 = Math.max(1, cx - radiusCells);
+      const x1 = Math.min(WAVE_W - 2, cx + radiusCells);
+      for (let dy = y0; dy <= y1; dy++) {
+        const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+        for (let dx = x0; dx <= x1; dx++) {
+          const d2 = (dx - cx) * (dx - cx) + (dy - cy) * (dy - cy);
+          if (d2 > r2) continue;
+          const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+          if (!isWaterFast(cwx, cwy)) continue;
+          const falloff = 1 - Math.sqrt(d2) / (radiusCells + 0.8);
+          const idx = dy * WAVE_W + dx;
+          waveCurr[idx] = Math.max(-4.0, Math.min(4.0, waveCurr[idx] + strength * falloff));
+        }
+      }
+    }
+
+    function sampleWaveBilerp(buf, fx, fy) {
+      const x0 = Math.max(0, Math.min(WAVE_W - 2, Math.floor(fx)));
+      const y0 = Math.max(0, Math.min(WAVE_H - 2, Math.floor(fy)));
+      const tx = Math.max(0, Math.min(1, fx - x0));
+      const ty = Math.max(0, Math.min(1, fy - y0));
+      const i00 = y0 * WAVE_W + x0;
+      return (buf[i00] * (1 - tx) + buf[i00 + 1] * tx) * (1 - ty) +
+             (buf[i00 + WAVE_W] * (1 - tx) + buf[i00 + WAVE_W + 1] * tx) * ty;
+    }
+
+    function isInsideWaterObstacle(wx, wy, obs) {
+      for (let i = 0; i < obs.length; i++) {
+        const o = obs[i];
+        const dx = wx - o.wx;
+        const dy = wy - o.wy;
+        if (dx * dx + dy * dy < o.r * o.r) return true;
+      }
+      return false;
+    }
+
+    function stepWaveBuffer() {
+      const obs = cachedWaterObstacles;
+      waveTmp.fill(0);
+      for (let dy = 1; dy < WAVE_H - 1; dy++) {
+        const wy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+        const my = Math.floor(wy / VOX + HALF_GRID);
+        if (my < 0 || my >= mh) continue;
+        const row = dy * WAVE_W;
+        const isSpongeY = dy < 6 || dy >= WAVE_H - 6;
+        for (let dx = 1; dx < WAVE_W - 1; dx++) {
+          const idx = row + dx;
+          const wx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+          const mx = Math.floor(wx / VOX + HALF_GRID);
+          if (mx < 0 || mx >= mw || !isWetMat(matMap[my * mw + mx]) || isInsideWaterObstacle(wx, wy, obs)) {
+            waveTmp[idx] = 0;
+            continue;
+          }
+          const isSponge = isSpongeY || dx < 6 || dx >= WAVE_W - 6;
+          const damp = isSponge ? 0.72 : 0.955;
+
+          const base = sampleBaseWaterFlow(wx, wy);
+          let sx = dx;
+          let sy = dy;
+          if (base.speed > 0.1) {
+            const advX = Math.max(-0.45, Math.min(0.45, -base.vx * 0.012));
+            const advY = Math.max(-0.45, Math.min(0.45, -base.vy * 0.012));
+            const candX = Math.max(1, Math.min(WAVE_W - 2, dx + advX));
+            const candY = Math.max(1, Math.min(WAVE_H - 2, dy + advY));
+            const upWx = waveOriginX + (candX + 0.5) * WAVE_CELL;
+            const upWy = waveOriginY + (candY + 0.5) * WAVE_CELL;
+            if (isWaterFast(upWx, upWy) && !isInsideWaterObstacle(upWx, upWy, obs)) {
+              sx = candX;
+              sy = candY;
+            }
+          }
+
+          let next;
+          if (sx === dx && sy === dy) {
+            next = ((waveCurr[idx - 1] + waveCurr[idx + 1] + waveCurr[idx - WAVE_W] + waveCurr[idx + WAVE_W]) * 0.5 - wavePrev[idx]) * damp;
+          } else {
+            const cAvg = (
+              sampleWaveBilerp(waveCurr, sx - 1, sy) +
+              sampleWaveBilerp(waveCurr, sx + 1, sy) +
+              sampleWaveBilerp(waveCurr, sx, sy - 1) +
+              sampleWaveBilerp(waveCurr, sx, sy + 1)
+            ) * 0.5;
+            const pVal = sampleWaveBilerp(wavePrev, sx, sy);
+            next = (cAvg - pVal) * damp;
+          }
+
+          if (Math.abs(next) < 0.008) next = 0;
+          else if (next > 4.0) next = 4.0;
+          else if (next < -4.0) next = -4.0;
+          waveTmp[idx] = next;
+        }
+      }
+      const oldPrev = wavePrev;
+      wavePrev = waveCurr;
+      waveCurr = waveTmp;
+      waveTmp = oldPrev;
+    }
+
+    // =========================================================================
+    // 8C. VIRTUAL PIPE SHALLOW WATER (waterfallSim 40×26, WF_CELL=4)
+    // =========================================================================
+    const WF_W = 40, WF_H = 26, WF_CELL = 4;
+    const WF_X0 = 208, WF_Y0 = -545;
+    const wfH = new Float32Array(WF_W * WF_H);
+    const wfBedZ = new Float32Array(WF_W * WF_H);
+    const wfBlockH = new Float32Array(WF_W * WF_H);
+    const wfFL = new Float32Array(WF_W * WF_H);
+    const wfFR = new Float32Array(WF_W * WF_H);
+    const wfFT = new Float32Array(WF_W * WF_H);
+    const wfFB = new Float32Array(WF_W * WF_H);
+
+    function rebuildWaterfallBlocks() {
+      wfBlockH.fill(0);
+      for (let iy = 0; iy < WF_H; iy++) {
+        const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+        for (let ix = 0; ix < WF_W; ix++) {
+          const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+          const idx = iy * WF_W + ix;
+          const h = getHeightAt(wx, wy);
+          wfBedZ[idx] = h !== null ? Math.max(-2, h) : 0;
+          if (wx >= 250 && Math.abs(wy + 495) > 17.5) {
+            wfBlockH[idx] = 48;
+          }
+        }
+      }
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        if (p.destroyed || (p.destr && p.destr.chopped)) continue;
+        if (p.wx < WF_X0 - 16 || p.wx > WF_X0 + WF_W * WF_CELL + 16) continue;
+        if (p.wy < WF_Y0 - 16 || p.wy > WF_Y0 + WF_H * WF_CELL + 16) continue;
+        const meta = PROP_COLLIDER_META[p.modelKey] || { r: 6 };
+        const obsR = p.isDamBoulder ? 10.8 : ((meta.r || 6) * (p.scale || 1) + 0.4);
+        for (let iy = 0; iy < WF_H; iy++) {
+          const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+          for (let ix = 0; ix < WF_W; ix++) {
+            const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+            if (Math.hypot(wx - p.wx, wy - p.wy) <= obsR) {
+              const idx = iy * WF_W + ix;
+              wfBlockH[idx] = Math.max(wfBlockH[idx], 24);
+              wfH[idx] = 0;
+              wfFL[idx] = wfFR[idx] = wfFT[idx] = wfFB[idx] = 0;
+            }
+          }
+        }
+      }
+    }
+
+    function stepWaterfallSim(dtSim = 1 / 30, emitEffects = true) {
+      const substeps = 3;
+      const dtSub = dtSim / substeps;
+      const pipeAccel = 160.0 / WF_CELL;
+      const damp = 0.92;
+
+      for (let sub = 0; sub < substeps; sub++) {
+        // 1. Inflow source upstream of (278, -495)
+        for (let iy = 8; iy <= 16; iy++) {
+          const row = iy * WF_W;
+          for (let ix = 22; ix <= 28; ix++) {
+            const idx = row + ix;
+            if (wfBlockH[idx] === 0) {
+              wfH[idx] = Math.min(7.5, wfH[idx] + 72.0 * dtSub);
+            }
+          }
+        }
+
+        // 2. Virtual Pipe accelerations + depth-proportional Chézy cap + mass-preserving scaling
+        for (let iy = 0; iy < WF_H; iy++) {
+          const row = iy * WF_W;
+          for (let ix = 0; ix < WF_W; ix++) {
+            const idx = row + ix;
+            const hCell = wfH[idx];
+            if (wfBlockH[idx] > 0 || hCell <= 1e-5) {
+              wfFL[idx] = wfFR[idx] = wfFT[idx] = wfFB[idx] = 0;
+              continue;
+            }
+            const Hc = wfBedZ[idx] + hCell;
+            const cap = Math.min(32.0, hCell * 7.2);
+            const wxCell = WF_X0 + (ix + 0.5) * WF_CELL;
+            const steepDrop = (ix > 0 && (wfBedZ[idx] - wfBedZ[idx - 1]) >= 1.5) || (wxCell < 273);
+            const latGain = steepDrop ? 0.025 : 1.0;
+            const latDamp = steepDrop ? 0.45 : damp;
+            let fL = 0, fR = 0, fT = 0, fB = 0;
+            if (ix > 0 && wfBlockH[idx - 1] === 0) {
+              fL = Math.min(cap, Math.max(0, wfFL[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx - 1] + wfH[idx - 1]))));
+            }
+            if (ix < WF_W - 1 && wfBlockH[idx + 1] === 0) {
+              fR = Math.min(cap, Math.max(0, wfFR[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx + 1] + wfH[idx + 1]))));
+            }
+            if (iy > 0 && wfBlockH[idx - WF_W] === 0) {
+              fT = Math.min(cap, Math.max(0, wfFT[idx] * latDamp + dtSub * pipeAccel * latGain * (Hc - (wfBedZ[idx - WF_W] + wfH[idx - WF_W]))));
+            }
+            if (iy < WF_H - 1 && wfBlockH[idx + WF_W] === 0) {
+              fB = Math.min(cap, Math.max(0, wfFB[idx] * latDamp + dtSub * pipeAccel * latGain * (Hc - (wfBedZ[idx + WF_W] + wfH[idx + WF_W]))));
+            }
+
+            const sumOut = fL + fR + fT + fB;
+            if (sumOut * dtSub > hCell && sumOut > 1e-6) {
+              const K = hCell / (sumOut * dtSub);
+              fL *= K; fR *= K; fT *= K; fB *= K;
+            }
+            wfFL[idx] = fL;
+            wfFR[idx] = fR;
+            wfFT[idx] = fT;
+            wfFB[idx] = fB;
+          }
+        }
+
+        // 3. Conservative depth update + plunge pool drain (wx < 245) & live impact foam
+        for (let iy = 0; iy < WF_H; iy++) {
+          const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+          const row = iy * WF_W;
+          for (let ix = 0; ix < WF_W; ix++) {
+            const idx = row + ix;
+            if (wfBlockH[idx] > 0) {
+              wfH[idx] = 0;
+              continue;
+            }
+            const inL = ix > 0 ? wfFR[idx - 1] : 0;
+            const inR = ix < WF_W - 1 ? wfFL[idx + 1] : 0;
+            const inT = iy > 0 ? wfFB[idx - WF_W] : 0;
+            const inB = iy < WF_H - 1 ? wfFT[idx + WF_W] : 0;
+            let nextH = wfH[idx] + dtSub * ((inL + inR + inT + inB) - (wfFL[idx] + wfFR[idx] + wfFT[idx] + wfFB[idx]));
+            if (nextH < 1e-5) nextH = 0;
+
+            const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+            if (emitEffects && sub === substeps - 1 && wx >= 240 && wx <= 250 && nextH > 0.18) {
+              if (Math.hypot(camX - wx, camY - wy) < 460 && particles.length < 220 && Math.random() < 0.22) {
+                spawnParticles(
+                  wx + (Math.random() - 0.5) * 3,
+                  wy + (Math.random() - 0.5) * 3,
+                  0.4, 1, ['#E0F2FE', '#FFFFFF', '#7DD3FC'], 16,
+                  { grav: 75, vz: 14 + Math.random() * 12, life: 0.48 }
+                );
+              }
+            }
+            if (wx < 245 && nextH > 0) {
+              const drain = nextH * Math.min(1, 12.0 * dtSub);
+              nextH -= drain;
+              if (emitEffects && sub === substeps - 1 && drain > 0.015) {
+                injectWaterRipple(wx, wy, Math.min(1.3, drain * 2.2), 1);
+              }
+            }
+            wfH[idx] = nextH;
+          }
+        }
+      }
+    }
+
+    function getWaterfallSplitStats() {
+      let nSum = 0, nCnt = 0;
+      let cSum = 0, cCnt = 0;
+      let sSum = 0, sCnt = 0;
+      let totalVolume = 0;
+
+      for (let iy = 0; iy < WF_H; iy++) {
+        const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+        const row = iy * WF_W;
+        for (let ix = 0; ix < WF_W; ix++) {
+          const idx = row + ix;
+          const d = wfH[idx];
+          totalVolume += d * WF_CELL * WF_CELL;
+          const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+          if (wx >= 252 && wx <= 268) {
+            if (wy >= -515 && wy < -499) {
+              nSum += d; nCnt++;
+            } else if (wy >= -499 && wy <= -491) {
+              cSum += d; cCnt++;
+            } else if (wy > -491 && wy <= -475) {
+              sSum += d; sCnt++;
+            }
+          }
+        }
+      }
+
+      return {
+        damIntact: Boolean(damBoulder && !damBoulder.destroyed && !(damBoulder.destr && damBoulder.destr.chopped)),
+        northBranchDepth: nCnt > 0 ? nSum / nCnt : 0,
+        southBranchDepth: sCnt > 0 ? sSum / sCnt : 0,
+        centerDownstreamDepth: cCnt > 0 ? cSum / cCnt : 0,
+        totalVolume
+      };
+    }
+
+    rebuildWaterfallBlocks();
+    for (let i = 0; i < 70; i++) {
+      stepWaterfallSim(1 / 30, false);
+    }
+    initFlowStreaks();
 
     const canvas = document.getElementById('viewport');
     const ctx = canvas.getContext('2d');
@@ -2929,6 +3841,224 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     window.addEventListener('resize', handleResize);
     handleResize();
 
+    let equippedTool = 'none';
+    let actionCooldown = 0;
+    let swingTimer = 0;
+    let shakeTimer = 0;
+    let shakeMag = 0;
+
+    function equipTool(toolId, quiet = false) {
+      if (!TOOLS_META[toolId]) return;
+      equippedTool = toolId;
+      const btnTool = document.getElementById('btnTool');
+      if (btnTool) btnTool.textContent = TOOLS_META[toolId].label;
+      if (!quiet) catSpeak('Equipado: ' + TOOLS_META[toolId].label, 95);
+    }
+
+    function spawnDebrisDrops(wx, wy, wz, modelKey, count, biasDx = 0, biasDy = 0, vzMin = 95, vzMax = 145) {
+      const model = propModels[modelKey];
+      if (!model || count <= 0) return;
+      for (let i = 0; i < count; i++) {
+        const ang = Math.atan2(biasDy, biasDx) + (Math.random() - 0.5) * 2.2;
+        const hSpd = 24 + Math.random() * 34;
+        debrisDrops.push({
+          modelKey,
+          model,
+          x: wx + Math.cos(ang) * 4,
+          y: wy + Math.sin(ang) * 4,
+          z: wz,
+          vx: Math.cos(ang) * hSpd,
+          vy: Math.sin(ang) * hSpd,
+          vz: vzMin + Math.random() * (vzMax - vzMin),
+          scale: 0.75,
+          selfAngle: Math.random() * Math.PI * 2,
+          spin: (Math.random() - 0.5) * 6,
+          bounces: 0,
+          inWater: false,
+          life: 18.0
+        });
+      }
+      if (debrisDrops.length > 64) {
+        debrisDrops.splice(0, debrisDrops.length - 64);
+      }
+    }
+
+    function triggerAction() {
+      if (actionCooldown > 0) return;
+      actionCooldown = 0.22;
+      swingTimer = 0.22;
+
+      const fx = -Math.sin(cat.selfAngle);
+      const fy = Math.cos(cat.selfAngle);
+      const hitX = cat.x + fx * 14;
+      const hitY = cat.y + fy * 14;
+
+      injectWindImpulse(hitX, hitY, fx * 2.4, fy * 2.4, 38, 0.45);
+      spawnParticles(hitX, hitY, cat.z + 6, 4, ['#FFFDF8', '#FDE68A', '#CBD5E1'], 22, { life: 0.25, grav: 80 });
+
+      // Shake nearby non-destructible foliage (e.g. flower_tuft)
+      for (let i = 0; i < foliageProps.length; i++) {
+        const fp = foliageProps[i];
+        if (fp.destroyed || fp.destr) continue;
+        if (Math.hypot(fp.wx - cat.x, fp.wy - cat.y) <= 34) {
+          fp.vx += fx * 45;
+          fp.vy += fy * 45;
+          spawnParticles(fp.wx, fp.wy, fp.wz + 6, 5, fp.foliage.leafColors, 24, {
+            isLeaf: true, grav: 32, vz: 14, life: 1.6
+          });
+        }
+      }
+
+      // Find nearest intact destructible prop within 34u (or 28u + colliderRadius)
+      let bestTarget = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < props.length; i++) {
+        const item = props[i];
+        if (item.destroyed || !item.destr || item.destr.chopped) continue;
+        if (Math.abs(cat.z - item.wz) > 28) continue;
+        const dx = item.wx - cat.x;
+        const dy = item.wy - cat.y;
+        const dist = Math.hypot(dx, dy);
+        const colR = ((PROP_COLLIDER_META[item.modelKey] && PROP_COLLIDER_META[item.modelKey].r) || 5) * (item.scale || 1);
+        const maxReach = Math.max(34, 28 + colR);
+        if (dist > maxReach) continue;
+        const dot = dist > 0.001 ? (dx * fx + dy * fy) / dist : 1;
+        const score = (dist - colR) - (dot > 0.1 ? 10 * dot : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          bestTarget = item;
+        }
+      }
+
+      if (!bestTarget) return;
+
+      const d = bestTarget.destr;
+      const dmg = (equippedTool === d.bestTool) ? 2 : 1;
+      d.hp -= dmg;
+      d.hitFlash = 0.14;
+      destructStats.hits++;
+      sfxChop();
+
+      const burstZ = bestTarget.wz + Math.min(20, Math.max(4, (bestTarget.topZ - bestTarget.baseZ) * 0.5));
+      spawnParticles(bestTarget.wx, bestTarget.wy, burstZ, 8, d.colors, 36);
+      if (bestTarget.foliage) {
+        bestTarget.vx += fx * 38;
+        bestTarget.vy += fy * 38;
+      }
+
+      if (d.hp <= 0) {
+        d.chopped = true;
+        if (bestTarget.solidCollider) bestTarget.solidCollider.disabled = true;
+        if (bestTarget.platCollider) bestTarget.platCollider.disabled = true;
+
+        let dirX = bestTarget.wx - cat.x;
+        let dirY = bestTarget.wy - cat.y;
+        const dLen = Math.hypot(dirX, dirY);
+        if (dLen < 0.001) {
+          dirX = fx;
+          dirY = fy;
+        } else {
+          dirX /= dLen;
+          dirY /= dLen;
+        }
+
+        if (d.mode === 'chop') {
+          const stumpH = d.zCut * bestTarget.scale;
+          bestTarget.renderMaxSlice = d.zCut;
+          bestTarget.topZ = bestTarget.baseZ + Math.ceil(stumpH);
+          bestTarget.foliage = null;
+          bestTarget.bx = 0;
+          bestTarget.by = 0;
+          bestTarget.vx = 0;
+          bestTarget.vy = 0;
+          const stumpCol = {
+            wx: bestTarget.wx,
+            wy: bestTarget.wy,
+            r: Math.max(8, ((PROP_COLLIDER_META[bestTarget.modelKey] && PROP_COLLIDER_META[bestTarget.modelKey].r) || 8) * bestTarget.scale),
+            baseZ: bestTarget.wz,
+            topZ: bestTarget.wz + stumpH,
+            modelKey: bestTarget.modelKey + '_stump',
+            disabled: false
+          };
+          platformColliders.push(stumpCol);
+          bestTarget.platCollider = stumpCol;
+          bestTarget.isPlatform = true;
+          bestTarget.platTopZ = stumpCol.topZ;
+
+          fallingBodies.push({
+            model: bestTarget.model,
+            wx: bestTarget.wx,
+            wy: bestTarget.wy,
+            baseZ: bestTarget.wz,
+            zCut: d.zCut,
+            selfAngle: bestTarget.selfAngle,
+            scale: bestTarget.scale,
+            dx: dirX,
+            dy: dirY,
+            phi: 0.08,
+            omega: 0.45,
+            colors: d.colors,
+            drops: d.drops,
+            dropKey: d.dropKey
+          });
+          destructStats.choppedCount++;
+        } else if (d.mode === 'crumble') {
+          if (bestTarget.isDamBoulder) {
+            bestTarget.destroyed = true;
+            bestTarget.isPlatform = false;
+            bestTarget.isFire = false;
+            if (bestTarget.platCollider) bestTarget.platCollider.disabled = true;
+            shakeTimer = 0.18;
+            shakeMag = 3.0;
+            sfxCrumble();
+            spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, 28, d.colors, 58, { grav: 240, life: 0.80 });
+            spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 5, 18, ['#E0F2FE', '#FFFFFF', '#67E8F9'], 46, { grav: 150, vz: 32, life: 0.65 });
+            spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
+            rebuildWaterfallBlocks();
+            refreshWaterObstaclesCache();
+            destructStats.crumbledCount++;
+          } else {
+            const baseH = d.zCut * bestTarget.scale;
+            bestTarget.renderMaxSlice = d.zCut;
+            bestTarget.topZ = bestTarget.baseZ + Math.ceil(baseH);
+            bestTarget.isFire = false;
+            const ruinPlat = {
+              wx: bestTarget.wx,
+              wy: bestTarget.wy,
+              r: Math.max(6, ((PROP_COLLIDER_META[bestTarget.modelKey] && PROP_COLLIDER_META[bestTarget.modelKey].r) || 8) * bestTarget.scale),
+              baseZ: bestTarget.wz,
+              topZ: bestTarget.wz + baseH,
+              modelKey: bestTarget.modelKey + '_rubble',
+              disabled: false
+            };
+            platformColliders.push(ruinPlat);
+            bestTarget.platCollider = ruinPlat;
+            bestTarget.isPlatform = true;
+            bestTarget.platTopZ = ruinPlat.topZ;
+
+            shakeTimer = 0.16;
+            shakeMag = 2.5;
+            sfxCrumble();
+            spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 4, 22, d.colors, 52, { grav: 240, life: 0.75 });
+            spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 3, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
+            if (bestTarget.modelKey === 'boulder_large') {
+              rebuildWaterfallBlocks();
+            }
+            refreshWaterObstaclesCache();
+            destructStats.crumbledCount++;
+          }
+        } else if (d.mode === 'trim') {
+          bestTarget.destroyed = true;
+          bestTarget.foliage = null;
+          spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, 14, d.colors, 36, {
+            isLeaf: true, grav: 32, vz: 18 + Math.random() * 14, life: 2.0
+          });
+          refreshWaterObstaclesCache();
+          destructStats.trimmedCount++;
+        }
+      }
+    }
+
     window.addEventListener('keydown', (e) => {
       const code = e.code;
       keys[code] = true;
@@ -2937,6 +4067,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
       if (code === 'Space') {
         cat.jumpBuffer = 0.13;
+      } else if (code === 'KeyE') {
+        triggerAction();
       } else if (code === 'KeyR') {
         resetCatToSpawn();
       } else if (code === 'KeyM') {
@@ -2986,6 +4118,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       camX = cat.x;
       camY = cat.y;
       camZ = cat.z;
+      syncWaveOrigin();
+      refreshWaterObstaclesCache();
       if (msg) catSpeak(msg, 125);
     }
 
@@ -2995,9 +4129,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     let isDraggingCam = false;
     let dragStartX = 0;
+    let pointerDownX = 0;
+    let pointerDownY = 0;
     canvas.addEventListener('pointerdown', (e) => {
       isDraggingCam = true;
       dragStartX = e.clientX;
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', (e) => {
@@ -3008,6 +4146,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       turn = targetTurn;
     });
     canvas.addEventListener('pointerup', (e) => {
+      if (isDraggingCam && Math.hypot(e.clientX - pointerDownX, e.clientY - pointerDownY) < 6) {
+        triggerAction();
+      }
       isDraggingCam = false;
       try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     });
@@ -3022,6 +4163,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     btnHat.addEventListener('click', () => {
       cat.hatIdx = (cat.hatIdx + 1) % HAT_PRESETS.length;
       btnHat.textContent = `🎩 ${HAT_PRESETS[cat.hatIdx].name}`;
+    });
+    document.getElementById('btnTool').addEventListener('click', () => {
+      const nextIdx = (TOOL_ORDER.indexOf(equippedTool) + 1) % TOOL_ORDER.length;
+      equipTool(TOOL_ORDER[nextIdx]);
+    });
+    document.getElementById('btnAction').addEventListener('click', () => {
+      triggerAction();
     });
     document.getElementById('btnRotL').addEventListener('click', () => { targetTurn += Math.PI / 4; });
     document.getElementById('btnRotR').addEventListener('click', () => { targetTurn -= Math.PI / 4; });
@@ -3057,9 +4205,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const nx = npc.x + npc.dirX * sp * dt;
           const ny = npc.y + npc.dirY * sp * dt;
           const c = getCellAt(nx, ny);
-          if (c && c.mat !== MAT_WATER && Math.abs(c.h - npc.z) <= 5.5) {
+          if (c && !isWetMat(c.mat) && Math.abs(c.h - npc.z) <= 5.5) {
             let hitProp = false;
             for (const sc of propColliders) {
+              if (sc.disabled) continue;
               if (isPointInPropCollider(nx, ny, sc, 3.5)) { hitProp = true; break; }
             }
             if (!hitProp) {
@@ -3088,13 +4237,149 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     let lastRustleCell = -1;
+    function stepFoliageItem(p, h) {
+      const f = p.foliage;
+      if (p.rustleCd > 0) p.rustleCd = Math.max(0, p.rustleCd - h);
+
+      const kStiff = 44, cDamp = 6.2;
+      const w = sampleWind(p.wx, p.wy, fluidTime);
+      const tx = w.wx * f.windScale * (1 - f.rigidity);
+      const ty = w.wy * f.windScale * (1 - f.rigidity);
+
+      let ax = kStiff * (tx - p.bx) - cDamp * p.vx;
+      let ay = kStiff * (ty - p.by) - cDamp * p.vy;
+
+      const modelH = p.model.count * p.scale;
+      const maxBrushDz = modelH + 4;
+
+      // Cat brush interference
+      const cdx = p.wx - cat.x;
+      const cdy = p.wy - cat.y;
+      const cd = Math.hypot(cdx, cdy);
+      if (cd < f.pushRadius && Math.abs(cat.z - p.wz) <= maxBrushDz) {
+        const pushMag = (1 - cd / f.pushRadius) * f.pushStrength;
+        const invD = cd > 0.001 ? 1 / cd : 0;
+        const dirX = cd > 0.001 ? cdx * invD : -Math.sin(cat.selfAngle);
+        const dirY = cd > 0.001 ? cdy * invD : Math.cos(cat.selfAngle);
+        ax += dirX * pushMag * kStiff;
+        ay += dirY * pushMag * kStiff;
+
+        if ((cat.isWalking || !cat.onGround) && p.rustleCd <= 0) {
+          p.rustleCd = 0.28;
+          const leafCount = (f.pushStrength >= 6.0 || Math.random() < 0.5) ? 2 : 1;
+          spawnParticles(
+            p.wx + (Math.random() - 0.5) * 4,
+            p.wy + (Math.random() - 0.5) * 4,
+            p.wz + Math.min(18, modelH * 0.6),
+            leafCount,
+            f.leafColors,
+            20,
+            { isLeaf: true, grav: 32, vz: 6 + Math.random() * 10, life: 2.2 + Math.random() * 1.4 }
+          );
+        }
+      }
+
+      // NPC brush interference
+      for (let j = 0; j < npcs.length; j++) {
+        const npc = npcs[j];
+        const ndx = p.wx - npc.x;
+        const ndy = p.wy - npc.y;
+        const nd = Math.hypot(ndx, ndy);
+        if (nd < f.pushRadius && Math.abs(npc.z - p.wz) <= maxBrushDz) {
+          const pushMag = (1 - nd / f.pushRadius) * f.pushStrength * 0.7;
+          const invD = nd > 0.001 ? 1 / nd : 0;
+          const dirX = nd > 0.001 ? ndx * invD : (npc.dirX || 1);
+          const dirY = nd > 0.001 ? ndy * invD : (npc.dirY || 0);
+          ax += dirX * pushMag * kStiff;
+          ay += dirY * pushMag * kStiff;
+
+          if (npc.moving && p.rustleCd <= 0) {
+            p.rustleCd = 0.28;
+            spawnParticles(
+              p.wx + (Math.random() - 0.5) * 4,
+              p.wy + (Math.random() - 0.5) * 4,
+              p.wz + Math.min(18, modelH * 0.6),
+              1,
+              f.leafColors,
+              16,
+              { isLeaf: true, grav: 32, vz: 4 + Math.random() * 8, life: 2.0 + Math.random() * 1.2 }
+            );
+          }
+        }
+      }
+
+      // Gust petal shedding on sakura_oak
+      if (p.modelKey === 'sakura_oak' && w.mag > 1.35 && Math.random() < h * 2.5) {
+        spawnParticles(
+          p.wx + (Math.random() - 0.5) * 18,
+          p.wy + (Math.random() - 0.5) * 18,
+          p.wz + 72,
+          1,
+          f.leafColors,
+          14,
+          { isLeaf: true, grav: 22, vz: -4 - Math.random() * 6, life: 5.0 + Math.random() * 2.0 }
+        );
+      }
+
+      p.vx += ax * h;
+      p.vy += ay * h;
+      p.bx += p.vx * h;
+      p.by += p.vy * h;
+
+      const maxDeflect = Math.min(7.5, p.model.count * 0.22);
+      const bMag = Math.hypot(p.bx, p.by);
+      if (bMag > maxDeflect) {
+        const s = maxDeflect / bMag;
+        p.bx *= s;
+        p.by *= s;
+        const nx = p.bx / maxDeflect;
+        const ny = p.by / maxDeflect;
+        const vDotN = p.vx * nx + p.vy * ny;
+        if (vDotN > 0) {
+          p.vx -= vDotN * nx;
+          p.vy -= vDotN * ny;
+        }
+      }
+    }
+
+    function updateFoliage(dt) {
+      if (!Number.isFinite(dt) || dt <= 0) return;
+      const clampedDt = Math.min(0.066, dt);
+      const steps = clampedDt > 0.025 ? 2 : 1;
+      const h = Math.min(0.033, clampedDt / steps);
+      for (let i = 0; i < foliageProps.length; i++) {
+        const p = foliageProps[i];
+        if (p.destroyed || !p.foliage) continue;
+        if (Math.hypot(p.wx - camX, p.wy - camY) >= 380) continue;
+        for (let s = 0; s < steps; s++) {
+          stepFoliageItem(p, h);
+        }
+      }
+    }
+
+    let shallowStepTimer = 0;
+    let shallowSplashTimer = 0;
+    let shallowRippleTimer = 0;
+
     function updatePhysics(dt) {
+      fluidTime += dt;
+      if (shallowStepTimer > 0) shallowStepTimer = Math.max(0, shallowStepTimer - dt);
+      if (shallowSplashTimer > 0) shallowSplashTimer = Math.max(0, shallowSplashTimer - dt);
+      if (shallowRippleTimer > 0) shallowRippleTimer = Math.max(0, shallowRippleTimer - dt);
+      for (let i = windImpulses.length - 1; i >= 0; i--) {
+        windImpulses[i].life -= dt;
+        if (windImpulses[i].life <= 0) windImpulses.splice(i, 1);
+      }
+
       cat.idleTimer += dt;
       if (cat.hurtTimer > 0) cat.hurtTimer = Math.max(0, cat.hurtTimer - dt);
       if (blockedCooldown > 0) blockedCooldown -= dt;
+      if (actionCooldown > 0) actionCooldown = Math.max(0, actionCooldown - dt);
+      if (swingTimer > 0) swingTimer = Math.max(0, swingTimer - dt);
+      if (shakeTimer > 0) shakeTimer = Math.max(0, shakeTimer - dt);
 
       if (keys['KeyQ']) targetTurn += 2.2 * dt;
-      if (keys['KeyE']) targetTurn -= 2.2 * dt;
+      if (keys['KeyC']) targetTurn -= 2.2 * dt;
       turn += (targetTurn - turn) * Math.min(1, dt * 14);
 
       updateNPCs(dt);
@@ -3127,7 +4412,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
       const isSprinting = !!(keys['ShiftLeft'] || keys['ShiftRight']);
       const baseSpeed = isSprinting ? 205 : 124;
-      const speed = cat.onGround ? baseSpeed : Math.round(baseSpeed * 0.85);
+      const preCell = getCellAt(cat.x, cat.y);
+      const preBr = getBridgeAt(cat.x, cat.y);
+      const onPreBr = preBr && cat.z >= getBridgeDeckZ(preBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      const isWadingPre = !onPreBr && cat.onGround && preCell && preCell.mat === MAT_SHALLOW;
+      const wadingDrag = isWadingPre ? 0.86 : 1.0;
+      const speed = (cat.onGround ? baseSpeed : Math.round(baseSpeed * 0.85)) * wadingDrag;
       if (ilen > 0) {
         const dx = moveWorldX * speed * dt;
         const dy = moveWorldY * speed * dt;
@@ -3194,6 +4484,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         cat.maxJumpReached = cat.z;
         sfxJump();
         spawnParticles(cat.x, cat.y, cat.z + 1, 7, ['#FFF8EC', '#E7D8C2'], 22);
+        injectWindImpulse(cat.x, cat.y, -Math.sin(cat.selfAngle) * 1.4, Math.cos(cat.selfAngle) * 1.4, 36, 0.5);
+        const jc = getCellAt(cat.x, cat.y);
+        if (jc && isWetMat(jc.mat)) injectWaterRipple(cat.x, cat.y, 2.2, 2);
       }
 
       const wasOnGround = cat.onGround;
@@ -3208,8 +4501,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         cat.groundZ = sup.bestH;
         if (cat.z <= sup.bestH + 0.05 && cat.vz <= 0 && (wasOnGround || prevZ >= sup.bestH - 2.0)) {
           if (!wasOnGround && cat.vz < -90) {
-            sfxLand();
-            spawnParticles(cat.x, cat.y, sup.bestH + 1, 6, ['#FDF6E9', '#D6C4AA'], 24);
+            if (sup.centerCell && sup.centerCell.mat === MAT_SHALLOW) {
+              sfxShallowStep();
+              injectWaterRipple(cat.x, cat.y, 1.8, 2);
+              spawnParticles(cat.x, cat.y, waterSurfZ(sup.centerCell) + 0.5, 6, ['#E0F2FE', '#67E8F9', '#FFFFFF'], 24);
+            } else {
+              sfxLand();
+              spawnParticles(cat.x, cat.y, sup.bestH + 1, 6, ['#FDF6E9', '#D6C4AA'], 24);
+            }
           }
           cat.z = sup.bestH;
           cat.vz = 0;
@@ -3236,6 +4535,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         cat.onGround = false;
         if (cat.z < -2.5) {
           const inWater = sup.centerCell && sup.centerCell.mat === MAT_WATER;
+          const splashX = cat.x;
+          const splashY = cat.y;
           cat.x = cat.lastSafeX;
           cat.y = cat.lastSafeY;
           cat.vz = 0;
@@ -3246,6 +4547,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             sfxBlocked();
             catSpeak('Splash! De volta à margem! 💦', 110);
             spawnParticles(cat.x, cat.y, cat.z + 2, 10, ['#93C5FD', '#FFFFFF'], 32);
+            injectWaterRipple(splashX, splashY, 2.2, 2);
           } else {
             cat.z = cat.lastSafeZ;
           }
@@ -3257,10 +4559,36 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         if (isSprinting && Math.random() < dt * 16) {
           spawnParticles(cat.x, cat.y, cat.z + 1, 1, ['#FFF8EC', '#E7D8C2'], 16);
         }
+        if (isSprinting && Math.random() < dt * 7) {
+          injectWindImpulse(cat.x, cat.y, -Math.sin(cat.selfAngle) * 1.4, Math.cos(cat.selfAngle) * 1.4, 36, 0.5);
+        }
       }
 
-      // Grama rustle & descoberta de bioma
+      // Grama rustle, água rasa wading feedback & descoberta de bioma
       const curCell = sup.centerCell;
+      const curBr = getBridgeAt(cat.x, cat.y);
+      const onCurBr = curBr && cat.z >= getBridgeDeckZ(curBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
+        if (cat.isWalking) {
+          if (shallowRippleTimer <= 0) {
+            shallowRippleTimer = 0.04;
+            injectWaterRipple(cat.x, cat.y, 0.75, 2);
+          }
+          if (shallowSplashTimer <= 0) {
+            shallowSplashTimer = isSprinting ? 0.10 : 0.16;
+            spawnParticles(
+              cat.x + (Math.random() - 0.5) * 4,
+              cat.y + (Math.random() - 0.5) * 4,
+              waterSurfZ(curCell) + 0.5,
+              2, ['#E0F2FE', '#67E8F9', '#FFFFFF'], 20, { grav: 190, vz: 26, life: 0.35 }
+            );
+          }
+          if (shallowStepTimer <= 0) {
+            shallowStepTimer = isSprinting ? 0.22 : 0.30;
+            sfxShallowStep();
+          }
+        }
+      }
       if (curCell) {
         if (cat.onGround && (curCell.mat === MAT_GRASS || curCell.mat === MAT_PEAK) && cat.isWalking && curCell.idx !== lastRustleCell) {
           lastRustleCell = curCell.idx;
@@ -3303,28 +4631,259 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       obsEl.textContent = cat.obstacleLabel;
       obsEl.className = 'obstacle-chip obs-' + cat.obstacleHint;
 
-      if (Math.hypot(cat.x - 242, cat.y + 495) < 420 && Math.random() < dt * 14) {
-        spawnParticles(
-          242 + (Math.random() - 0.5) * 16,
-          -495 + (Math.random() - 0.5) * 18,
-          1, 1, ['#E0F2FE', '#FFFFFF', '#7DD3FC'], 16
-        );
+      refreshWaterObstaclesCache();
+
+      // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul
+      floatingSpawnAccum += dt;
+      const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
+      const spawnInterval = nearWaterfall ? 0.28 : 0.55;
+      if (floatingSpawnAccum >= spawnInterval) {
+        floatingSpawnAccum = 0;
+        if (floatingItems.length < 64) {
+          spawnFloatingPetal(
+            232 + (Math.random() - 0.5) * 14,
+            -495 + (Math.random() - 0.5) * 14,
+            null,
+            -2
+          );
+          if (Math.hypot(camX - 118, camY - 220) < 420) {
+            spawnFloatingPetal(134 + (Math.random() - 0.5) * 32, 165 + (Math.random() - 0.5) * 14, null, -2);
+          }
+          if (Math.hypot(camX - 132, camY + 80) < 420) {
+            spawnFloatingPetal(126 + (Math.random() - 0.5) * 32, -130 + (Math.random() - 0.5) * 14, null, -2);
+          }
+        }
+      }
+
+      for (let i = floatingItems.length - 1; i >= 0; i--) {
+        const f = floatingItems[i];
+        const flow = sampleWaterFlow(f.x, f.y);
+        f.x += flow.vx * dt;
+        f.y += flow.vy * dt;
+        const fc = getCellAt(f.x, f.y);
+        if (fc && isWetMat(fc.mat)) {
+          f.z = waterSurfZ(fc);
+        }
+        if (f.y > 820 || flow.speed < 0.8 || !fc || !isWetMat(fc.mat)) {
+          f.life -= dt * 1.2;
+        }
+        if (f.life <= 0) floatingItems.splice(i, 1);
       }
 
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
+        const w = sampleWind(p.x, p.y, fluidTime);
+        p.vx += w.wx * (p.isLeaf ? 26 : 18) * dt;
+        p.vy += w.wy * (p.isLeaf ? 26 : 18) * dt;
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.vz -= 260 * dt;
+        p.vz -= (p.grav !== undefined ? p.grav : 260) * dt;
+        if (p.isLeaf && p.vz < -16) p.vz = -16;
         p.z += p.vz * dt;
         p.life -= dt;
+
+        const pc = getCellAt(p.x, p.y);
+        if (pc && isWetMat(pc.mat) && p.z <= waterSurfZ(pc) + 0.5) {
+          const isSplashDrop = p.color === '#93C5FD' || p.color === '#FFFFFF' || p.color === '#7DD3FC' || p.color === '#67E8F9' || p.color === '#E0F2FE';
+          if (!isSplashDrop && floatingItems.length < 64) {
+            spawnFloatingPetal(p.x, p.y, p.color, waterSurfZ(pc));
+          }
+          injectWaterRipple(p.x, p.y, isSplashDrop ? 0.55 : 0.35, 1);
+          particles.splice(i, 1);
+          continue;
+        }
+        if (p.isLeaf && pc && !isWetMat(pc.mat) && p.z < pc.h + 0.4) {
+          p.z = pc.h + 0.4;
+          p.vx *= 0.85;
+          p.vy *= 0.85;
+          p.vz = 0;
+          p.life = Math.min(p.life, 0.35);
+        }
+
         if (p.life <= 0) particles.splice(i, 1);
       }
+
+      // Pickups de Ferramentas (14u)
+      for (let i = 0; i < toolPickups.length; i++) {
+        const pk = toolPickups[i];
+        const dist = Math.hypot(cat.x - pk.wx, cat.y - pk.wy);
+        const dz = Math.abs(cat.z - pk.baseZ);
+        if (dist < 14 && dz < 16) {
+          if (!pk.inside && equippedTool !== pk.toolId) {
+            equipTool(pk.toolId);
+            sfxBiome();
+            spawnParticles(pk.wx, pk.wy, pk.baseZ + 8, 10, ['#FDE68A', '#FFFFFF', '#94A3B8'], 28);
+          }
+          pk.inside = true;
+        } else {
+          pk.inside = false;
+        }
+      }
+
+      // HitFlash decay nos destrutíveis
+      for (let i = 0; i < props.length; i++) {
+        const d = props[i].destr;
+        if (d && d.hitFlash > 0) d.hitFlash = Math.max(0, d.hitFlash - dt);
+      }
+
+      // Corpos caindo: pêndulo invertido 3D ('chop')
+      for (let i = fallingBodies.length - 1; i >= 0; i--) {
+        const fb = fallingBodies[i];
+        const L = Math.max(20, (fb.model.count - fb.zCut) * fb.scale);
+        const alpha = (3 * GRAVITY / (2 * L * 18)) * Math.sin(fb.phi);
+        fb.omega += alpha * dt;
+        fb.phi += fb.omega * dt;
+
+        const sinP = Math.sin(fb.phi);
+        const cosP = Math.cos(fb.phi);
+        const tipX = fb.wx + L * sinP * fb.dx;
+        const tipY = fb.wy + L * sinP * fb.dy;
+        const tipZ = fb.baseZ + fb.zCut * fb.scale + L * cosP;
+        const groundH = getHeightAt(tipX, tipY);
+        const effGroundH = groundH !== null ? groundH : fb.baseZ;
+
+        if (fb.phi >= Math.PI * 0.48 || tipZ <= effGroundH) {
+          shakeTimer = 0.18;
+          shakeMag = 3.2;
+          sfxCrumble();
+          injectWindImpulse(tipX, tipY, fb.dx * 3.0, fb.dy * 3.0, 56, 0.8);
+
+          for (const frac of [0.35, 0.65, 0.9]) {
+            const bx = fb.wx + L * frac * sinP * fb.dx;
+            const by = fb.wy + L * frac * sinP * fb.dy;
+            const bz = Math.max(fb.baseZ + fb.zCut * fb.scale + L * frac * cosP, (getHeightAt(bx, by) || 0) + 2);
+            spawnParticles(bx, by, bz, 8, fb.colors, 42, { isLeaf: true, grav: 48, vz: 24, life: 1.8 });
+          }
+
+          for (const frac of [0.5, 0.85]) {
+            const ix = fb.wx + L * frac * sinP * fb.dx;
+            const iy = fb.wy + L * frac * sinP * fb.dy;
+            const ic = getCellAt(ix, iy);
+            if (ic && isWetMat(ic.mat)) {
+              injectWaterRipple(ix, iy, 2.4, 3);
+              spawnParticles(ix, iy, waterSurfZ(ic) + 1, 10, ['#93C5FD', '#FFFFFF', '#E0F2FE'], 36);
+            }
+          }
+
+          for (let k = 0; k < fb.drops; k++) {
+            const frac = 0.25 + ((k + 0.5) / fb.drops) * 0.65;
+            const dxPos = fb.wx + L * frac * sinP * fb.dx;
+            const dyPos = fb.wy + L * frac * sinP * fb.dy;
+            const dzPos = fb.baseZ + fb.zCut * fb.scale + L * frac * cosP;
+            const dropZ = Math.max(dzPos, (getHeightAt(dxPos, dyPos) || 0) + 4);
+            spawnDebrisDrops(dxPos, dyPos, dropZ, fb.dropKey || 'wood_log', 1, fb.dx, fb.dy, 75, 120);
+          }
+
+          fallingBodies.splice(i, 1);
+        }
+      }
+
+      // Drops balísticos (toras & pedregulhos) + correnteza da água
+      for (let i = debrisDrops.length - 1; i >= 0; i--) {
+        const dr = debrisDrops[i];
+        dr.life -= dt;
+        if (dr.life <= 0) {
+          debrisDrops.splice(i, 1);
+          continue;
+        }
+        if (dr.inWater) {
+          const flow = sampleWaterFlow(dr.x, dr.y);
+          dr.vx = flow.vx;
+          dr.vy = flow.vy;
+          dr.x += dr.vx * dt;
+          dr.y += dr.vy * dt;
+          dr.selfAngle += dt * 0.6;
+          const dc = getCellAt(dr.x, dr.y);
+          if (dc && isWetMat(dc.mat)) {
+            dr.z = waterSurfZ(dc) + Math.sin(fluidTime * 3.5 + dr.x * 0.1) * 0.35;
+          } else {
+            dr.inWater = false;
+          }
+          if (!dc || dr.y > 860) dr.life = Math.min(dr.life, 0.5);
+        } else {
+          dr.vz -= GRAVITY * 0.45 * dt;
+          dr.x += dr.vx * dt;
+          dr.y += dr.vy * dt;
+          dr.z += dr.vz * dt;
+          dr.selfAngle += dr.spin * dt;
+          const dc = getCellAt(dr.x, dr.y);
+          if (!dc) {
+            debrisDrops.splice(i, 1);
+            continue;
+          }
+          if (isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {
+            dr.inWater = true;
+            dr.z = waterSurfZ(dc);
+            dr.vz = 0;
+            const flow = sampleWaterFlow(dr.x, dr.y);
+            dr.vx = flow.vx;
+            dr.vy = flow.vy;
+            injectWaterRipple(dr.x, dr.y, 1.4, 2);
+            spawnParticles(dr.x, dr.y, dr.z + 1, 6, ['#93C5FD', '#FFFFFF'], 24);
+          } else if (!isWetMat(dc.mat) && dr.z <= dc.h) {
+            dr.z = dc.h;
+            if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
+              dr.vz = -dr.vz * 0.45;
+              dr.vx *= 0.65;
+              dr.vy *= 0.65;
+              dr.spin *= 0.6;
+              dr.bounces++;
+            } else {
+              dr.vz = 0;
+              const damp = Math.max(0, 1 - dt * 8);
+              dr.vx *= damp;
+              dr.vy *= damp;
+              dr.spin = 0;
+            }
+          }
+        }
+      }
+
+      updateFoliage(dt);
 
       const lerpFactor = Math.min(1, dt * 9.0);
       camX += (cat.x - camX) * lerpFactor;
       camY += (cat.y - camY) * lerpFactor;
       camZ += (cat.groundZ + (cat.z - cat.groundZ) * 0.45 - camZ) * Math.min(1, dt * 6.5);
+
+      syncWaveOrigin();
+      stepFlowStreaks(dt);
+      waveAccum += dt;
+      while (waveAccum >= 1 / 30) {
+        waveAccum -= 1 / 30;
+        // Micro-impulsos sutis de onda de proa e flancos de cisalhamento nos obstáculos do rio
+        const wObs = cachedWaterObstaclesNoCat;
+        for (let i = 0; i < wObs.length; i++) {
+          const o = wObs[i];
+          if (Math.hypot(o.wx - camX, o.wy - camY) > 420) continue;
+          const baseF = sampleBaseWaterFlow(o.wx, o.wy);
+          if (baseF.speed > 2 && Math.random() < 0.28) {
+            const ux = baseF.vx / baseF.speed;
+            const uy = baseF.vy / baseF.speed;
+            const px = -uy;
+            const py = ux;
+            const pick = Math.random();
+            let wxWake, wyWake;
+            if (pick < 0.4) {
+              wxWake = o.wx - ux * (o.r + 1.5) + px * (Math.random() - 0.5) * o.r * 0.4;
+              wyWake = o.wy - uy * (o.r + 1.5) + py * (Math.random() - 0.5) * o.r * 0.4;
+            } else {
+              const side = pick < 0.7 ? 1 : -1;
+              wxWake = o.wx + px * side * (o.r + 1.5) + ux * (Math.random() - 0.2) * 3.0;
+              wyWake = o.wy + py * side * (o.r + 1.5) + uy * (Math.random() - 0.2) * 3.0;
+            }
+            const wc = getCellAt(wxWake, wyWake);
+            if (wc && isWetMat(wc.mat)) {
+              injectWaterRipple(wxWake, wyWake, 0.22, 1);
+              if (Math.random() < 0.35) {
+                spawnParticles(wxWake, wyWake, waterSurfZ(wc) + 0.4, 1, ['#E0F2FE', '#FFFFFF'], 10, { grav: 40, vz: 6, life: 0.40 });
+              }
+            }
+          }
+        }
+        stepWaterfallSim(1 / 30, true);
+        stepWaveBuffer();
+      }
     }
 
     // =========================================================================
@@ -3380,7 +4939,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       targetCtx.restore();
     }
 
-    function stampModelSlice(targetCtx, model, sz, wx, wy, wz, selfAngle, scale, cosA, sinA) {
+    function stampModelSlice(targetCtx, model, sz, wx, wy, wz, selfAngle, scale, cosA, sinA, bendX = 0, bendY = 0) {
+      if (bendX !== 0 || bendY !== 0) {
+        const bf = model.count > 1 ? Math.pow(sz / (model.count - 1), 2) : 0;
+        wx += bendX * bf;
+        wy += bendY * bf;
+      }
       const dx = wx - camX;
       const dy = wy - camY;
       const rx = dx * cosA - dy * sinA;
@@ -3449,6 +5013,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function renderScene() {
+      const prevCamX = camX;
+      const prevCamY = camY;
+      if (shakeTimer > 0) {
+        const sAmp = shakeMag * Math.min(1, shakeTimer / 0.16);
+        camX += (Math.random() - 0.5) * 2 * sAmp;
+        camY += (Math.random() - 0.5) * 2 * sAmp;
+      }
+      try {
       // 1. Céu + Nuvens
       const skyGrad = lowCtx.createLinearGradient(0, 0, 0, LOW_H);
       skyGrad.addColorStop(0, '#78C8F2');
@@ -3468,7 +5040,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const cosA = Math.cos(turn);
       const sinA = Math.sin(turn);
       const animTick = Math.floor(cat.idleTimer * 8); // 8 FPS stepped animation
-      const windOff = Math.round(Math.sin(animTick * 0.65) * 1.0);
+      const animTime = animTick / 8;
+      const camWind = sampleWind(camX, camY, fluidTime);
+      const grassAmp = Math.min(1.6, 0.5 + camWind.mag * 0.55);
+      const grassLean = camWind.wx * 0.35;
       const speechQueue = [];
 
       // 2. Bounding box visível no grid 1080×1080 (culling exato por viewport!)
@@ -3506,24 +5081,102 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
       // Props estáticos visíveis
       for (const p of props) {
+        if (p.destroyed) continue;
         if (p.wx < minVisWx || p.wx > maxVisWx || p.wy < minVisWy || p.wy > maxVisWy) continue;
+        const maxDrawZ = p.renderMaxSlice !== undefined
+          ? Math.min(p.topZ, p.baseZ + Math.ceil(p.renderMaxSlice * p.scale))
+          : p.topZ;
+        const maxSliceIdx = p.renderMaxSlice !== undefined
+          ? Math.min(p.model.count - 1, p.renderMaxSlice - 1)
+          : (p.model.count - 1);
         const dp = (p.wx - camX) * sinA + (p.wy - camY) * cosA;
         activeDrawables.push({
           baseZ: p.baseZ,
-          topZ: p.topZ,
+          topZ: maxDrawZ,
           depth: dp,
           drawSlice: (z) => {
-            const sz = Math.min(p.model.count - 1, Math.floor((z - p.baseZ) / p.scale));
-            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA);
+            const sz = Math.min(maxSliceIdx, Math.floor((z - p.baseZ) / p.scale));
+            const flashOff = (p.destr && p.destr.hitFlash > 0) ? Math.sin(fluidTime * 75) * 1.4 : 0;
+            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA, (p.bx || 0) + flashOff, p.by || 0);
           }
         });
-        if (p.topZ > maxEntityTopZ) maxEntityTopZ = p.topZ;
+        if (maxDrawZ > maxEntityTopZ) maxEntityTopZ = maxDrawZ;
         if (p.isFire) {
           const fz = p.baseZ + (p.modelKey === 'stone_lantern' ? 20 : 8);
           if (fz > maxEntityTopZ) maxEntityTopZ = fz;
           if (!firesByZ.has(fz)) firesByZ.set(fz, []);
           firesByZ.get(fz).push(p);
         }
+      }
+
+      // Pickups das Ferramentas visíveis
+      for (const pk of toolPickups) {
+        if (pk.wx < minVisWx || pk.wx > maxVisWx || pk.wy < minVisWy || pk.wy > maxVisWy) continue;
+        const tKey = TOOLS_META[pk.toolId].modelKey;
+        const tModel = tKey ? propModels[tKey] : null;
+        if (!tModel) continue;
+        const tScale = 0.78;
+        const bob = Math.sin(cat.idleTimer * 3.2 + pk.wx * 0.05) * 2.0;
+        const pBaseZ = Math.round(pk.baseZ + 4 + bob);
+        const pTopZ = pBaseZ + Math.ceil(tModel.count * tScale);
+        const spinAngle = cat.idleTimer * 1.8 + pk.wx * 0.04;
+        const dp = (pk.wx - camX) * sinA + (pk.wy - camY) * cosA;
+        registerShadow(pk.wx, pk.wy, pk.baseZ, pBaseZ, 4.5, 2.8, 0.24);
+        activeDrawables.push({
+          baseZ: pBaseZ,
+          topZ: pTopZ,
+          depth: dp,
+          drawSlice: (z) => {
+            const sz = Math.min(tModel.count - 1, Math.floor((z - pBaseZ) / tScale));
+            stampModelSlice(entityCtx, tModel, sz, pk.wx, pk.wy, z, spinAngle, tScale, cosA, sinA);
+          }
+        });
+        if (pTopZ > maxEntityTopZ) maxEntityTopZ = pTopZ;
+      }
+
+      // Corpos em queda (Pêndulo Invertido 3D)
+      for (const fb of fallingBodies) {
+        const sinP = Math.sin(fb.phi);
+        const cosP = Math.cos(fb.phi);
+        for (let sz = fb.zCut; sz < fb.model.count; sz++) {
+          const dz = (sz - fb.zCut) * fb.scale;
+          const sx = fb.wx + dz * sinP * fb.dx;
+          const sy = fb.wy + dz * sinP * fb.dy;
+          const szWorld = Math.round(fb.baseZ + fb.zCut * fb.scale + dz * cosP);
+          const dp = (sx - camX) * sinA + (sy - camY) * cosA;
+          activeDrawables.push({
+            baseZ: szWorld,
+            topZ: szWorld + 1,
+            depth: dp + 0.15,
+            drawSlice: (z) => {
+              stampModelSlice(entityCtx, fb.model, sz, sx, sy, z, fb.selfAngle, fb.scale, cosA, sinA);
+            }
+          });
+          if (szWorld + 1 > maxEntityTopZ) maxEntityTopZ = szWorld + 1;
+        }
+      }
+
+      // Drops balísticos (wood_log / stone_chunk)
+      for (const dr of debrisDrops) {
+        if (!dr.model) continue;
+        if (dr.x < minVisWx || dr.x > maxVisWx || dr.y < minVisWy || dr.y > maxVisWy) continue;
+        const dBaseZ = Math.round(dr.z);
+        const dTopZ = dBaseZ + Math.ceil(dr.model.count * dr.scale);
+        const dp = (dr.x - camX) * sinA + (dr.y - camY) * cosA;
+        const gH = getHeightAt(dr.x, dr.y);
+        if (gH !== null && !dr.inWater) {
+          registerShadow(dr.x, dr.y, gH, dr.z, 3.8, 2.4, 0.22);
+        }
+        activeDrawables.push({
+          baseZ: dBaseZ,
+          topZ: dTopZ,
+          depth: dp + 0.1,
+          drawSlice: (z) => {
+            const sz = Math.min(dr.model.count - 1, Math.floor((z - dBaseZ) / dr.scale));
+            stampModelSlice(entityCtx, dr.model, sz, dr.x, dr.y, z, dr.selfAngle, dr.scale, cosA, sinA);
+          }
+        });
+        if (dTopZ > maxEntityTopZ) maxEntityTopZ = dTopZ;
       }
 
       // Peixes dourados visíveis
@@ -3640,6 +5293,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             });
             if (hatTopZ > maxEntityTopZ) maxEntityTopZ = hatTopZ;
           }
+
+          if (swingTimer > 0 && equippedTool !== 'none') {
+            const tKey = TOOLS_META[equippedTool].modelKey;
+            const tModel = tKey ? propModels[tKey] : null;
+            if (tModel) {
+              const prog = 1 - Math.max(0, Math.min(1, swingTimer / 0.22));
+              const arcAngle = (prog - 0.5) * 2.1;
+              const swAngle = cat.selfAngle + arcAngle;
+              const fxC = -Math.sin(swAngle);
+              const fyC = Math.cos(swAngle);
+              const tx = cat.x + fxC * 10;
+              const ty = cat.y + fyC * 10;
+              const tScale = 0.68;
+              const tBaseZ = Math.round(cat.z + 3 + Math.sin(prog * Math.PI) * 3);
+              const tTopZ = tBaseZ + Math.ceil(tModel.count * tScale);
+              const tDp = (tx - camX) * sinA + (ty - camY) * cosA;
+              activeDrawables.push({
+                baseZ: tBaseZ,
+                topZ: tTopZ,
+                depth: tDp + 0.65,
+                drawSlice: (z) => {
+                  const sz = Math.min(tModel.count - 1, Math.floor((z - tBaseZ) / tScale));
+                  stampModelSlice(entityCtx, tModel, sz, tx, ty, z, swAngle, tScale, cosA, sinA);
+                }
+              });
+              if (tTopZ > maxEntityTopZ) maxEntityTopZ = tTopZ;
+            }
+          }
         }
 
         if (cat.speech && cat.speech.timer > 0) {
@@ -3665,6 +5346,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       entityCtx.globalCompositeOperation = 'source-over';
       entityCtx.clearRect(0, 0, LOW_W, LOW_H);
       let entityStarted = false;
+      const wfVisible = maxVisWx >= WF_X0 && minVisWx <= WF_X0 + WF_W * WF_CELL && maxVisWy >= WF_Y0 && minVisWy <= WF_Y0 + WF_H * WF_CELL;
 
       for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
         // 4a. Fatia do terreno (Tight-Crop Bounded Slice + skip O(1))
@@ -3672,21 +5354,85 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         if (tSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
           drawBoundedSliceTo(lowCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
 
-          // Brilho animado na superfície da água (z = -2)
-          if (z === -2) {
-            lowCtx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+          // Brilho animado na superfície da água (z = -2 profunda, z = -1 rasa)
+          if (z === -2 || z === -1) {
+            lowCtx.fillStyle = z === -1 ? 'rgba(236, 254, 255, 0.62)' : 'rgba(224, 242, 254, 0.55)';
             const step = 12;
             const startX = Math.floor(minVisWx / step) * step;
             const startY = Math.floor(minVisWy / step) * step;
+            const targetMat = z === -1 ? MAT_SHALLOW : MAT_WATER;
             for (let wy = startY; wy <= maxVisWy; wy += step) {
               for (let wx = startX; wx <= maxVisWx; wx += step) {
                 const c = getCellAt(wx, wy);
-                if (!c || c.mat !== MAT_WATER || c.h >= 0) continue;
+                if (!c || c.mat !== targetMat || c.h >= 0) continue;
                 if (((c.mx + c.my + animTick) % 9) === 0) {
-                  const wp = project(wx, wy, -1.8);
+                  const wp = project(wx, wy, z + 0.2);
                   lowCtx.fillRect(Math.round(wp.x), Math.round(wp.y), 3, 1);
                 }
               }
+            }
+          }
+
+          // WaveBuffer (cristas/cavas) + FloatingItems respeitando oclusão 3D nas fatias z=-2, z=-1 e z=13
+          if (z === -2 || z === -1 || z === 13) {
+            for (let dy = 1; dy < WAVE_H - 1; dy++) {
+              const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+              if (cwy < minVisWy || cwy > maxVisWy) continue;
+              const row = dy * WAVE_W;
+              for (let dx = 1; dx < WAVE_W - 1; dx++) {
+                const val = waveCurr[row + dx];
+                if (Math.abs(val) < 0.14) continue;
+                const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+                if (cwx < minVisWx || cwx > maxVisWx) continue;
+                const mx = Math.floor(cwx / VOX + HALF_GRID);
+                const my = Math.floor(cwy / VOX + HALF_GRID);
+                if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
+                const wIdx = my * mw + mx;
+                const wMat = matMap[wIdx];
+                if (!isWetMat(wMat)) continue;
+                const surfZ = wMat === MAT_SHALLOW ? (hmap[wIdx] < 0 ? -1 : hmap[wIdx]) : (hmap[wIdx] < 0 ? -2 : hmap[wIdx]);
+                if (surfZ !== z) continue;
+                const wp = project(cwx, cwy, z + 0.2);
+                const px = Math.round(wp.x);
+                const py = Math.round(wp.y);
+                if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
+                if (val > 0) {
+                  lowCtx.fillStyle = val > 0.7 ? 'rgba(240, 249, 255, 0.72)' : 'rgba(224, 242, 254, 0.45)';
+                } else {
+                  lowCtx.fillStyle = val < -0.7 ? 'rgba(24, 118, 186, 0.52)' : 'rgba(36, 148, 214, 0.34)';
+                }
+                lowCtx.fillRect(px - 1, py, 3, 1);
+              }
+            }
+
+            for (let i = 0; i < flowStreaks.length; i++) {
+              const s = flowStreaks[i];
+              if (s.hLen < 2 || Math.round(s.z) !== z) continue;
+              if (s.x < minVisWx - 24 || s.x > maxVisWx + 24 || s.y < minVisWy - 24 || s.y > maxVisWy + 24) continue;
+              const isDefl = s.deflect >= 0.16;
+              lowCtx.strokeStyle = isDefl ? 'rgba(248, 253, 255, 0.88)' : 'rgba(224, 242, 254, 0.42)';
+              lowCtx.lineWidth = s.deflect > 0.35 ? 1.5 : 1;
+              lowCtx.beginPath();
+              const p0 = project(s.hist[0], s.hist[1], z + 0.25);
+              lowCtx.moveTo(p0.x, p0.y);
+              for (let k = 1; k < s.hLen; k++) {
+                const pk = project(s.hist[k * 2], s.hist[k * 2 + 1], z + 0.25);
+                lowCtx.lineTo(pk.x, pk.y);
+              }
+              lowCtx.stroke();
+            }
+
+            for (let i = 0; i < floatingItems.length; i++) {
+              const f = floatingItems[i];
+              if (Math.round(f.z) !== z) continue;
+              if (f.x < minVisWx || f.x > maxVisWx || f.y < minVisWy || f.y > maxVisWy) continue;
+              const bob = Math.sin(fluidTime * 3.2 + f.phase) * 0.25;
+              const fp = project(f.x, f.y, z + 0.3 + bob);
+              const px = Math.round(fp.x);
+              const py = Math.round(fp.y);
+              if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
+              lowCtx.fillStyle = f.color;
+              lowCtx.fillRect(px, py, 2, 2);
             }
           }
 
@@ -3696,6 +5442,48 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             drawBoundedSliceTo(entityCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
             entityCtx.globalCompositeOperation = 'source-over';
           }
+        }
+
+        // 4a-bis. Colunas e cortinas dinâmicas da cachoeira Virtual Pipe (waterfallSim)
+        if (wfVisible && z >= -2 && z <= 50) {
+          lowCtx.save();
+          lowCtx.translate(LOW_W / 2, LOW_H / 2 + 16 - (z - camZ));
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(turn);
+          lowCtx.scale(VOX, VOX);
+          lowCtx.translate(-camX / VOX, -camY / VOX);
+          const wfCellVox = WF_CELL / VOX;
+          const streakTick = Math.floor(fluidTime * 10);
+          for (let iy = 0; iy < WF_H; iy++) {
+            const row = iy * WF_W;
+            const laneOff = ((iy * 13) ^ (iy >> 1)) & 3;
+            for (let ix = 0; ix < WF_W; ix++) {
+              const idx = row + ix;
+              const d = wfH[idx];
+              if (d <= 0.12) continue;
+              const bed = wfBedZ[idx];
+              let minNb = bed;
+              if (ix > 0 && wfBedZ[idx - 1] < minNb) minNb = wfBedZ[idx - 1];
+              if (ix < WF_W - 1 && wfBedZ[idx + 1] < minNb) minNb = wfBedZ[idx + 1];
+              if (iy > 0 && wfBedZ[idx - WF_W] < minNb) minNb = wfBedZ[idx - WF_W];
+              if (iy < WF_H - 1 && wfBedZ[idx + WF_W] < minNb) minNb = wfBedZ[idx + WF_W];
+              const zTop = Math.min(50, Math.round(bed + Math.min(2.0, Math.max(0.8, d))));
+              const zBot = Math.max(Z_MIN, Math.round(Math.min(bed - 1, minNb)));
+              if (z < zBot || z > zTop) continue;
+              const isTop = (z === zTop);
+              const isDrop = (bed - minNb) > 2;
+              const alpha = Math.min(0.94, Math.max(0.28, (d - 0.10) / 0.45));
+              const colOff = (ix * 5 + iy * 3) & 3;
+              const foam = (d > 0.22) && (isTop
+                ? ((d > 0.65 && (((ix + streakTick + laneOff) % 6) === 0)) || isDrop)
+                : ((((z + streakTick + colOff) % 4) === 0) || z <= 1));
+              lowCtx.fillStyle = foam
+                ? `rgba(224, 242, 254, ${alpha.toFixed(2)})`
+                : (isTop ? `rgba(103, 232, 249, ${alpha.toFixed(2)})` : `rgba(56, 189, 248, ${alpha.toFixed(2)})`);
+              lowCtx.fillRect((WF_X0 + ix * WF_CELL) / VOX, (WF_Y0 + iy * WF_CELL) / VOX, wfCellVox, wfCellVox);
+            }
+          }
+          lowCtx.restore();
         }
 
         // Sombras dinâmicas no chão na altura z
@@ -3716,7 +5504,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         // 4c. Pontas de grama animadas pelo vento (8 FPS, Tight-Crop)
         const gSlice = z <= Z_GRASS_MAX ? grassTipSlices[z] : null;
         if (gSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
-          drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, windOff);
+          const grassOff = Math.round(Math.sin(animTime * 4.5 + (z * 0.7)) * grassAmp + grassLean);
+          drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, grassOff);
         }
 
         // 4c-bis. Partículas 3D na fatia Z (ocluídas por falésias mais altas!)
@@ -3777,6 +5566,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       ctx.drawImage(lowCanvas, 0, 0, LOW_W * pixelScale, LOW_H * pixelScale);
 
       drawSpeechOverlaysHiRes(speechQueue);
+      } finally {
+        camX = prevCamX;
+        camY = prevCamY;
+      }
     }
 
     // =========================================================================
@@ -3802,11 +5595,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const mat = matMap[idx];
           const hL = mx >= 9 ? hmap[my * mw + (mx - 9)] : h;
           const hU = my >= 9 ? hmap[(my - 9) * mw + mx] : h;
-          const isContour = mat !== MAT_WATER && mat !== MAT_BRIDGE &&
+          const isContour = !isWetMat(mat) && mat !== MAT_BRIDGE &&
             (Math.floor(h / 10) !== Math.floor(hL / 10) || Math.floor(h / 10) !== Math.floor(hU / 10));
 
           let rgb;
           if (mat === MAT_WATER) rgb = [56, 189, 248];
+          else if (mat === MAT_SHALLOW) rgb = [103, 232, 249];
           else if (mat === MAT_LILYPAD) rgb = [34, 197, 94];
           else if (mat === MAT_BRIDGE) rgb = [185, 122, 74];
           else if (mat === MAT_SAND) rgb = [243, 221, 169];
@@ -3939,9 +5733,79 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       setTurn: (rad) => { turn = rad; targetTurn = rad; },
       triggerJump: () => { cat.jumpBuffer = 0.14; },
       speak: (text) => { catSpeak(text, 240); },
+      sampleWind: (wx, wy, t = fluidTime) => sampleWind(wx, wy, t),
+      sampleWaterFlow: (wx, wy) => sampleWaterFlow(wx, wy),
+      getWaterfallSplitStats: () => getWaterfallSplitStats(),
+      getStreamlineStats: () => {
+        let total = 0;
+        let deflectedCount = 0;
+        for (let i = 0; i < flowStreaks.length; i++) {
+          const s = flowStreaks[i];
+          if (s.hLen > 0) {
+            total++;
+            if (s.deflect > 0.18) deflectedCount++;
+          }
+        }
+        return {
+          total,
+          deflectedCount,
+          obsCount: cachedWaterObstacles.length,
+          obsPositions: cachedWaterObstacles.map(o => ({ wx: o.wx, wy: o.wy, r: o.r, isCat: !!o.isCat }))
+        };
+      },
+      getShallowState: () => {
+        const c = getCellAt(cat.x, cat.y);
+        const br = getBridgeAt(cat.x, cat.y);
+        const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+        return {
+          inShallow: !!(c && c.mat === MAT_SHALLOW && !onBr && cat.onGround),
+          mat: c ? c.mat : null,
+          pos: { x: cat.x, y: cat.y, z: cat.z },
+          hurtTimer: cat.hurtTimer
+        };
+      },
+      injectWaterRipple: (wx, wy, strength = 1.0, radiusCells = 2) => injectWaterRipple(wx, wy, strength, radiusCells),
+      injectWindImpulse: (wx, wy, vx, vy, r = 42, life = 0.75) => injectWindImpulse(wx, wy, vx, vy, r, life),
+      getFluidStats: () => ({
+        floatingCount: floatingItems.length,
+        activeImpulses: windImpulses.length,
+        windAtCat: sampleWind(cat.x, cat.y, fluidTime)
+      }),
+      getWaveStats: () => {
+        let sum = 0, max = 0, nan = 0;
+        for (let i = 0; i < waveCurr.length; i++) {
+          const v = waveCurr[i];
+          if (Number.isNaN(v)) nan++;
+          const a = Math.abs(v);
+          sum += a;
+          if (a > max) max = a;
+        }
+        return { sum, max, nan };
+      },
+      stepFluidForTest: (dt) => {
+        syncWaveOrigin();
+        injectWaterRipple(cat.x, cat.y, 0, 0);
+        updatePhysics(dt);
+      },
       getPropsByType: (key) => props.filter(p => p.modelKey === key).map(p => ({
-        id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ
-      }))
+        id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ,
+        destroyed: !!p.destroyed,
+        renderMaxSlice: p.renderMaxSlice !== undefined ? p.renderMaxSlice : null,
+        destr: p.destr ? { hp: p.destr.hp, maxHp: p.destr.maxHp, chopped: p.destr.chopped, mode: p.destr.mode } : null
+      })),
+      getFoliageState: () => foliageProps.filter(p => !p.destroyed && p.foliage).map(p => ({
+        id: p.id, key: p.modelKey, wx: p.wx, wy: p.wy,
+        bx: +(p.bx || 0).toFixed(3), by: +(p.by || 0).toFixed(3),
+        r: p.foliage.pushRadius
+      })),
+      triggerAction: () => triggerAction(),
+      equipTool: (toolId, quiet = true) => equipTool(toolId, quiet),
+      getDestructionStats: () => ({
+        ...destructStats,
+        fallingCount: fallingBodies.length,
+        dropCount: debrisDrops.length,
+        equippedTool
+      })
     };
   </script>
 </body>
@@ -3956,7 +5820,7 @@ html_out = (
     .replace('__PROPS_PACK__', json.dumps(rle_compress_props(props_pack), separators=(',', ':')))
 )
 
-out_path = os.path.join(ROOT, 'terrain-world.html')
+out_path = os.path.join(EXAMPLES_DIR, 'terrain-world.html')
 with open(out_path, 'w', encoding='utf-8') as f:
     f.write(html_out)
 

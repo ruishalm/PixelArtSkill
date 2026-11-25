@@ -1,9 +1,14 @@
 import json
+import os
 
-with open('C:/github/PixelArt/slices_v5.json', 'r', encoding='utf-8') as f:
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
+
+with open(os.path.join(VOXELS_DIR, 'slices_v5.json'), 'r', encoding='utf-8') as f:
     cat_slices = f.read().strip()
 
-with open('C:/github/PixelArt/furniture_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'furniture_pack.json'), 'r', encoding='utf-8') as f:
     furn_pack = json.load(f)
 
 desk_slices = json.dumps(furn_pack['desk'])
@@ -704,7 +709,7 @@ html_final = html_template.replace('__CAT_SLICES__', cat_slices)\
                           .replace('__BED_SLICES__', bed_slices)\
                           .replace('__TREE_SLICES__', tree_slices)
 
-with open('C:/github/PixelArt/room-3d.html', 'w', encoding='utf-8') as f:
+with open(os.path.join(EXAMPLES_DIR, 'room-3d.html'), 'w', encoding='utf-8') as f:
     f.write(html_final)
 
 print('room-3d.html regenerated with full 3D sprite-stacked furniture!')
