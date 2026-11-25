@@ -326,11 +326,11 @@
         <button class="pill-btn" id="btnSkin">🐱 Mochi</button>
         <button class="pill-btn" id="btnHat">🎩 Sem Chapéu</button>
         <button class="pill-btn" id="btnTool" title="Trocar Ferramenta">🐾 Patada</button>
-        <button class="pill-btn" id="btnAction" title="Patada / Usar Ferramenta (E)">⚡ E Ação</button>
+        <button class="pill-btn" id="btnAction" title="Patada / Usar Ferramenta (R ou Clique)">⚡ R Ação</button>
         <button class="pill-btn" id="btnRotL" title="Girar Câmera (Q)">⟲ Q</button>
-        <button class="pill-btn" id="btnRotR" title="Girar Câmera (C)">C ⟳</button>
+        <button class="pill-btn" id="btnRotR" title="Girar Câmera (E)">E ⟳</button>
         <button class="pill-btn travel" id="btnTravel" title="Viajar pelos Biomas">🧭 Viagem</button>
-        <button class="pill-btn primary" id="btnReset" title="Voltar ao Spawn (R)">🏠 Spawn</button>
+        <button class="pill-btn primary" id="btnReset" title="Voltar ao Spawn (C)">🏠 Spawn</button>
       </div>
     </div>
 
@@ -359,10 +359,10 @@
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Mover •
         <kbd>Shift</kbd> Correr •
         <kbd>Espaço</kbd> Pular •
-        <kbd>E</kbd> Ação •
-        <kbd>Q</kbd>/<kbd>C</kbd> Girar •
+        <kbd>R</kbd>/<kbd>Clique</kbd> Ação •
+        <kbd>Q</kbd>/<kbd>E</kbd> Girar •
         <kbd>M</kbd> Miar •
-        <kbd>R</kbd> Spawn
+        <kbd>C</kbd> Spawn
       </span>
     </div>
   </div>
@@ -2754,7 +2754,7 @@
       scale: 1.0,
       skinIdx: 0,
       hatIdx: 0,
-      speech: { text: 'Miau! Vale Orgânico 1080×1080! 🐾', timer: 190 },
+      speech: null,
       lastSafeX: SPAWN_X,
       lastSafeY: SPAWN_Y,
       lastSafeZ: spawnH,
@@ -4033,9 +4033,9 @@
       }
       if (code === 'Space') {
         cat.jumpBuffer = 0.13;
-      } else if (code === 'KeyE') {
-        triggerAction();
       } else if (code === 'KeyR') {
+        triggerAction();
+      } else if (code === 'KeyC') {
         resetCatToSpawn();
       } else if (code === 'KeyM') {
         triggerMeow();
@@ -4345,7 +4345,7 @@
       if (shakeTimer > 0) shakeTimer = Math.max(0, shakeTimer - dt);
 
       if (keys['KeyQ']) targetTurn += 2.2 * dt;
-      if (keys['KeyC']) targetTurn -= 2.2 * dt;
+      if (keys['KeyE']) targetTurn -= 2.2 * dt;
       turn += (targetTurn - turn) * Math.min(1, dt * 14);
 
       updateNPCs(dt);
@@ -5081,7 +5081,7 @@
         const tKey = TOOLS_META[pk.toolId].modelKey;
         const tModel = tKey ? propModels[tKey] : null;
         if (!tModel) continue;
-        const tScale = 0.78;
+        const tScale = 1.0;
         const bob = Math.sin(cat.idleTimer * 3.2 + pk.wx * 0.05) * 2.0;
         const pBaseZ = Math.round(pk.baseZ + 4 + bob);
         const pTopZ = pBaseZ + Math.ceil(tModel.count * tScale);
