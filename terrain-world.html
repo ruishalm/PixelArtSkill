@@ -1353,6 +1353,19 @@
     }
 
     // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 1080×1080
+    const RIVER_WAYPOINTS = [
+      [120, -1078], [156, -795], [144, -495], [148, -345],
+      [102, -165], [134, 108], [144, 435], [120, 665], [120, 770]
+    ];
+    const RIVER_SEGMENTS = [];
+    for (let i = 0; i < RIVER_WAYPOINTS.length - 1; i++) {
+      const [ax, ay] = RIVER_WAYPOINTS[i];
+      const [bx, by] = RIVER_WAYPOINTS[i + 1];
+      const dx = bx - ax, dy = by - ay;
+      const len = Math.hypot(dx, dy) || 1;
+      RIVER_SEGMENTS.push({ ax, ay, bx, by, dx, dy, len2: dx * dx + dy * dy, tx: dx / len, ty: dy / len });
+    }
+
     function initOrganicWorld() {
       // Base inicial: plano verde Z=0
       hmap.fill(0);
@@ -1476,10 +1489,7 @@
       // ---------------------------------------------------------------------
       // BIOMA 5: RIO SINUOSO & CACHOEIRA ORGÂNICA (largura ~76u)
       // ---------------------------------------------------------------------
-      const riverPts = [
-        [120, -1078], [156, -795], [144, -495], [148, -345],
-        [102, -165], [134, 108], [144, 435], [120, 665], [120, 770]
-      ];
+      const riverPts = RIVER_WAYPOINTS;
       carveRiverPath(riverPts, 76, -6);
 
       // Cachoeira Vertical na Falésia Oeste (wy=-495) + Poço + Riacho Plano até o Rio
@@ -2859,6 +2869,230 @@
     let camZ = cat.z;
     let blockedCooldown = 0;
 
+    // =========================================================================
+    // 8B. FLUIDOS 2.5D: WINDFIELD + WATERFLOW (DRAIN SINK) + WAVEBUFFER
+    // =========================================================================
+    let fluidTime = 0;
+    const windImpulses = [];
+    function injectWindImpulse(wx, wy, vx, vy, r = 42, life = 0.75) {
+      if (windImpulses.length >= 16) windImpulses.shift();
+      windImpulses.push({ wx, wy, vx, vy, r, life, maxLife: life });
+    }
+
+    function sampleWind(wx, wy, t = fluidTime) {
+      const gust = Math.sin((wx * 0.009 + wy * 0.006) - t * 2.1) * 0.55 + 0.55;
+      const turb = fbm2dFast(wx * 0.008 - t * 0.25, wy * 0.008 + t * 0.14) * 0.45;
+      let vx = 0.72 + gust * 0.52 + turb * 0.35;
+      let vy = 0.34 + gust * 0.24 - turb * 0.25;
+
+      const h = getHeightAt(wx, wy) || 0;
+      const hL = getHeightAt(wx - 4, wy) ?? h;
+      const hR = getHeightAt(wx + 4, wy) ?? h;
+      const hU = getHeightAt(wx, wy - 4) ?? h;
+      const hD = getHeightAt(wx, wy + 4) ?? h;
+      const altBoost = 1 + Math.max(0, h) / 75;
+      const windDotGrad = (hR - hL) * vx + (hD - hU) * vy;
+      const shelter = windDotGrad < -6 ? 0.38 : 1.0;
+      vx *= altBoost * shelter;
+      vy *= altBoost * shelter;
+
+      for (let i = 0; i < windImpulses.length; i++) {
+        const imp = windImpulses[i];
+        const dx = wx - imp.wx;
+        const dy = wy - imp.wy;
+        const d2 = dx * dx + dy * dy;
+        const r2 = imp.r * imp.r;
+        if (d2 < r2 * 6) {
+          const w = Math.exp(-d2 / r2) * (imp.life / imp.maxLife);
+          vx += imp.vx * w;
+          vy += imp.vy * w;
+        }
+      }
+      return { wx: vx, wy: vy, mag: Math.hypot(vx, vy) };
+    }
+
+    function sampleWaterFlow(wx, wy) {
+      const c = getCellAt(wx, wy);
+      if (!c || c.mat !== MAT_WATER) return { vx: 0, vy: 0, speed: 0 };
+
+      let drainFactor = 1.0;
+      if (wy >= 740) {
+        const t = Math.max(0, Math.min(1, (wy - 740) / 220));
+        drainFactor = 1 - t * t * (3 - 2 * t);
+        if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
+      }
+
+      if (wx < -450 && wy < -420 && c.h > 5) {
+        const dx = -690 - wx;
+        const dy = -585 - wy;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1) return { vx: 0, vy: 0, speed: 0 };
+        const rad = Math.min(1, dist / 48);
+        const speedScale = 7.5 * rad * rad;
+        if (speedScale < 0.02) return { vx: 0, vy: 0, speed: 0 };
+        const nx = dx / dist, ny = dy / dist;
+        const vx = (-ny * 0.78 + nx * 0.35) * speedScale;
+        const vy = (nx * 0.78 + ny * 0.35) * speedScale;
+        const speed = Math.hypot(vx, vy);
+        if (speed < 0.02) return { vx: 0, vy: 0, speed: 0 };
+        return { vx, vy, speed };
+      }
+
+      if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
+        const vx = -34 * drainFactor;
+        const vy = 4 * drainFactor;
+        return { vx, vy, speed: Math.hypot(vx, vy) };
+      }
+
+      let bestD2 = Infinity;
+      let bestTx = 0, bestTy = 1;
+      for (let i = 0; i < RIVER_SEGMENTS.length; i++) {
+        const seg = RIVER_SEGMENTS[i];
+        const t = seg.len2 > 0
+          ? Math.max(0, Math.min(1, ((wx - seg.ax) * seg.dx + (wy - seg.ay) * seg.dy) / seg.len2))
+          : 0;
+        const px = seg.ax + seg.dx * t;
+        const py = seg.ay + seg.dy * t;
+        const d2 = (wx - px) * (wx - px) + (wy - py) * (wy - py);
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          bestTx = seg.tx;
+          bestTy = seg.ty;
+        }
+      }
+      const speed = 26 * drainFactor;
+      return { vx: bestTx * speed, vy: bestTy * speed, speed };
+    }
+
+    const floatingItems = [];
+    const PETAL_COLORS = ['#FBCFE8', '#E0F2FE', '#FEF08A'];
+    let floatingSpawnAccum = 0;
+
+    function spawnFloatingPetal(wx, wy, color = null, z = -2) {
+      if (floatingItems.length >= 48) return;
+      floatingItems.push({
+        x: wx,
+        y: wy,
+        z,
+        life: 1.0,
+        phase: Math.random() * Math.PI * 2,
+        color: color || PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)]
+      });
+    }
+
+    const WAVE_W = 120, WAVE_H = 80, WAVE_CELL = 6;
+    let waveCurr = new Float32Array(WAVE_W * WAVE_H);
+    let wavePrev = new Float32Array(WAVE_W * WAVE_H);
+    let waveTmp = new Float32Array(WAVE_W * WAVE_H);
+    let waveOriginX = Math.floor(camX / WAVE_CELL) * WAVE_CELL - (WAVE_W * WAVE_CELL) * 0.5;
+    let waveOriginY = Math.floor(camY / WAVE_CELL) * WAVE_CELL - (WAVE_H * WAVE_CELL) * 0.5;
+    let waveAccum = 0;
+
+    function isWaterFast(wx, wy) {
+      const mx = Math.floor(wx / VOX + HALF_GRID);
+      const my = Math.floor(wy / VOX + HALF_GRID);
+      if (mx < 0 || my < 0 || mx >= mw || my >= mh) return false;
+      return matMap[my * mw + mx] === MAT_WATER;
+    }
+
+    function syncWaveOrigin() {
+      const targetOX = Math.floor(camX / WAVE_CELL) * WAVE_CELL - (WAVE_W * WAVE_CELL) * 0.5;
+      const targetOY = Math.floor(camY / WAVE_CELL) * WAVE_CELL - (WAVE_H * WAVE_CELL) * 0.5;
+      const shiftX = Math.round((targetOX - waveOriginX) / WAVE_CELL);
+      const shiftY = Math.round((targetOY - waveOriginY) / WAVE_CELL);
+      if (shiftX === 0 && shiftY === 0) return;
+
+      if (Math.abs(shiftX) >= WAVE_W || Math.abs(shiftY) >= WAVE_H) {
+        waveCurr.fill(0);
+        wavePrev.fill(0);
+        waveOriginX = targetOX;
+        waveOriginY = targetOY;
+        return;
+      }
+
+      const xStart = Math.max(0, -shiftX);
+      const xEnd = Math.min(WAVE_W, WAVE_W - shiftX);
+      const yStart = Math.max(0, -shiftY);
+      const yEnd = Math.min(WAVE_H, WAVE_H - shiftY);
+
+      waveTmp.fill(0);
+      for (let dy = yStart; dy < yEnd; dy++) {
+        const srcRow = (dy + shiftY) * WAVE_W;
+        const dstRow = dy * WAVE_W;
+        for (let dx = xStart; dx < xEnd; dx++) {
+          waveTmp[dstRow + dx] = waveCurr[srcRow + dx + shiftX];
+        }
+      }
+      waveCurr.set(waveTmp);
+
+      waveTmp.fill(0);
+      for (let dy = yStart; dy < yEnd; dy++) {
+        const srcRow = (dy + shiftY) * WAVE_W;
+        const dstRow = dy * WAVE_W;
+        for (let dx = xStart; dx < xEnd; dx++) {
+          waveTmp[dstRow + dx] = wavePrev[srcRow + dx + shiftX];
+        }
+      }
+      wavePrev.set(waveTmp);
+
+      waveOriginX = targetOX;
+      waveOriginY = targetOY;
+    }
+
+    function injectWaterRipple(wx, wy, strength = 1.0, radiusCells = 2) {
+      const cx = Math.floor((wx - waveOriginX) / WAVE_CELL);
+      const cy = Math.floor((wy - waveOriginY) / WAVE_CELL);
+      if (cx < -radiusCells || cx >= WAVE_W + radiusCells || cy < -radiusCells || cy >= WAVE_H + radiusCells) return;
+      const r2 = radiusCells * radiusCells + 0.25;
+      const y0 = Math.max(1, cy - radiusCells);
+      const y1 = Math.min(WAVE_H - 2, cy + radiusCells);
+      const x0 = Math.max(1, cx - radiusCells);
+      const x1 = Math.min(WAVE_W - 2, cx + radiusCells);
+      for (let dy = y0; dy <= y1; dy++) {
+        const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+        for (let dx = x0; dx <= x1; dx++) {
+          const d2 = (dx - cx) * (dx - cx) + (dy - cy) * (dy - cy);
+          if (d2 > r2) continue;
+          const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+          if (!isWaterFast(cwx, cwy)) continue;
+          const falloff = 1 - Math.sqrt(d2) / (radiusCells + 0.8);
+          const idx = dy * WAVE_W + dx;
+          waveCurr[idx] = Math.max(-4.0, Math.min(4.0, waveCurr[idx] + strength * falloff));
+        }
+      }
+    }
+
+    function stepWaveBuffer() {
+      waveTmp.fill(0);
+      for (let dy = 1; dy < WAVE_H - 1; dy++) {
+        const wy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+        const my = Math.floor(wy / VOX + HALF_GRID);
+        if (my < 0 || my >= mh) continue;
+        const row = dy * WAVE_W;
+        const isSpongeY = dy < 6 || dy >= WAVE_H - 6;
+        for (let dx = 1; dx < WAVE_W - 1; dx++) {
+          const idx = row + dx;
+          const wx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+          const mx = Math.floor(wx / VOX + HALF_GRID);
+          if (mx < 0 || mx >= mw || matMap[my * mw + mx] !== MAT_WATER) {
+            waveTmp[idx] = 0;
+            continue;
+          }
+          const isSponge = isSpongeY || dx < 6 || dx >= WAVE_W - 6;
+          const damp = isSponge ? 0.72 : 0.955;
+          let next = ((waveCurr[idx - 1] + waveCurr[idx + 1] + waveCurr[idx - WAVE_W] + waveCurr[idx + WAVE_W]) * 0.5 - wavePrev[idx]) * damp;
+          if (Math.abs(next) < 0.008) next = 0;
+          else if (next > 4.0) next = 4.0;
+          else if (next < -4.0) next = -4.0;
+          waveTmp[idx] = next;
+        }
+      }
+      const oldPrev = wavePrev;
+      wavePrev = waveCurr;
+      waveCurr = waveTmp;
+      waveTmp = oldPrev;
+    }
+
     const canvas = document.getElementById('viewport');
     const ctx = canvas.getContext('2d');
     const lowCanvas = document.createElement('canvas');
@@ -2954,6 +3188,7 @@
       camX = cat.x;
       camY = cat.y;
       camZ = cat.z;
+      syncWaveOrigin();
       if (msg) catSpeak(msg, 125);
     }
 
@@ -3057,6 +3292,12 @@
 
     let lastRustleCell = -1;
     function updatePhysics(dt) {
+      fluidTime += dt;
+      for (let i = windImpulses.length - 1; i >= 0; i--) {
+        windImpulses[i].life -= dt;
+        if (windImpulses[i].life <= 0) windImpulses.splice(i, 1);
+      }
+
       cat.idleTimer += dt;
       if (cat.hurtTimer > 0) cat.hurtTimer = Math.max(0, cat.hurtTimer - dt);
       if (blockedCooldown > 0) blockedCooldown -= dt;
@@ -3162,6 +3403,9 @@
         cat.maxJumpReached = cat.z;
         sfxJump();
         spawnParticles(cat.x, cat.y, cat.z + 1, 7, ['#FFF8EC', '#E7D8C2'], 22);
+        injectWindImpulse(cat.x, cat.y, -Math.sin(cat.selfAngle) * 1.4, Math.cos(cat.selfAngle) * 1.4, 36, 0.5);
+        const jc = getCellAt(cat.x, cat.y);
+        if (jc && jc.mat === MAT_WATER) injectWaterRipple(cat.x, cat.y, 2.2, 2);
       }
 
       const wasOnGround = cat.onGround;
@@ -3204,6 +3448,8 @@
         cat.onGround = false;
         if (cat.z < -2.5) {
           const inWater = sup.centerCell && sup.centerCell.mat === MAT_WATER;
+          const splashX = cat.x;
+          const splashY = cat.y;
           cat.x = cat.lastSafeX;
           cat.y = cat.lastSafeY;
           cat.vz = 0;
@@ -3214,6 +3460,7 @@
             sfxBlocked();
             catSpeak('Splash! De volta à margem! 💦', 110);
             spawnParticles(cat.x, cat.y, cat.z + 2, 10, ['#93C5FD', '#FFFFFF'], 32);
+            injectWaterRipple(splashX, splashY, 2.2, 2);
           } else {
             cat.z = cat.lastSafeZ;
           }
@@ -3224,6 +3471,9 @@
         cat.walkPhase += dt * (isSprinting ? 17 : 12);
         if (isSprinting && Math.random() < dt * 16) {
           spawnParticles(cat.x, cat.y, cat.z + 1, 1, ['#FFF8EC', '#E7D8C2'], 16);
+        }
+        if (isSprinting && Math.random() < dt * 7) {
+          injectWindImpulse(cat.x, cat.y, -Math.sin(cat.selfAngle) * 1.4, Math.cos(cat.selfAngle) * 1.4, 36, 0.5);
         }
       }
 
@@ -3279,13 +3529,59 @@
         );
       }
 
+      // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul
+      floatingSpawnAccum += dt;
+      const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
+      const spawnInterval = nearWaterfall ? 0.28 : 0.65;
+      if (floatingSpawnAccum >= spawnInterval) {
+        floatingSpawnAccum = 0;
+        if (floatingItems.length < 48) {
+          spawnFloatingPetal(
+            232 + (Math.random() - 0.5) * 14,
+            -495 + (Math.random() - 0.5) * 14,
+            null,
+            -2
+          );
+        }
+      }
+
+      for (let i = floatingItems.length - 1; i >= 0; i--) {
+        const f = floatingItems[i];
+        const flow = sampleWaterFlow(f.x, f.y);
+        f.x += flow.vx * dt;
+        f.y += flow.vy * dt;
+        const fc = getCellAt(f.x, f.y);
+        if (fc && fc.mat === MAT_WATER) {
+          f.z = waterSurfZ(fc);
+        }
+        if (f.y > 820 || flow.speed < 0.8 || !fc || fc.mat !== MAT_WATER) {
+          f.life -= dt * 1.2;
+        }
+        if (f.life <= 0) floatingItems.splice(i, 1);
+      }
+
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
+        const w = sampleWind(p.x, p.y, fluidTime);
+        p.vx += w.wx * 18 * dt;
+        p.vy += w.wy * 18 * dt;
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.vz -= 260 * dt;
         p.z += p.vz * dt;
         p.life -= dt;
+
+        const pc = getCellAt(p.x, p.y);
+        if (pc && pc.mat === MAT_WATER && p.z <= waterSurfZ(pc) + 0.5) {
+          const isSplashDrop = p.color === '#93C5FD' || p.color === '#FFFFFF' || p.color === '#7DD3FC';
+          if (!isSplashDrop && floatingItems.length < 48) {
+            spawnFloatingPetal(p.x, p.y, p.color, waterSurfZ(pc));
+          }
+          injectWaterRipple(p.x, p.y, isSplashDrop ? 0.55 : 0.35, 1);
+          particles.splice(i, 1);
+          continue;
+        }
+
         if (p.life <= 0) particles.splice(i, 1);
       }
 
@@ -3293,6 +3589,16 @@
       camX += (cat.x - camX) * lerpFactor;
       camY += (cat.y - camY) * lerpFactor;
       camZ += (cat.groundZ + (cat.z - cat.groundZ) * 0.45 - camZ) * Math.min(1, dt * 6.5);
+
+      syncWaveOrigin();
+      waveAccum += dt;
+      while (waveAccum >= 1 / 30) {
+        waveAccum -= 1 / 30;
+        if (Math.hypot(camX - 242, camY + 495) < 420 && Math.random() < 0.45) {
+          injectWaterRipple(242 + (Math.random() - 0.5) * 10, -495 + (Math.random() - 0.5) * 10, 0.65, 2);
+        }
+        stepWaveBuffer();
+      }
     }
 
     // =========================================================================
@@ -3436,7 +3742,8 @@
       const cosA = Math.cos(turn);
       const sinA = Math.sin(turn);
       const animTick = Math.floor(cat.idleTimer * 8); // 8 FPS stepped animation
-      const windOff = Math.round(Math.sin(animTick * 0.65) * 1.0);
+      const camWind = sampleWind(camX, camY, fluidTime);
+      const windOff = Math.round(Math.sin(animTick * 0.65 + camWind.wx * 0.25) * Math.min(1.5, 0.65 + camWind.mag * 0.35));
       const speechQueue = [];
 
       // 2. Bounding box visível no grid 1080×1080 (culling exato por viewport!)
@@ -3655,6 +3962,51 @@
                   lowCtx.fillRect(Math.round(wp.x), Math.round(wp.y), 3, 1);
                 }
               }
+            }
+          }
+
+          // WaveBuffer (cristas/cavas) + FloatingItems respeitando oclusão 3D nas fatias z=-2 e z=13
+          if (z === -2 || z === 13) {
+            for (let dy = 1; dy < WAVE_H - 1; dy++) {
+              const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+              if (cwy < minVisWy || cwy > maxVisWy) continue;
+              const row = dy * WAVE_W;
+              for (let dx = 1; dx < WAVE_W - 1; dx++) {
+                const val = waveCurr[row + dx];
+                if (Math.abs(val) < 0.14) continue;
+                const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+                if (cwx < minVisWx || cwx > maxVisWx) continue;
+                const mx = Math.floor(cwx / VOX + HALF_GRID);
+                const my = Math.floor(cwy / VOX + HALF_GRID);
+                if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
+                const wIdx = my * mw + mx;
+                if (matMap[wIdx] !== MAT_WATER) continue;
+                const surfZ = hmap[wIdx] < 0 ? -2 : hmap[wIdx];
+                if (surfZ !== z) continue;
+                const wp = project(cwx, cwy, z + 0.2);
+                const px = Math.round(wp.x);
+                const py = Math.round(wp.y);
+                if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
+                if (val > 0) {
+                  lowCtx.fillStyle = val > 0.7 ? 'rgba(240, 249, 255, 0.72)' : 'rgba(224, 242, 254, 0.45)';
+                } else {
+                  lowCtx.fillStyle = val < -0.7 ? 'rgba(24, 118, 186, 0.52)' : 'rgba(36, 148, 214, 0.34)';
+                }
+                lowCtx.fillRect(px - 1, py, 3, 1);
+              }
+            }
+
+            for (let i = 0; i < floatingItems.length; i++) {
+              const f = floatingItems[i];
+              if (Math.round(f.z) !== z) continue;
+              if (f.x < minVisWx || f.x > maxVisWx || f.y < minVisWy || f.y > maxVisWy) continue;
+              const bob = Math.sin(fluidTime * 3.2 + f.phase) * 0.25;
+              const fp = project(f.x, f.y, z + 0.3 + bob);
+              const px = Math.round(fp.x);
+              const py = Math.round(fp.y);
+              if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
+              lowCtx.fillStyle = f.color;
+              lowCtx.fillRect(px, py, 2, 2);
             }
           }
 
@@ -3907,6 +4259,31 @@
       setTurn: (rad) => { turn = rad; targetTurn = rad; },
       triggerJump: () => { cat.jumpBuffer = 0.14; },
       speak: (text) => { catSpeak(text, 240); },
+      sampleWind: (wx, wy, t = fluidTime) => sampleWind(wx, wy, t),
+      sampleWaterFlow: (wx, wy) => sampleWaterFlow(wx, wy),
+      injectWaterRipple: (wx, wy, strength = 1.0, radiusCells = 2) => injectWaterRipple(wx, wy, strength, radiusCells),
+      injectWindImpulse: (wx, wy, vx, vy, r = 42, life = 0.75) => injectWindImpulse(wx, wy, vx, vy, r, life),
+      getFluidStats: () => ({
+        floatingCount: floatingItems.length,
+        activeImpulses: windImpulses.length,
+        windAtCat: sampleWind(cat.x, cat.y, fluidTime)
+      }),
+      getWaveStats: () => {
+        let sum = 0, max = 0, nan = 0;
+        for (let i = 0; i < waveCurr.length; i++) {
+          const v = waveCurr[i];
+          if (Number.isNaN(v)) nan++;
+          const a = Math.abs(v);
+          sum += a;
+          if (a > max) max = a;
+        }
+        return { sum, max, nan };
+      },
+      stepFluidForTest: (dt) => {
+        syncWaveOrigin();
+        injectWaterRipple(cat.x, cat.y, 0, 0);
+        updatePhysics(dt);
+      },
       getPropsByType: (key) => props.filter(p => p.modelKey === key).map(p => ({
         id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ
       }))

@@ -29,7 +29,7 @@ REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
 2. MODELAGEM PYTHON -> JSON: Gere cada modelo com make_grid(w, h, fill=0), fill_box(...) e to_strings(slices) retornando list[list[str]] (NUNCA concatene todas as linhas de uma fatia em uma única string). Suporte base-36 ('0'..'9','a'..'z'), '0' transparente, y=0 TRASEIRA e y=H-1 FRENTE.
 3. RENDER & SILHUETA: Use squash = 0.75, drawStackObject com totalAngle = selfAngle + turn, e contorno único 1px (#3B2219 ou #3B2A20) via canvas offscreen após empilhar todas as fatias (PROIBIDO contornar fatias individuais).
 4. PAREDES & MÓVEIS OCOS: Use Wall Culling dinâmico (nyRot = nx*sin(turn) + ny*cos(turn) > 0.05 -> rodapé 3px + desativar hitbox) e oclusão angular em estantes/nichos (fundo + laterais sólidas + redesenho de paredes laterais por tier quando cosFront > 0.22).
-5. TERRENO & FÍSICA (se aplicável): Para paisagens naturais, prefira o Motor Micro-Voxel Orgânico 1080x1080 ("Pull-Chain", VOX=2u = 2.160x2.160u, Anti-Kaiju 1.5x): escultura via fbm2d/fbm2dFast/pullHill(cos^steepness)/pullPlateau(cliffMask; useWarp=false apenas em ruínas)/carveRiverPath/elasticChainRelax + Kit de 6 Fórmulas Geológicas (warp2d com fbm2dFast, smax/smin, ridgedFbm/pullRidge, rockTerrace, carveBenchTrail, thermalAndHydraulicErosion) + addArchBridge/getBridgeDeckZ (z_deck(u) = z_base + H_arch*(1-(2u-1)^2), tabuleiro 3 fatias sobre MAT_WATER, pilares u <= 0.09 || u >= 0.91 + guarda-corpos) + lagos orgânicos (warp2d) + espuma apenas em h - min8 > 4 (água calma max(Z_min, h-1)..h) + pullRuinsBlock (max(|dx|/halfW, |dy|/halfD) com fbm2d * 0.08), pré-bake em Tight-Crop Bounded Slices ({canvas,offX,offY,w,h} via Uint32Array) com casca min8-2 + iluminação por gradiente + moitas orgânicas de grama 2-3px (fbm2d > 0.43 + hash sem grade, noOutline, 8 FPS), render slice-by-slice com skip em O(1) + entityLayer (destination-out + silhueta única 1px #3B2219) + particlesByZ (Math.round(p.z) desenhadas dentro do loop após terrainSlices[z], sem contorno preto) e física contínua (AUTO_STEP_MAX=5.5 + deslizamento tangencial ±35° + standableMap/cliffTopMap 5x5). Para terrenos discretos (16x16), use traversão back-to-front O(W*H) via stepX/stepY, cell-bucketing, face culling até minNeighborZ e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
+5. TERRENO & FÍSICA (se aplicável): Para paisagens naturais, prefira o Motor Micro-Voxel Orgânico 1080x1080 ("Pull-Chain", VOX=2u = 2.160x2.160u, Anti-Kaiju 1.5x): escultura via fbm2d/fbm2dFast/pullHill(cos^steepness)/pullPlateau(cliffMask; useWarp=false apenas em ruínas)/carveRiverPath/elasticChainRelax + Kit de 6 Fórmulas Geológicas (warp2d com fbm2dFast, smax/smin, ridgedFbm/pullRidge, rockTerrace, carveBenchTrail, thermalAndHydraulicErosion) + addArchBridge/getBridgeDeckZ (z_deck(u) = z_base + H_arch*(1-(2u-1)^2), tabuleiro 3 fatias sobre MAT_WATER, pilares u <= 0.09 || u >= 0.91 + guarda-corpos) + lagos orgânicos (warp2d) + espuma apenas em h - min8 > 4 (água calma max(Z_min, h-1)..h) + pullRuinsBlock (max(|dx|/halfW, |dy|/halfD) com fbm2d * 0.08), pré-bake em Tight-Crop Bounded Slices ({canvas,offX,offY,w,h} via Uint32Array) com casca min8-2 + iluminação por gradiente + moitas orgânicas de grama 2-3px (fbm2d > 0.43 + hash sem grade, noOutline, 8 FPS), render slice-by-slice com skip em O(1) + entityLayer (destination-out + silhueta única 1px #3B2219) + particlesByZ (Math.round(p.z) desenhadas dentro do loop após terrainSlices[z], sem contorno preto) + Mecânica de Fluidos 2.5D (WindField com altBoost e sombra ∇h·W<0; WaterFlow tangente com Drain Sink obrigatório via smoothstep até u->0 e despawn; WaveBuffer 120x80 a 30 Hz com margens u=0, borda esponja 6 células γ=0.72 vs 0.955 + cutoff |u|<0.008->0 no loop Z-slice em z=-2/13) e física contínua (AUTO_STEP_MAX=5.5 + deslizamento tangencial ±35° + standableMap/cliffTopMap 5x5). Para terrenos discretos (16x16), use traversão back-to-front O(W*H) via stepX/stepY, cell-bucketing, face culling até minNeighborZ e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
 ```
 
 ---
@@ -149,6 +149,23 @@ $$z_{\text{deck}}(u) = z_{\text{base}} + H_{\text{arch}}\,\big(1 - (2u - 1)^2\bi
 - **Blocos de Ruína Desgastados (`pullRuinsBlock`)**: distância retangular SDF com lascas procedurais nas bordas via `fbm2d`:
 
 $$d_{\text{rect}} = \max\!\left(\frac{|dx|}{\text{halfW}},\, \frac{|dy|}{\text{halfD}}\right) + 0.08 \cdot \text{fbm2d}(x, y)$$
+
+### 10. Mecânica de Fluidos (`WindField`, `WaterFlow` + Escoamento & `WaveBuffer` 2D)
+- **Campo de Vento Vetorial (`WindField`)**:
+
+$$\mathbf{W}(x,y,t) = \mathbf{W}_{\text{base}} + \mathbf{W}_{\text{gust}}\sin(\mathbf{k}\cdot\mathbf{p} - \omega t) + A_{\text{turb}}\,\text{fbm}(\mathbf{p}f - \mathbf{v}_w t) + \sum_i \mathbf{I}_i e^{-d^2/r^2}$$
+
+  Modulado por ganho de altitude (**`altBoost`**) e **sombra topográfica de paredões (`∇h · W < 0`)**, reduzindo o vento a sotavento de falésias enquanto impulsiona lâminas de grama e partículas em `particlesByZ`.
+- **Correnteza (`WaterFlow`) + Ponto de Escoamento / Sumidouro (*Drain Sink*)**:
+
+$$\mathbf{p}_{t+\Delta t} = \mathbf{p}_t + \mathbf{u}(\mathbf{p}_t)\,\Delta t, \qquad \mathbf{u}_{\text{eff}}(\mathbf{p}) = \mathbf{u}(\mathbf{p}) \cdot \operatorname{smoothstep}(d_{\text{sink}}) \xrightarrow[d_{\text{sink}} \to 0]{} \mathbf{0}$$
+
+  Advecção tangente ao leito do rio com **atenuação obrigatória por *smoothstep* até zero (`u -> 0`)** na foz/mar aberto (ou centro de lago) seguida de *despawn*, evitando acúmulo infinito de partículas flutuantes.
+- **Buffer Local de Ondas 2D (`WaveBuffer` `120×80`, 30 Hz)**:
+
+$$u_{t+1}(x,y) = \left(\frac{u(x-1,y) + u(x+1,y) + u(x,y-1) + u(x,y+1)}{2} - u_{t-1}(x,y)\right)\cdot\gamma$$
+
+  Simulado localmente à janela da câmera em **30 Hz** com margens secas impondo **$u = 0$** (reflexão natural em praias e pilares), **camada esponja nas 6 células de borda** (**$\gamma = 0.72$** vs **$\gamma = 0.955$** no interior + cutoff **`|u| < 0.008 -> 0`**) para extinguir ecos e zerar energia em repouso, e renderizado **dentro do loop Z-slice (`z = -2` / `13`)** para oclusão 3D real.
 
 ---
 
