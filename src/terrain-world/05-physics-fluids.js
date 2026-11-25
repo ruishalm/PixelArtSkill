@@ -485,22 +485,6 @@
 
       const shallowScale = c.mat === MAT_SHALLOW ? 0.55 : 1.0;
 
-      if (wx < -450 && wy < -420 && c.h > 5) {
-        const dx = -690 - wx;
-        const dy = -585 - wy;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 1) return { vx: 0, vy: 0, speed: 0 };
-        const rad = Math.min(1, dist / 48);
-        const speedScale = 7.5 * rad * rad * shallowScale;
-        if (speedScale < 0.02) return { vx: 0, vy: 0, speed: 0 };
-        const nx = dx / dist, ny = dy / dist;
-        const vx = (-ny * 0.78 + nx * 0.35) * speedScale;
-        const vy = (nx * 0.78 + ny * 0.35) * speedScale;
-        const speed = Math.hypot(vx, vy);
-        if (speed < 0.02) return { vx: 0, vy: 0, speed: 0 };
-        return { vx, vy, speed };
-      }
-
       if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
         const vx = -34 * drainFactor * shallowScale;
         const vy = 4 * drainFactor * shallowScale;
@@ -522,6 +506,10 @@
           bestTx = seg.tx;
           bestTy = seg.ty;
         }
+      }
+      // Lagos isolados e áreas fora do leito do rio (~64u) são água parada (sem correnteza)
+      if (bestD2 > 64 * 64) {
+        return { vx: 0, vy: 0, speed: 0 };
       }
       const speed = 26 * drainFactor * shallowScale;
       return { vx: bestTx * speed, vy: bestTy * speed, speed };
@@ -705,9 +693,6 @@
       return isWetMat(matMap[my * mw + mx]);
     }
 
-    let waveSubmergedVol = 0;
-    let waveLevelRise = 0;
-
     function syncWaveOrigin() {
       const targetOX = Math.floor(camX / WAVE_CELL) * WAVE_CELL - (WAVE_W * WAVE_CELL) * 0.5;
       const targetOY = Math.floor(camY / WAVE_CELL) * WAVE_CELL - (WAVE_H * WAVE_CELL) * 0.5;
@@ -817,13 +802,13 @@
     function stepWaveBuffer() {
       const obs = cachedWaterObstacles;
       waveTmp.fill(0);
-      let wetCount = 0;
       for (let dy = 1; dy < WAVE_H - 1; dy++) {
         const wy = waveOriginY + (dy + 0.5) * WAVE_CELL;
         const my = Math.floor(wy / VOX + HALF_GRID);
         if (my < 0 || my >= mh) continue;
         const row = dy * WAVE_W;
         const isSpongeY = dy < 6 || dy >= WAVE_H - 6;
+        let rowWind = null;
         for (let dx = 1; dx < WAVE_W - 1; dx++) {
           const idx = row + dx;
           const wx = waveOriginX + (dx + 0.5) * WAVE_CELL;
@@ -832,7 +817,9 @@
             waveTmp[idx] = 0;
             continue;
           }
-          wetCount++;
+          if ((dx & 3) === 1 || !rowWind) {
+            rowWind = sampleWind(wx, wy, fluidTime);
+          }
           const isSponge = isSpongeY || dx < 6 || dx >= WAVE_W - 6;
           const damp = isSponge ? 0.72 : 0.955;
 
@@ -866,6 +853,13 @@
             next = (cAvg - pVal) * damp;
           }
 
+          // Marolas capilares geradas pelo WindField na superfície da água (com sombra topográfica)
+          if (!isSponge && rowWind && rowWind.mag > 0.42) {
+            const wForce = Math.min(0.08, (rowWind.mag - 0.42) * 0.055);
+            const phase = (wx * rowWind.wx + wy * rowWind.wy) * 0.16 - fluidTime * 5.2;
+            next += Math.sin(phase) * wForce;
+          }
+
           if (Math.abs(next) < 0.008) next = 0;
           else if (next > 4.0) next = 4.0;
           else if (next < -4.0) next = -4.0;
@@ -876,9 +870,22 @@
       wavePrev = waveCurr;
       waveCurr = waveTmp;
       waveTmp = oldPrev;
-      // Nível médio deslocado pelo volume submerso (Arquimedes: Δh = V_sub / A_bacia)
-      const targetRise = Math.min(1.5, (waveSubmergedVol * 12) / Math.max(40, wetCount));
-      waveLevelRise += (targetRise - waveLevelRise) * 0.25;
+    }
+
+    // Deslocamento local de Arquimedes (apenas corpos submersos num raio de 64u na mesma cota d'água)
+    function getLocalArchimedesRise(wx, wy, refSurfZ) {
+      let localVol = 0;
+      if ((cat._prevSubVol || 0) > 0 && Math.hypot(cat.x - wx, cat.y - wy) <= 64) {
+        localVol += cat._prevSubVol;
+      }
+      for (let i = 0; i < debrisDrops.length; i++) {
+        const d = debrisDrops[i];
+        if (!d.inWater || !(d._prevSubVol > 0)) continue;
+        if (Math.abs(d.z - refSurfZ) <= 3.5 && Math.hypot(d.x - wx, d.y - wy) <= 64) {
+          localVol += d._prevSubVol;
+        }
+      }
+      return Math.min(1.5, localVol * 0.14);
     }
 
     // =========================================================================
@@ -1127,6 +1134,7 @@
     function spawnDebrisDrops(wx, wy, wz, modelKey, count, biasDx = 0, biasDy = 0, vzMin = 95, vzMax = 145) {
       const model = propModels[modelKey];
       if (!model || count <= 0) return;
+      const isLog = modelKey === 'wood_log';
       for (let i = 0; i < count; i++) {
         const ang = Math.atan2(biasDy, biasDx) + (Math.random() - 0.5) * 2.2;
         const hSpd = 24 + Math.random() * 34;
@@ -1144,11 +1152,15 @@
           spin: (Math.random() - 0.5) * 6,
           bounces: 0,
           inWater: false,
-          life: 18.0
+          persistent: isLog,
+          life: isLog ? 999999 : 18.0
         });
       }
-      if (debrisDrops.length > 64) {
-        debrisDrops.splice(0, debrisDrops.length - 64);
+      if (debrisDrops.length > 96) {
+        for (let i = 0; i < debrisDrops.length && debrisDrops.length > 96; i++) {
+          if (!debrisDrops[i].persistent) { debrisDrops.splice(i, 1); i--; }
+        }
+        if (debrisDrops.length > 96) debrisDrops.splice(0, debrisDrops.length - 96);
       }
     }
 
@@ -1351,6 +1363,14 @@
           });
           refreshWaterObstaclesCache();
           destructStats.trimmedCount++;
+        }
+      } else {
+        // Sem prop alvo: se estiver sobre areia ou neve, escava matéria granular em tempo real!
+        const digX = cat.x - Math.sin(cat.selfAngle) * 8;
+        const digY = cat.y + Math.cos(cat.selfAngle) * 8;
+        const dc = getCellAt(digX, digY);
+        if (dc && (dc.mat === MAT_SAND || dc.mat === MAT_PEAK)) {
+          disturbGranular(digX, digY, equippedTool === 'tool_hoe' ? 2 : 1);
         }
       }
     }
@@ -1806,7 +1826,7 @@
       if (sup.bestH > -900) {
         cat.groundZ = sup.bestH;
         if (cat.z <= sup.bestH + 0.05 && cat.vz <= 0 && (wasOnGround || prevZ >= sup.bestH - 2.0)) {
-          if (!wasOnGround && cat.vz < -90) {
+              if (!wasOnGround && cat.vz < -90) {
             if (sup.centerCell && sup.centerCell.mat === MAT_SHALLOW) {
               sfxShallowStep();
               injectWaterRipple(cat.x, cat.y, 1.8, 2);
@@ -1814,6 +1834,9 @@
             } else {
               sfxLand();
               spawnParticles(cat.x, cat.y, sup.bestH + 1, 6, ['#FDF6E9', '#D6C4AA'], 24);
+              if (sup.centerCell && (sup.centerCell.mat === MAT_SAND || sup.centerCell.mat === MAT_PEAK)) {
+                disturbGranular(cat.x, cat.y, 1);
+              }
             }
           }
           cat.z = sup.bestH;
@@ -1972,8 +1995,9 @@
         const f = floatingItems[i];
         const flow = sampleWaterFlow(f.x, f.y);
         const wave = sampleWaveHeightAndGrad(f.x, f.y);
-        f.x += (flow.vx - wave.gx * 18) * dt;
-        f.y += (flow.vy - wave.gy * 18) * dt;
+        const fWind = sampleWind(f.x, f.y, fluidTime);
+        f.x += (flow.vx + fWind.wx * 3.8 - wave.gx * 18) * dt;
+        f.y += (flow.vy + fWind.wy * 3.8 - wave.gy * 18) * dt;
         const fc = getCellAt(f.x, f.y);
         if (fc && isWetMat(fc.mat)) {
           f.z = waterSurfZ(fc) + wave.u * 1.1;
@@ -2092,8 +2116,7 @@
         }
       }
 
-      // Drops balísticos (toras & pedregulhos) + empurrão do gatinho + correnteza + Arquimedes
-      let frameSubVol = cat._prevSubVol || 0;
+      // Drops balísticos (toras & pedregulhos) + empurrão do gatinho + correnteza + Arquimedes local
       for (let i = debrisDrops.length - 1; i >= 0; i--) {
         const dr = debrisDrops[i];
         if (!dr.persistent) dr.life -= dt;
@@ -2104,9 +2127,10 @@
         if (dr.inWater) {
           const flow = sampleWaterFlow(dr.x, dr.y);
           const wave = sampleWaveHeightAndGrad(dr.x, dr.y);
+          const drWind = sampleWind(dr.x, dr.y, fluidTime);
           const isHeavy = dr.modelKey === 'stone_chunk';
-          dr.vx = (isHeavy ? flow.vx * 0.25 : flow.vx - wave.gx * 28);
-          dr.vy = (isHeavy ? flow.vy * 0.25 : flow.vy - wave.gy * 28);
+          dr.vx = (isHeavy ? flow.vx * 0.25 : flow.vx + drWind.wx * 3.2 - wave.gx * 28);
+          dr.vy = (isHeavy ? flow.vy * 0.25 : flow.vy + drWind.wy * 3.2 - wave.gy * 28);
           dr.x += dr.vx * dt;
           dr.y += dr.vy * dt;
           dr.selfAngle += dt * (isHeavy ? 0.1 : 0.6 + wave.gx * 0.8);
@@ -2119,8 +2143,9 @@
               dr.z = Math.max(dc.h, dr.z + dr.vz * dt);
               if (dr.z <= dc.h + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
             } else {
-              // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer + nível deslocado
-              const surfZ = waterSurfZ(dc) + waveLevelRise + wave.u * 1.4;
+              // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer + nível local
+              const baseSurfZ = waterSurfZ(dc);
+              const surfZ = baseSurfZ + getLocalArchimedesRise(dr.x, dr.y, baseSurfZ) + wave.u * 1.4;
               subVol = Math.max(0, Math.min(1.5, (surfZ - dr.z + 1.5) / 3.0));
               const az = (subVol * 1.85 - 1.0) * 180 - dr.vz * 4.5;
               dr.vz += az * dt;
@@ -2131,7 +2156,6 @@
               injectWaterRipple(dr.x, dr.y, Math.max(-0.85, Math.min(0.85, dVol * 0.95)), 1);
             }
             dr._prevSubVol = subVol;
-            frameSubVol += subVol;
           } else {
             if (dr._prevSubVol) {
               injectWaterRipple(dr.x, dr.y, -dr._prevSubVol * 0.8, 1);
@@ -2191,7 +2215,6 @@
           }
         }
       }
-      waveSubmergedVol = frameSubVol;
 
       updateFoliage(dt);
 
@@ -2239,6 +2262,176 @@
         stepWaveBuffer();
       }
       stepThermodynamics(dt);
+      stepVerletChains(dt);
+    }
+
+    // =========================================================================
+    // 9C. MATÉRIA GRANULAR (Areia / Neve — Ângulo de Repouso + Dirty-Rect Re-Bake)
+    // =========================================================================
+    function relaxGranularBox(mx0, my0, mx1, my1, passes = 3) {
+      const x0 = Math.max(2, mx0);
+      const y0 = Math.max(2, my0);
+      const x1 = Math.min(mw - 3, mx1);
+      const y1 = Math.min(mh - 3, my1);
+      let changed = false;
+      for (let pass = 0; pass < passes; pass++) {
+        for (let my = y0; my <= y1; my++) {
+          const row = my * mw;
+          for (let mx = x0; mx <= x1; mx++) {
+            const idx = row + mx;
+            const mat = matMap[idx];
+            if (mat !== MAT_SAND && mat !== MAT_PEAK) continue;
+            const talus = mat === MAT_SAND ? 2 : 3;
+            const h = hmap[idx];
+            let lowestNb = -1;
+            let lowestH = h - talus;
+            const nbs = [idx - 1, idx + 1, idx - mw, idx + mw];
+            for (let k = 0; k < 4; k++) {
+              const nb = nbs[k];
+              if (isWetMat(matMap[nb])) continue;
+              if (hmap[nb] < lowestH) {
+                lowestH = hmap[nb];
+                lowestNb = nb;
+              }
+            }
+            if (lowestNb >= 0) {
+              hmap[idx] = h - 1;
+              hmap[lowestNb] = hmap[lowestNb] + 1;
+              changed = true;
+            }
+          }
+        }
+      }
+      if (changed) {
+        rebakeTerrainDirtyRect(x0 - 2, y0 - 2, x1 + 2, y1 + 2);
+      }
+      return changed;
+    }
+
+    function disturbGranular(wx, wy, depth = 1) {
+      const g = worldToGrid(wx, wy);
+      const mx = g.mx, my = g.my;
+      if (mx < 3 || mx >= mw - 3 || my < 3 || my >= mh - 3) return;
+      const idx = my * mw + mx;
+      const mat = matMap[idx];
+      if (mat !== MAT_SAND && mat !== MAT_PEAK) return;
+
+      const minFloor = mat === MAT_SAND ? -1 : 10;
+      const take = Math.min(depth, Math.max(0, hmap[idx] - minFloor));
+      if (take > 0) {
+        hmap[idx] -= take;
+        // Deposita o material deslocado na borda ao redor
+        const rim = [idx - 2, idx + 2, idx - 2 * mw, idx + 2 * mw];
+        const target = rim[(Math.abs(mx + my)) & 3];
+        if (!isWetMat(matMap[target])) hmap[target] += take;
+      }
+      relaxGranularBox(mx - 6, my - 6, mx + 6, my + 6, 3);
+      rebakeTerrainDirtyRect(mx - 6, my - 6, mx + 6, my + 6);
+      const pCol = mat === MAT_SAND ? ['#F2D69A', '#E7C788'] : ['#F5C6E0', '#FFFFFF'];
+      spawnParticles(wx, wy, (hmap[idx] || 0) + 1.5, 6, pCol, 22, { grav: 210, vz: 28, life: 0.45 });
+      guideSpeak('granular', mat === MAT_SAND ? 'Areia fofa! Ângulo de repouso! ⏳' : 'Neve fofa no pico! ❄️', 130);
+    }
+
+    // =========================================================================
+    // 9D. TECIDOS, CORDAS & BANDEIRINHAS (Integração de Verlet 3D)
+    // =========================================================================
+    const verletChains = [];
+    function createVerletChain(x0, y0, z0, x1, y1, z1, count, opts = {}) {
+      const nodes = [];
+      const totalLen = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+      const segLen = opts.segLen || (totalLen / Math.max(1, count - 1));
+      for (let i = 0; i < count; i++) {
+        const t = i / Math.max(1, count - 1);
+        const x = x0 + (x1 - x0) * t;
+        const y = y0 + (y1 - y0) * t;
+        const z = z0 + (z1 - z0) * t;
+        const pinned = (i === 0) || (!!opts.pinEnd && i === count - 1);
+        nodes.push({ x, y, z, ox: x, oy: y, oz: z, pinned });
+      }
+      verletChains.push({
+        nodes,
+        segLen,
+        windScale: opts.windScale !== undefined ? opts.windScale : 1.0,
+        kind: opts.kind || 'rope',
+        colors: opts.colors || ['#EF4444', '#FACC15', '#38BDF8', '#4ADE80']
+      });
+    }
+
+    // 1. Varal de bandeirinhas na Vila (entre Cabana 2 e o toco/poste)
+    createVerletChain(-214, 210, 34, -262, 153, 22, 14, { pinEnd: true, segLen: 5.8, windScale: 1.35, kind: 'garland' });
+    // 2. Fitas do Portal Torii no Jardim Zen
+    createVerletChain(-458, -405, 58, -458, -405, 42, 8, { pinEnd: false, segLen: 2.2, windScale: 1.5, kind: 'banner', colors: ['#EF4444', '#FFFDF7'] });
+    createVerletChain(-412, -405, 58, -412, -405, 42, 8, { pinEnd: false, segLen: 2.2, windScale: 1.5, kind: 'banner', colors: ['#EF4444', '#FFFDF7'] });
+    // 3. Flâmula no topo do Farol da Praia
+    createVerletChain(-714, 822, 122, -692, 822, 120, 10, { pinEnd: false, segLen: 2.4, windScale: 2.1, kind: 'banner', colors: ['#F97316', '#FACC15'] });
+    // 4. Cipó pendente na Árvore Sakura do Pico
+    createVerletChain(468, -576, 62, 468, -576, 40, 9, { pinEnd: false, segLen: 2.6, windScale: 1.4, kind: 'vine', colors: ['#F472B6', '#4ADE80'] });
+
+    function stepVerletChains(dt) {
+      const stepDt = Math.min(0.033, dt);
+      const dt2 = stepDt * stepDt;
+      const damp = 0.96;
+      for (let c = 0; c < verletChains.length; c++) {
+        const ch = verletChains[c];
+        const nodes = ch.nodes;
+        if (Math.hypot(nodes[0].x - camX, nodes[0].y - camY) > 460) continue;
+
+        for (let i = 0; i < nodes.length; i++) {
+          const n = nodes[i];
+          if (n.pinned) continue;
+          const vx = (n.x - n.ox) * damp;
+          const vy = (n.y - n.oy) * damp;
+          const vz = (n.z - n.oz) * damp;
+          n.ox = n.x;
+          n.oy = n.y;
+          n.oz = n.z;
+
+          const w = sampleWind(n.x, n.y, fluidTime);
+          let ax = w.wx * 95 * ch.windScale;
+          let ay = w.wy * 95 * ch.windScale;
+          let az = -190;
+
+          const dCat = Math.hypot(n.x - cat.x, n.y - cat.y);
+          if (dCat < 12 && Math.abs(n.z - (cat.z + 8)) < 10) {
+            const inv = 1 / Math.max(0.5, dCat);
+            ax += (n.x - cat.x) * inv * 420;
+            ay += (n.y - cat.y) * inv * 420;
+          }
+
+          n.x += vx + ax * dt2;
+          n.y += vy + ay * dt2;
+          n.z += vz + az * dt2;
+        }
+
+        // Restrições de distância (4 iterações de Gauss-Seidel)
+        for (let iter = 0; iter < 4; iter++) {
+          for (let i = 0; i < nodes.length - 1; i++) {
+            const a = nodes[i];
+            const b = nodes[i + 1];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const dz = b.z - a.z;
+            const dist = Math.hypot(dx, dy, dz) || 0.0001;
+            const diff = (dist - ch.segLen) / dist;
+            if (!a.pinned && !b.pinned) {
+              a.x += dx * diff * 0.5;
+              a.y += dy * diff * 0.5;
+              a.z += dz * diff * 0.5;
+              b.x -= dx * diff * 0.5;
+              b.y -= dy * diff * 0.5;
+              b.z -= dz * diff * 0.5;
+            } else if (a.pinned && !b.pinned) {
+              b.x -= dx * diff;
+              b.y -= dy * diff;
+              b.z -= dz * diff;
+            } else if (!a.pinned && b.pinned) {
+              a.x += dx * diff;
+              a.y += dy * diff;
+              a.z += dz * diff;
+            }
+          }
+        }
+      }
     }
 
     // =========================================================================
@@ -2306,7 +2499,7 @@
             cat.hurtTimer = 1.0;
             cat.vz = 145;
             cat.onGround = false;
-            sfxHurt();
+            sfxBlocked();
             catSpeak('Ai! Quente! 🔥', 110);
           }
         } else if (dCat >= 10.5 && dCat < 26) {

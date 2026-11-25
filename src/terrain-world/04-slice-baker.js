@@ -486,5 +486,85 @@
       uploadTightSlices(grassBufs, gMinX, gMinY, gW, gH, grassTipSlices, Z_GRASS_MAX);
     }
     bakeTerrainSlices();
+
+    // Re-bake incremental por Dirty Rect (para Matéria Granular: areia/neve em tempo real)
+    function rebakeTerrainDirtyRect(mx0, my0, mx1, my1) {
+      const x0 = Math.max(1, mx0);
+      const y0 = Math.max(1, my0);
+      const x1 = Math.min(mw - 2, mx1);
+      const y1 = Math.min(mh - 2, my1);
+      if (x1 < x0 || y1 < y0) return;
+
+      const PAL_PATH = [[196, 158, 114], [180, 142, 99]];
+      const PAL_SAND = [[242, 214, 154], [231, 199, 136]];
+      const PAL_PEAK = [[245, 198, 224], [234, 178, 210]];
+      const PAL_SOIL = [[138, 96, 62], [116, 79, 50]];
+      const PAL_ROCK = [[104, 110, 122], [84, 90, 102]];
+
+      let minZDirty = TERRAIN_Z_MAX;
+      let maxZDirty = Z_MIN;
+      const cellInfo = [];
+
+      for (let my = y0; my <= y1; my++) {
+        const row = my * mw;
+        for (let mx = x0; mx <= x1; mx++) {
+          const idx = row + mx;
+          const mat = matMap[idx];
+          if (isWetMat(mat) || mat === MAT_BRIDGE) continue;
+          const h = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX - 1, hmap[idx]));
+          const hL = hmap[idx - 1], hR = hmap[idx + 1], hU = hmap[idx - mw], hD = hmap[idx + mw];
+          const min8 = Math.min(
+            hL, hR, hU, hD,
+            hmap[idx - mw - 1], hmap[idx - mw + 1], hmap[idx + mw - 1], hmap[idx + mw + 1]
+          );
+          const zStart = Math.max(Z_MIN, min8 - 2);
+          if (zStart < minZDirty) minZDirty = zStart;
+          if (h > maxZDirty) maxZDirty = h;
+          cellInfo.push({ mx, my, idx, h, mat, zStart, hL, hR, hU, hD });
+        }
+      }
+
+      if (maxZDirty < minZDirty) return;
+      for (let z = minZDirty; z <= maxZDirty; z++) {
+        const sl = terrainSlices[z];
+        if (!sl) continue;
+        const rx0 = Math.max(sl.offX, x0);
+        const ry0 = Math.max(sl.offY, y0);
+        const rx1 = Math.min(sl.offX + sl.w - 1, x1);
+        const ry1 = Math.min(sl.offY + sl.h - 1, y1);
+        if (rx1 < rx0 || ry1 < ry0) continue;
+
+        const rw = rx1 - rx0 + 1;
+        const rh = ry1 - ry0 + 1;
+        const sctx = sl.canvas.getContext('2d');
+        const img = sctx.getImageData(rx0 - sl.offX, ry0 - sl.offY, rw, rh);
+        const buf = new Uint32Array(img.data.buffer);
+
+        for (let i = 0; i < cellInfo.length; i++) {
+          const ci = cellInfo[i];
+          if (ci.mx < rx0 || ci.mx > rx1 || ci.my < ry0 || ci.my > ry1) continue;
+          const outIdx = (ci.my - ry0) * rw + (ci.mx - rx0);
+          if (z < ci.zStart || z > ci.h) {
+            buf[outIdx] = 0;
+            continue;
+          }
+          const nHash = ((Math.imul(ci.mx, 73856093)) ^ (Math.imul(ci.my, 19349663))) >>> 0;
+          const microTex = ((nHash & 7) - 3) * 2;
+          const sunShade = Math.max(-22, Math.min(22, Math.round((-(ci.hR - ci.hL) - (ci.hD - ci.hU)) * 1.4)));
+          const exposedEdge = (ci.hL < ci.h || ci.hU < ci.h) ? 10 : 0;
+          if (z === ci.h) {
+            const baseRGB = ci.mat === MAT_SAND
+              ? PAL_SAND[nHash & 1]
+              : (ci.mat === MAT_PEAK ? PAL_PEAK[nHash & 1] : PAL_PATH[nHash & 1]);
+            buf[outIdx] = shadePack(baseRGB, sunShade + exposedEdge + microTex, shadowMask[ci.idx]);
+          } else {
+            const depth = ci.h - z;
+            const cliffRGB = depth <= 4 ? PAL_SOIL[(nHash + z) & 1] : PAL_ROCK[(nHash + z) & 1];
+            buf[outIdx] = shadePack(cliffRGB, sunShade - depth * 2 + microTex, shadowMask[ci.idx]);
+          }
+        }
+        sctx.putImageData(img, rx0 - sl.offX, ry0 - sl.offY);
+      }
+    }
     const STARTUP_MS = Math.round((performance.now() - STARTUP_T0) * 10) / 10;
 

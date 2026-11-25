@@ -631,6 +631,36 @@
           }
         }
 
+        // 4c-ter. Tecidos, cordas e bandeirinhas Verlet na fatia Z (com oclusão 3D real!)
+        for (let ci = 0; ci < verletChains.length; ci++) {
+          const ch = verletChains[ci];
+          const nodes = ch.nodes;
+          if (Math.hypot(nodes[0].x - camX, nodes[0].y - camY) > 420) continue;
+          for (let ni = 0; ni < nodes.length - 1; ni++) {
+            const a = nodes[ni], b = nodes[ni + 1];
+            const midZ = Math.round((a.z + b.z) * 0.5);
+            if (midZ !== z) continue;
+            const pa = project(a.x, a.y, a.z);
+            const pb = project(b.x, b.y, b.z);
+            lowCtx.strokeStyle = ch.kind === 'vine' ? '#166534' : '#5C3A21';
+            lowCtx.lineWidth = 1;
+            lowCtx.beginPath();
+            lowCtx.moveTo(Math.round(pa.x), Math.round(pa.y));
+            lowCtx.lineTo(Math.round(pb.x), Math.round(pb.y));
+            lowCtx.stroke();
+            if (ch.kind === 'garland' && (ni & 1) === 1) {
+              lowCtx.fillStyle = ch.colors[ni % ch.colors.length];
+              lowCtx.fillRect(Math.round(pa.x) - 1, Math.round(pa.y) + 1, 2, 3);
+            } else if (ch.kind === 'banner' && ni >= 2) {
+              lowCtx.fillStyle = ch.colors[ni % ch.colors.length];
+              lowCtx.fillRect(Math.round(pa.x) - 1, Math.round(pa.y), 3, 2);
+            } else if (ch.kind === 'vine' && (ni & 1) === 0) {
+              lowCtx.fillStyle = ch.colors[ni % ch.colors.length];
+              lowCtx.fillRect(Math.round(pa.x) - 1, Math.round(pa.y), 2, 2);
+            }
+          }
+        }
+
         // 4d. Entidades cujo [baseZ, topZ) contém z
         for (let i = 0; i < activeDrawables.length; i++) {
           const d = activeDrawables[i];
