@@ -30,6 +30,7 @@ REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
 3. RENDER & SILHUETA: Use squash = 0.75, drawStackObject com totalAngle = selfAngle + turn, e contorno único 1px (#3B2219 ou #3B2A20) via canvas offscreen após empilhar todas as fatias (PROIBIDO contornar fatias individuais).
 4. PAREDES & MÓVEIS OCOS: Use Wall Culling dinâmico (nyRot = nx*sin(turn) + ny*cos(turn) > 0.05 -> rodapé 3px + desativar hitbox) e oclusão angular em estantes/nichos (fundo + laterais sólidas + redesenho de paredes laterais por tier quando cosFront > 0.22).
 5. TERRENO & FÍSICA (se aplicável): Para paisagens naturais, prefira o Motor Micro-Voxel Orgânico 1080x1080 ("Pull-Chain", VOX=2u = 2.160x2.160u, Anti-Kaiju 1.5x): escultura via fbm2d/fbm2dFast/pullHill(cos^steepness)/pullPlateau(cliffMask; useWarp=false apenas em ruínas)/carveRiverPath/elasticChainRelax + Kit de 6 Fórmulas Geológicas (warp2d com fbm2dFast, smax/smin, ridgedFbm/pullRidge, rockTerrace, carveBenchTrail, thermalAndHydraulicErosion) + addArchBridge/getBridgeDeckZ (z_deck(u) = z_base + H_arch*(1-(2u-1)^2), tabuleiro 3 fatias sobre MAT_WATER, pilares u <= 0.09 || u >= 0.91 + guarda-corpos) + lagos orgânicos (warp2d) + espuma apenas em h - min8 > 4 (água calma max(Z_min, h-1)..h) + pullRuinsBlock (max(|dx|/halfW, |dy|/halfD) com fbm2d * 0.08), pré-bake em Tight-Crop Bounded Slices ({canvas,offX,offY,w,h} via Uint32Array) com casca min8-2 + iluminação por gradiente + moitas orgânicas de grama 2-3px (fbm2d > 0.43 + hash sem grade, noOutline, 8 FPS), render slice-by-slice com skip em O(1) + entityLayer (destination-out + silhueta única 1px #3B2219) + particlesByZ (Math.round(p.z) desenhadas dentro do loop após terrainSlices[z], sem contorno preto) + Mecânica de Fluidos 2.5D (WindField com altBoost e sombra ∇h·W<0; WaterFlow tangente com Drain Sink obrigatório via smoothstep até u->0 e despawn; WaveBuffer 120x80 a 30 Hz com margens u=0, borda esponja 6 células γ=0.72 vs 0.955 + cutoff |u|<0.008->0 no loop Z-slice em z=-2/13) e física contínua (AUTO_STEP_MAX=5.5 + deslizamento tangencial ±35° + standableMap/cliffTopMap 5x5). Para terrenos discretos (16x16), use traversão back-to-front O(W*H) via stepX/stepY, cell-bucketing, face culling até minNeighborZ e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
+6. TAXONOMIA DE 6 CLASSES & FOLHAGEM REATIVA (isCharacter / isFoliage): Classifique todo asset estritamente em uma das 6 classes oficiais: Character (isCharacter, humanos/NPCs/animais/criaturas; alias legado isPet), Fixed (isFixed), Movable (isMovable), Surface Prop (isProp), Wall/Portal (isWallItem/isDoor) ou Foliage (isFoliage com rigidity 0..1, windScale, pushRadius, pushStrength, leafColors). Para Foliage, aplique Flexão Parabólica em Balanço Δp(s_z) = (s_z/(H-1))^2 * b (base s_z=0 cravada no solo, sem rotacionar/borrar pixels), Mola Amortecida a = k_stiff*(W(x,y,t)*windScale*(1-rigidity) - b) + F_push(entidades) - c_damp*v, e acoplamento Fluido<->Folhagem: personagens desprendem folhas/pétalas para particlesByZ (WindField), e pétalas que tocam MAT_WATER viram floatingItems levados por WaterFlow até o Drain Sink.
 ```
 
 ---
@@ -37,12 +38,16 @@ REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
 ## 🧭 O que há na Skill (`SKILL.md`)
 
 1. **Seletor de Paradigma (Pure Canvas 2D Obrigatório)**: define *Sprite Stacking* sobre Canvas 2D (`imageSmoothingEnabled = false`) como única arquitetura oficial, proibindo Three.js/WebGL/GLSL no fluxo padrão.
-2. **Taxonomia Estrita de 5 Classes de Assets**:
-   - **Entidades / Personagens**: locomoção biomecânica em 2 fases (*Swing* + *Stance*) e sub-pilhas rígidas articuladas (sem cisalhamento horizontal de fatias).
-   - **Estruturas Fixas (`isFixed`)**: âncoras arquiteturais protegidas contra arrasto.
-   - **Móveis Móveis (`isMovable`)**: reposicionáveis e rotacionáveis com **Parenting Hierárquico Sincronizado** (filhos rotacionam e transladam solidários ao pai).
-   - **Props de Superfície (`isProp`)**: encaixe automático na cota `liftZ` do suporte pai.
-   - **Itens de Parede e Portas (`isWallItem`)**: hitbox 3D projetada com bloqueio automático quando a parede é ocultada.
+2. **Taxonomia Estrita de 6 Classes de Assets**:
+
+   | # | Classe | Flag Canônica | Papel Estrutural & Comportamento |
+   |---|---|---|---|
+   | 1 | **Character** | `isCharacter` *(compat. `isPet`)* | Humanos, NPCs, animais e criaturas; locomoção biomecânica em 2 fases (*Swing* + *Stance*) e sub-pilhas rígidas articuladas (sem cisalhamento horizontal de fatias). |
+   | 2 | **Fixed** | `isFixed` | Âncoras arquiteturais e cenográficas protegidas contra arrasto. |
+   | 3 | **Movable** | `isMovable` | Móveis reposicionáveis e rotacionáveis com **Parenting Hierárquico Sincronizado** (filhos rotacionam e transladam solidários ao pai). |
+   | 4 | **Surface Prop** | `isProp` | Objetos de superfície com encaixe automático na cota `liftZ` do suporte pai. |
+   | 5 | **Wall / Portal** | `isWallItem` / `isDoor` | Itens de parede, janelas e portas com hitbox 3D projetada e bloqueio automático quando a parede é ocultada. |
+   | 6 | **Foliage** | `isFoliage` | Vegetação reativa (`rigidity` `0..1`, `windScale`, `pushRadius`, `pushStrength`, `leafColors`) com flexão parabólica em balanço, mola amortecida (`WindField` + entidades) e desprendimento de folhas/pétalas para `particlesByZ` e `floatingItems`. |
 3. **Convenção Canônica de Eixos (`+Y = Frente`)**: `y = 0` é a traseira, `y = H - 1` é a frente do modelo, `z = 0..D-1` cresce da base ao topo; tabela exata de `selfAngle` por parede (`0`, `π/2`, `π`, `-π/2`) para câmera padrão em `-45°`.
 4. **Formato Python → JSON Base-36 & RLE (`*ch<len>;`)**: helpers `make_grid(w, h, fill=0)`, `fill_box(...)` e `to_strings(slices)` retornando obrigatoriamente `list[list[str]]` (nunca string única achatada), com índice `'0'` transparente e `'1'..'z'` indexando até 35 cores; pacotes monumentais suportam compressão RLE por linha (`*<ch><len>;`) reduzindo o JSON em ~75% sem perda de velocidade no `buildSliceSheet`.
 5. **Silhueta Única `1px` & Exceção de Vegetação**: dilatação ortogonal `[-1,0],[1,0],[0,-1],[0,1]` em canvas auxiliar após empilhar todo o objeto (`#3B2219` ou `#3B2A20`, nunca preto puro e nunca por fatia individual); lâminas de grama `2–3px` usam `noOutline: true` para não virarem blocos de `3px`.
@@ -166,6 +171,23 @@ $$\mathbf{p}_{t+\Delta t} = \mathbf{p}_t + \mathbf{u}(\mathbf{p}_t)\,\Delta t, \
 $$u_{t+1}(x,y) = \left(\frac{u(x-1,y) + u(x+1,y) + u(x,y-1) + u(x,y+1)}{2} - u_{t-1}(x,y)\right)\cdot\gamma$$
 
   Simulado localmente à janela da câmera em **30 Hz** com margens secas impondo **$u = 0$** (reflexão natural em praias e pilares), **camada esponja nas 6 células de borda** (**$\gamma = 0.72$** vs **$\gamma = 0.955$** no interior + cutoff **`|u| < 0.008 -> 0`**) para extinguir ecos e zerar energia em repouso, e renderizado **dentro do loop Z-slice (`z = -2` / `13`)** para oclusão 3D real.
+
+### 11. Folhagem Reativa (`Foliage` / `isFoliage`): Flexão Parabólica, Mola Amortecida & Acoplamento Fluido
+Propriedades da 6ª classe oficial: `isFoliage: true`, `rigidity` (`0..1`), `windScale`, `pushRadius`, `pushStrength`, `leafColors`.
+
+1. **Flexão Parabólica em Balanço (*Cantilever Slice Bend*)**:
+
+$$\Delta\mathbf{p}(s_z) = \left(\frac{s_z}{H - 1}\right)^2 \mathbf{b}$$
+
+   Base (`s_z = 0`) fica 100% cravada no solo enquanto a copa se curva suavemente sem rotacionar ou borrar pixels.
+
+2. **Mola Amortecida + Interferência (`WindField` & Entidades)**:
+
+$$\mathbf{a} = k_{\text{stiff}}\big(\mathbf{W}(x,y,t)\cdot \text{windScale}\cdot(1 - \text{rigidity}) - \mathbf{b}\big) + \mathbf{F}_{\text{push}}(\text{entidades}) - c_{\text{damp}}\,\mathbf{v}$$
+
+   Integra a deflexão $\mathbf{b}$ combinando vento local ponderado por `windScale * (1 - rigidity)` e empurrão radial $\mathbf{F}_{\text{push}}$ de personagens (`Character`) dentro de `pushRadius` com intensidade `pushStrength`.
+
+3. **Acoplamento Fluido ↔ Folhagem**: personagens abrindo caminho desprendem folhas/pétalas (`leafColors`) para `particlesByZ` (conduzidas pelo vento `WindField`), e pétalas que tocam `MAT_WATER` viram `floatingItems` levados pela correnteza `WaterFlow` até o ponto de escoamento (*Drain Sink*).
 
 ---
 

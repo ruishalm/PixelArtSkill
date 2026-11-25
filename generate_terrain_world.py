@@ -1791,7 +1791,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       grass_tuft_tall: { mode: 'none' }
     };
 
+    const FOLIAGE_META = {
+      pine_tree:     { isFoliage: true, rigidity: 0.62, windScale: 3.2, pushRadius: 16, pushStrength: 3.5, leafColors: ['#2D6A4F', '#40916C', '#52B788'] },
+      sakura_oak:    { isFoliage: true, rigidity: 0.58, windScale: 3.6, pushRadius: 24, pushStrength: 3.0, leafColors: ['#F9A8D4', '#F472B6', '#FBCFE8'] },
+      bush_berry:    { isFoliage: true, rigidity: 0.25, windScale: 2.6, pushRadius: 14, pushStrength: 6.5, leafColors: ['#3A7D44', '#65B85B', '#EF4444'] },
+      sunflower:     { isFoliage: true, rigidity: 0.18, windScale: 3.8, pushRadius: 12, pushStrength: 7.5, leafColors: ['#FACC15', '#EAB308', '#4D7C0F'] },
+      flower_tuft:   { isFoliage: true, rigidity: 0.12, windScale: 2.4, pushRadius: 10, pushStrength: 6.0, leafColors: ['#FACC15', '#F472B6', '#FFFFFF'] },
+      pumpkin_patch: { isFoliage: true, rigidity: 0.72, windScale: 1.0, pushRadius: 12, pushStrength: 2.5, leafColors: ['#EA580C', '#65B85B'] }
+    };
+
     const props = [];
+    const foliageProps = [];
     const propColliders = [];
     const platformColliders = [];
     const fishes = [];
@@ -1851,6 +1861,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         isPlatform: meta.mode === 'platform',
         platTopZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ
       };
+      const fMeta = FOLIAGE_META[modelKey];
+      if (fMeta) {
+        item.foliage = fMeta;
+        item.bx = 0;
+        item.by = 0;
+        item.vx = 0;
+        item.vy = 0;
+        item.rustleCd = 0;
+        foliageProps.push(item);
+      }
       props.push(item);
 
       const footR = meta.mode === 'box'
@@ -2645,7 +2665,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     const particles = [];
-    function spawnParticles(wx, wy, wz, count, colors, speed = 28) {
+    function spawnParticles(wx, wy, wz, count, colors, speed = 28, opts = {}) {
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
         const sp = (0.35 + Math.random() * 0.65) * speed;
@@ -2653,8 +2673,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           x: wx, y: wy, z: wz,
           vx: Math.cos(a) * sp,
           vy: Math.sin(a) * sp,
-          vz: 20 + Math.random() * 42,
-          life: 0.42 + Math.random() * 0.32,
+          vz: opts.vz !== undefined ? opts.vz : (20 + Math.random() * 42),
+          life: opts.life !== undefined ? opts.life : (0.42 + Math.random() * 0.32),
+          grav: opts.grav !== undefined ? opts.grav : 260,
+          isLeaf: !!opts.isLeaf,
           color: colors[i % colors.length],
           size: 2
         });
@@ -3323,6 +3345,125 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     let lastRustleCell = -1;
+    function stepFoliageItem(p, h) {
+      const f = p.foliage;
+      if (p.rustleCd > 0) p.rustleCd = Math.max(0, p.rustleCd - h);
+
+      const kStiff = 44, cDamp = 6.2;
+      const w = sampleWind(p.wx, p.wy, fluidTime);
+      const tx = w.wx * f.windScale * (1 - f.rigidity);
+      const ty = w.wy * f.windScale * (1 - f.rigidity);
+
+      let ax = kStiff * (tx - p.bx) - cDamp * p.vx;
+      let ay = kStiff * (ty - p.by) - cDamp * p.vy;
+
+      const modelH = p.model.count * p.scale;
+      const maxBrushDz = modelH + 4;
+
+      // Cat brush interference
+      const cdx = p.wx - cat.x;
+      const cdy = p.wy - cat.y;
+      const cd = Math.hypot(cdx, cdy);
+      if (cd < f.pushRadius && Math.abs(cat.z - p.wz) <= maxBrushDz) {
+        const pushMag = (1 - cd / f.pushRadius) * f.pushStrength;
+        const invD = cd > 0.001 ? 1 / cd : 0;
+        const dirX = cd > 0.001 ? cdx * invD : -Math.sin(cat.selfAngle);
+        const dirY = cd > 0.001 ? cdy * invD : Math.cos(cat.selfAngle);
+        ax += dirX * pushMag * kStiff;
+        ay += dirY * pushMag * kStiff;
+
+        if ((cat.isWalking || !cat.onGround) && p.rustleCd <= 0) {
+          p.rustleCd = 0.28;
+          const leafCount = (f.pushStrength >= 6.0 || Math.random() < 0.5) ? 2 : 1;
+          spawnParticles(
+            p.wx + (Math.random() - 0.5) * 4,
+            p.wy + (Math.random() - 0.5) * 4,
+            p.wz + Math.min(18, modelH * 0.6),
+            leafCount,
+            f.leafColors,
+            20,
+            { isLeaf: true, grav: 32, vz: 6 + Math.random() * 10, life: 2.2 + Math.random() * 1.4 }
+          );
+        }
+      }
+
+      // NPC brush interference
+      for (let j = 0; j < npcs.length; j++) {
+        const npc = npcs[j];
+        const ndx = p.wx - npc.x;
+        const ndy = p.wy - npc.y;
+        const nd = Math.hypot(ndx, ndy);
+        if (nd < f.pushRadius && Math.abs(npc.z - p.wz) <= maxBrushDz) {
+          const pushMag = (1 - nd / f.pushRadius) * f.pushStrength * 0.7;
+          const invD = nd > 0.001 ? 1 / nd : 0;
+          const dirX = nd > 0.001 ? ndx * invD : (npc.dirX || 1);
+          const dirY = nd > 0.001 ? ndy * invD : (npc.dirY || 0);
+          ax += dirX * pushMag * kStiff;
+          ay += dirY * pushMag * kStiff;
+
+          if (npc.moving && p.rustleCd <= 0) {
+            p.rustleCd = 0.28;
+            spawnParticles(
+              p.wx + (Math.random() - 0.5) * 4,
+              p.wy + (Math.random() - 0.5) * 4,
+              p.wz + Math.min(18, modelH * 0.6),
+              1,
+              f.leafColors,
+              16,
+              { isLeaf: true, grav: 32, vz: 4 + Math.random() * 8, life: 2.0 + Math.random() * 1.2 }
+            );
+          }
+        }
+      }
+
+      // Gust petal shedding on sakura_oak
+      if (p.modelKey === 'sakura_oak' && w.mag > 1.35 && Math.random() < h * 2.5) {
+        spawnParticles(
+          p.wx + (Math.random() - 0.5) * 18,
+          p.wy + (Math.random() - 0.5) * 18,
+          p.wz + 72,
+          1,
+          f.leafColors,
+          14,
+          { isLeaf: true, grav: 22, vz: -4 - Math.random() * 6, life: 5.0 + Math.random() * 2.0 }
+        );
+      }
+
+      p.vx += ax * h;
+      p.vy += ay * h;
+      p.bx += p.vx * h;
+      p.by += p.vy * h;
+
+      const maxDeflect = Math.min(7.5, p.model.count * 0.22);
+      const bMag = Math.hypot(p.bx, p.by);
+      if (bMag > maxDeflect) {
+        const s = maxDeflect / bMag;
+        p.bx *= s;
+        p.by *= s;
+        const nx = p.bx / maxDeflect;
+        const ny = p.by / maxDeflect;
+        const vDotN = p.vx * nx + p.vy * ny;
+        if (vDotN > 0) {
+          p.vx -= vDotN * nx;
+          p.vy -= vDotN * ny;
+        }
+      }
+    }
+
+    function updateFoliage(dt) {
+      if (!Number.isFinite(dt) || dt <= 0) return;
+      const clampedDt = Math.min(0.066, dt);
+      const steps = clampedDt > 0.025 ? 2 : 1;
+      const h = Math.min(0.033, clampedDt / steps);
+      for (let i = 0; i < foliageProps.length; i++) {
+        const p = foliageProps[i];
+        if (Math.hypot(p.wx - camX, p.wy - camY) >= 380) continue;
+        for (let s = 0; s < steps; s++) {
+          stepFoliageItem(p, h);
+        }
+      }
+    }
+
     function updatePhysics(dt) {
       fluidTime += dt;
       for (let i = windImpulses.length - 1; i >= 0; i--) {
@@ -3595,11 +3736,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         const w = sampleWind(p.x, p.y, fluidTime);
-        p.vx += w.wx * 18 * dt;
-        p.vy += w.wy * 18 * dt;
+        p.vx += w.wx * (p.isLeaf ? 26 : 18) * dt;
+        p.vy += w.wy * (p.isLeaf ? 26 : 18) * dt;
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.vz -= 260 * dt;
+        p.vz -= (p.grav !== undefined ? p.grav : 260) * dt;
+        if (p.isLeaf && p.vz < -16) p.vz = -16;
         p.z += p.vz * dt;
         p.life -= dt;
 
@@ -3613,9 +3755,18 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           particles.splice(i, 1);
           continue;
         }
+        if (p.isLeaf && pc && pc.mat !== MAT_WATER && p.z < pc.h + 0.4) {
+          p.z = pc.h + 0.4;
+          p.vx *= 0.85;
+          p.vy *= 0.85;
+          p.vz = 0;
+          p.life = Math.min(p.life, 0.35);
+        }
 
         if (p.life <= 0) particles.splice(i, 1);
       }
+
+      updateFoliage(dt);
 
       const lerpFactor = Math.min(1, dt * 9.0);
       camX += (cat.x - camX) * lerpFactor;
@@ -3686,7 +3837,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       targetCtx.restore();
     }
 
-    function stampModelSlice(targetCtx, model, sz, wx, wy, wz, selfAngle, scale, cosA, sinA) {
+    function stampModelSlice(targetCtx, model, sz, wx, wy, wz, selfAngle, scale, cosA, sinA, bendX = 0, bendY = 0) {
+      if (bendX !== 0 || bendY !== 0) {
+        const bf = model.count > 1 ? Math.pow(sz / (model.count - 1), 2) : 0;
+        wx += bendX * bf;
+        wy += bendY * bf;
+      }
       const dx = wx - camX;
       const dy = wy - camY;
       const rx = dx * cosA - dy * sinA;
@@ -3774,8 +3930,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const cosA = Math.cos(turn);
       const sinA = Math.sin(turn);
       const animTick = Math.floor(cat.idleTimer * 8); // 8 FPS stepped animation
+      const animTime = animTick / 8;
       const camWind = sampleWind(camX, camY, fluidTime);
-      const windOff = Math.round(Math.sin(animTick * 0.65 + camWind.wx * 0.25) * Math.min(1.5, 0.65 + camWind.mag * 0.35));
+      const grassAmp = Math.min(1.6, 0.5 + camWind.mag * 0.55);
+      const grassLean = camWind.wx * 0.35;
       const speechQueue = [];
 
       // 2. Bounding box visível no grid 1080×1080 (culling exato por viewport!)
@@ -3821,7 +3979,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           depth: dp,
           drawSlice: (z) => {
             const sz = Math.min(p.model.count - 1, Math.floor((z - p.baseZ) / p.scale));
-            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA);
+            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA, p.bx || 0, p.by || 0);
           }
         });
         if (p.topZ > maxEntityTopZ) maxEntityTopZ = p.topZ;
@@ -4068,7 +4226,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         // 4c. Pontas de grama animadas pelo vento (8 FPS, Tight-Crop)
         const gSlice = z <= Z_GRASS_MAX ? grassTipSlices[z] : null;
         if (gSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
-          drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, windOff);
+          const grassOff = Math.round(Math.sin(animTime * 4.5 + (z * 0.7)) * grassAmp + grassLean);
+          drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, grassOff);
         }
 
         // 4c-bis. Partículas 3D na fatia Z (ocluídas por falésias mais altas!)
@@ -4318,6 +4477,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       },
       getPropsByType: (key) => props.filter(p => p.modelKey === key).map(p => ({
         id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ
+      })),
+      getFoliageState: () => foliageProps.map(p => ({
+        id: p.id, key: p.modelKey, wx: p.wx, wy: p.wy,
+        bx: +(p.bx || 0).toFixed(3), by: +(p.by || 0).toFixed(3),
+        r: p.foliage.pushRadius
       }))
     };
   </script>

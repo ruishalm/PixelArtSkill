@@ -513,20 +513,20 @@ Calculate pixel-art silhouettes and rim lights directly from the depth buffer wi
 - Run wind sway, foliage flutter, and character bobs at **8 FPS** (`const WIND_FPS = 8`).
 - Stepped discrete movement feels hand-drawn and stops mathematical floating smoothness from ruining the pixel aesthetic.
 
-### Platform-Aware Pet AI & Spatial Confinement
-- **Platform Attachment**: Elevating pets to surface heights (`liftZ = 21` for desks, `liftZ = 61.5` for shelves) while tracking local coordinates (`offX, offY`) so rotating/moving furniture moves occupants seamlessly.
-- **Sleep & Rest Loops**: Grounded/elevated resting states (`cat.deskSleepTimer`) ensuring pets placed on surfaces loaf and sleep for an authentic period before choosing to jump down.
+### Platform-Aware Character AI & Spatial Confinement
+- **Platform Attachment**: Elevating characters to surface heights (`liftZ = 21` for desks, `liftZ = 61.5` for shelves) while tracking local coordinates (`offX, offY`) so rotating/moving furniture moves occupants seamlessly.
+- **Sleep & Rest Loops**: Grounded/elevated resting states (`cat.deskSleepTimer`) ensuring characters placed on surfaces loaf and sleep for an authentic period before choosing to jump down.
 - **Avian Shelf Brooding**: Larger birds (Popó) can flutter up to high book shelves to brood (`state = 'brood'`) between props, then flutter down to floor level.
-- **Baby Spatial Confinement ("Sanzando sem Cair")**: Vulnerable baby pets (Pintinho Piu) are strictly clamped to platform bounds (`constrainToDesk`, `constrainToShelf`) and never jump down autonomously, wandering safely within perimeter limits.
+- **Baby Spatial Confinement ("Sanzando sem Cair")**: Vulnerable baby characters (e.g., Pintinho Piu) are strictly clamped to platform bounds (`constrainToDesk`, `constrainToShelf`) and never jump down autonomously, wandering safely within perimeter limits.
 
 ### Headwear Anatomy & The "Walking Hat" Chick
 - **Cranial Anchor Alignment**: Hats must never sit on ear tips. Anchor hats to the skull/forehead crown between ears (`headZ - 2.8`).
 - **Avian Comb Offsets**: For animals with combs or crests, tilt hats slightly (~0.18 rad) beside the comb.
 - **Oversized Walking Disguise**: Baby chicks wearing oversized hats become a walking hat: the hat model covers the chick with ~88% opacity (showing the warm yellow body inside), while 2 little stick feet waddle underneath and shiny eyes + orange beak peek out from under the front brim.
 
-### Multi-Room Architectural Blueprints & Pet Migration
-- **Blueprint Modal ("Modalzinho")**: 2D architectural blueprint map with grid paper styling (`blueprint-container`), displaying connected room cards with live presence indicator ("📍 Você está aqui") and persistent pet badges (`🐱 🐔 🐥`).
-- **Seamless Pet Migration**: When transitioning between rooms (either via door click or blueprint modal), pets turn towards the door with happy speech bubbles ("Nya~!", "Có có!", "Piu piu!"), little floating heart bursts, and smooth camera wipe/fade transitions, appearing naturally at the threshold of the next room.
+### Multi-Room Architectural Blueprints & Character Migration
+- **Blueprint Modal ("Modalzinho")**: 2D architectural blueprint map with grid paper styling (`blueprint-container`), displaying connected room cards with live presence indicator ("📍 Você está aqui") and persistent character badges (`🐱 🐔 🐥`).
+- **Seamless Character Migration**: When transitioning between rooms (either via door click or blueprint modal), characters turn towards the door with happy speech bubbles ("Nya~!", "Có có!", "Piu piu!"), little floating heart bursts, and smooth camera wipe/fade transitions, appearing naturally at the threshold of the next room.
 - **Cozy Wall Harmonization**: Placing a door and window on the same wall side-by-side (e.g. Garden Door with glass panes and sunny garden window with flowerbox and animated butterfly) preserves natural lighting continuity, room depth, and architectural believability.
 - **Living Room Micro-Interactions**: Sofas allow loafing/sleeping cats with custom nap timers, coffee tables provide sitting/perching surfaces, and tall multi-tier bookshelves offer high roosting spots for adult birds, while strictly confining baby chicks to the safe cushion/table surface.
 
@@ -576,26 +576,35 @@ Before completing any pixel art 3D implementation:
 
 ## 6. Taxonomia e Arquitetura de Classes de Assets
 
-Para garantir escalabilidade, integridade de arrasto e comportamentos autônomos sem bugs, todo elemento do mundo 3D pertence estritamente a uma das seguintes 5 classes:
+Para garantir escalabilidade, integridade de arrasto e comportamentos autônomos sem bugs, todo elemento do mundo 3D pertence estritamente a uma das seguintes **6 classes oficiais**:
 
-### 1. Personagens / Pets (`isPet: true`)
-- **Exemplos**: Popó (galinha adulta), Pipoca (gatinho calico), Pompom (pintinho amarelo).
-- **Propriedades Principais**: `isPet: true`, `isCat: true`, `isChicken: true`, `isChick: true`.
+| # | Classe | Flag Canônica | Papel no Mundo 3D | Propriedades-Chave |
+|---|---|---|---|---|
+| 1 | **Character** | `isCharacter: true` *(alias legado: `isPet`)* | Qualquer personagem jogável, NPC, humano, animal ou criatura autônoma | `isCharacter`, `role`, `selfAngle`, `velocity`, estado de IA |
+| 2 | **Fixed** | `isFixed: true` | Âncoras estruturais e cenográficas não arrastáveis | `isFixed: true`, `isMovable: false`, `category` |
+| 3 | **Movable** | `isMovable: true` | Móveis e objetos reposicionáveis/rotacionáveis com filhos parentados | `isMovable: true`, `radius`, `selfAngle`, `children` |
+| 4 | **Surface Prop** | `isProp: true` | Objetos menores apoiados em tampos, prateleiras ou suportes | `isProp: true`, `surface`, `offX`, `offY`, `liftZ`, `tier` |
+| 5 | **Wall / Portal** | `isWallItem: true` / `isDoor: true` | Itens de parede, janelas e portas com hitbox 3D e culling direcional | `isWallItem: true`, `wall`, `isDoor`, `targetRoom` |
+| 6 | **Foliage** | `isFoliage: true` | Vegetação reativa ao vento, colisão de entidades e acoplamento com fluidos | `isFoliage: true`, `rigidity` (`0..1`), `windScale`, `pushRadius`, `pushStrength`, `leafColors` |
+
+### 1. Personagens / Characters (`isCharacter: true`)
+- **Exemplos**: Humanos (jogador, aldeões, NPCs), criaturas, animais e pets (Popó, Pipoca, Pompom).
+- **Propriedades Principais**: `isCharacter: true` *(compatibilidade legada: `isPet`)*, subtipos/papéis opcionais (`role`, `isHuman`, `isNPC`, `isCreature`, `isCat`, `isChicken`, `isChick`).
 - **Comportamentos**:
-  - **IA Autônoma & Máquina de Estados**: `wander`, `peck`, `sit`, `loaf`, `brood`, `sleep`, `perch`, `swing`.
+  - **IA Autônoma & Máquina de Estados**: `idle`, `wander`, `walk`, `peck`, `sit`, `loaf`, `brood`, `sleep`, `perch`, `swing`, `interact`.
   - **Ciclo de Locomoção Biomecânica em 2 Fases**: Swing (avanço aéreo $+D$) e Stance (apoio no solo $-D$) sincronizados ao vetor de velocidade real (`theta = atan2(vy, vx)`).
   - **Poleiros & Superfícies**: Subida em superfícies elevadas (mesas `liftZ = 21`, estantes `liftZ = 61.5`, balanço de pneu `liftZ = 34`).
-  - **Confinamento Infantil ("Bolinha")**: Filhotes (Pompom) são confinados aos limites do móvel onde sobem, sem risco de queda desajeitada.
-  - **Migração Coesa entre Cômodos**: Ao mudar de cômodo via portas ou minimapa, os pets se despedem com balões de fala fofos e migram para o novo ambiente.
+  - **Confinamento Infantil ("Bolinha")**: Personagens pequenos/filhotes vulneráveis (ex.: Pompom) são confinados aos limites do móvel onde sobem, sem risco de queda desajeitada.
+  - **Migração Coesa entre Cômodos**: Ao mudar de cômodo via portas ou minimapa, os personagens se despedem com balões de fala e migram para o novo ambiente.
 
-### 2. Móveis Fixos (`isFixed: true`)
+### 2. Móveis Fixos / Fixed (`isFixed: true`)
 - **Exemplos**: Bancada contínua de ponta a ponta na Cozinha (com pia e fogão embutidos), Geladeira Retrô pastel interativa, Carvalho Centenário massivo no Jardim, Balanço de Pneu vertical ancorado, Canteiros de flores nas bordas perimetrais.
 - **Propriedades Principais**: `isFixed: true`, `isMovable: false`, `category: 'furniture'`.
 - **Regras no Modo Decoração**:
   - **Não Arrastáveis**: Não podem ser deslocados nem rotacionados pelo jogador no modo Decor, servindo como a âncora arquitetural do cômodo.
   - **Interatividade Especial**: Podem abrir modais dedicados (ex: Geladeira Retrô abre a lista de compras/post-its funcional estilizada como porta de geladeira pastel com ímãs).
 
-### 3. Móveis Móveis (`isMovable: true`)
+### 3. Móveis Móveis / Movable (`isMovable: true`)
 - **Exemplos**: Mesa de Jantar Quadrada grande, Cadeiras de Jantar, Sofá Aconchegante, TV Retrô central, Cadeira de Varanda rústica, Carrinho de Mão com flores.
 - **Propriedades Principais**: `isMovable: true`, `category: 'furniture'`, `radius`, `selfAngle`.
 - **Regras & Parenting Hierárquico Sincronizado**:
@@ -611,19 +620,27 @@ Para garantir escalabilidade, integridade de arrasto e comportamentos autônomos
       child.selfAngle = parent.selfAngle + child.initialAngle;
       ```
 
-### 4. Acessórios de Superfície / Props (`isProp: true`)
+### 4. Acessórios de Superfície / Surface Prop (`isProp: true`)
 - **Exemplos**: Fruteira com maçãs/bananas/laranjas, bule de chá e xícaras de cerâmica, livros e tomos encadernados, luminária de cabeceira, vaso de plantas de mesa.
 - **Propriedades Principais**: `isProp: true`, `surface: '<parent_id>'`, `offX`, `offY`, `liftZ`, `tier` (para prateleiras múltiplas).
 - **Regras**:
   - **Snapping Inteligente de Superfície**: Possuem altura de repouso (`liftZ`) correspondente ao tampo do móvel de apoio.
   - **Deslocamento com o Móvel**: Permanecem colados ao topo do móvel mesmo durante rotações ou deslocamentos da mobília base.
 
-### 5. Itens de Parede e Portas (`isWallItem: true`, `isDoor: true`)
+### 5. Itens de Parede e Portas / Wall & Portal (`isWallItem: true`, `isDoor: true`)
 - **Exemplos**: Portas de transição de cômodos com plaquinhas rústicas de batente, Janelas coloniais com cortinas e floreiras, Lousa de Cortiça com post-its coloridos funcionais, Quadros artísticos e Relógios de parede.
 - **Propriedades Principais**: `isWallItem: true`, `wall: 'north' | 'west' | 'east' | 'south'`, `isDoor: true`, `targetRoom`.
 - **Regras**:
   - **Hitbox 3D Projetada com Wall Culling**: Coordenadas de clique calculadas projetando os 4 vértices do quad 3D da parede na tela. Se a parede estiver de costas para a câmera (`Math.sin(turn) <= 0.05`), o clique é estritamente ignorado.
   - **Placas de Batente**: Cada porta renderiza uma plaquinha estilizada acima do vão com o nome do cômodo de destino.
+
+### 6. Folhagem Reativa / Foliage (`isFoliage: true`)
+- **Exemplos**: Arbustos floridos, juncos de rio, samambaias, canteiros densos, sebes e árvores flexíveis com copa reativa.
+- **Propriedades Principais**: `isFoliage: true`, `rigidity` (`0..1`, onde `0` = muito flexível e `1` = tronco rígido), `windScale`, `pushRadius`, `pushStrength`, `leafColors` (paleta de folhas/pétalas soltas).
+- **Regras & Física de Fatias**:
+  - **Flexão Parabólica em Balanço (*Cantilever Slice Bend*)**: cada fatia $s_z \in [0, H - 1]$ desloca-se por $\Delta\mathbf{p}(s_z) = \big(s_z / (H - 1)\big)^2 \mathbf{b}$, mantendo a base (`s_z = 0`) 100% cravada no solo enquanto a copa enverga suavemente sem rotacionar ou borrar pixels.
+  - **Mola Amortecida + Interferência (`WindField` & Entidades)**: a flexão $\mathbf{b}$ responde continuamente ao vento local $\mathbf{W}(x,y,t)$ escalado por `windScale * (1 - rigidity)` e ao empuxo radial $\mathbf{F}_{\text{push}}$ de personagens dentro de `pushRadius` (com intensidade `pushStrength`).
+  - **Acoplamento Fluido ↔ Folhagem**: personagens abrindo caminho desprendem partículas (`leafColors`) para `particlesByZ` (advectadas por `WindField`), e pétalas que atingem `MAT_WATER` convertem-se em `floatingItems` levados pela correnteza `WaterFlow` até o ponto de escoamento (*Drain Sink*).
 
 ---
 
@@ -661,7 +678,7 @@ Ao modelar ou programar as fatias horizontais `grid[y][x]` de um voxel model:
 Antes de escrever qualquer código gerador de fatias (Python/JS) ou modelar um novo asset para o diorama, responda obrigatoriamente a este checklist de 8 perguntas:
 
 1. **Qual é a Categoria Estrita do Asset?**
-   - É um *Pet/Personagem*, um *Móvel Fixo* (estrutural), um *Móvel Móvel* (arrastável), um *Prop de Superfície* ou um *Item de Parede/Porta*?
+   - É um *Character* (humano, NPC, animal ou criatura), um *Fixed* (estrutural), um *Movable* (arrastável), um *Surface Prop*, um *Wall / Portal* ou uma *Foliage* (folhagem reativa)?
 2. **Qual é o Voxel Budget e Dimensões do Grid?**
    - Dimensões exatas em voxels ($W \times D \times H$ fatias).
    - Altura por fatia (`spacing = 1` ou escalonado) e escala global do render (`scale = 1.4` a `2.0`).
@@ -671,13 +688,13 @@ Antes de escrever qualquer código gerador de fatias (Python/JS) ou modelar um n
    - Onde o objeto nasce? Parede Norte (`selfAngle = 0`), Parede Leste (`Math.PI / 2`), Parede Sul (`Math.PI`) ou Parede Oeste (`0` ou `Math.PI / 2`)?
 5. **Possui Hierarquia / Filhos Parentados?**
    - Ele carrega outros itens? Se sim, quais os offsets relativos (`offX, offY, liftZ, initialAngle`) de cada filho para que se movam em perfeita sincronia?
-6. **Possui Superfície para Apoio de Props ou Pets?**
-   - Qual a altura útil do tampo (`surfaceHeight` / `liftZ`)? Há slots específicos para fruteiras, copos, livros ou para o descanso de gatos e galinhas?
+6. **Possui Superfície para Apoio de Props ou Characters?**
+   - Qual a altura útil do tampo (`surfaceHeight` / `liftZ`)? Há slots específicos para fruteiras, copos, livros ou para descanso/interação de personagens (humanos, NPCs, criaturas)?
 7. **É Interativo ao Clique do Jogador?**
    - O que acontece ao clicar? Abre um modal estilizado (ex: Geladeira, Lousa, Livro)? Toca um som retro? Dispara partículas de amor/estrelinhas?
 8. **Qual é a Paleta Reduzida e Animações Procedurais?**
    - Máximo de 8 a 12 tons indexados por objeto (sem interpolações frouxas, índice 0 transparente).
-   - Tem partes dinâmicas (vapor subindo da panela, pneu balançando no vento, asas batendo, rabo abanando)?
+   - Tem partes dinâmicas (vapor subindo da panela, pneu balançando no vento, asas batendo, rabo abanando, ou parâmetros de `Foliage`: `rigidity` `0..1`, `windScale`, `pushRadius`, `pushStrength`, `leafColors`)?
 
 ---
 
@@ -788,6 +805,27 @@ Para que personagens, partículas e props gigantes convivam com morros curvos, p
 - **Escalabilidade Orgânica (`AUTO_STEP_MAX = 5.5`)**: Subidas suaves com $\Delta Z \le \text{AUTO\_STEP\_MAX}$ (`5.5u`) são escaladas continuamente andando, permitindo subir colinas curvas, pontes em arco e margens em degraus suaves com fluidez.
 - **Deslizamento Tangencial (`±35°`) em Encostas Curvas**: Quando o movimento esbarra em uma falésia (`ΔZ > AUTO_STEP_MAX`), borda de rio profundo ou collider sólido, em vez de testar apenas desvios rígidos nos eixos X/Y (que travam em encostas diagonais/curvas), o resolvedor testa rotações incrementais do vetor de movimento em até **`±35°`** ao longo da tangente da curva, deslizando organicamente ao redor de morros e rochedos.
 - **Threshold Mínimo de Plataforma (`standableMap` + `cliffTopMap`)**: Pré-computar após `elasticChainRelax()` uma máscara `standableMap` (`Uint8Array`) exigindo área mínima de apoio (`>= 14` de `25` micro-voxels na janela `5×5` com `|Δh| <= 3u`, equivalente a ~`3.7×3.7` pixels, preservando pisos de vale com `h0 - min5 <= 2` e pontes/vitórias-régias, enquanto rejeita degraus estreitos de meio de falésia). `evaluateSupport()` ignora células com `standable === 0` e `checkCollisionAt()` bloqueia contra `cliffTopMap` (pico local `r = 5` da falésia), impedindo escalar paredões verticais usando saliências de `1–2px` como apoio.
+
+#### 5. Folhagem Reativa (`Foliage` / `isFoliage`): Flexão Parabólica, Mola Amortecida & Acoplamento Fluido
+A 6ª classe oficial (**`Foliage`**, `isFoliage: true`) permite que arbustos, flores, juncos, samambaias e árvores voxel respondam organicamente ao vento e à passagem de personagens (`Character`) em **Pure Canvas 2D** mantendo nitidez pixel-perfect:
+
+- **Propriedades Oficiais do Asset `Foliage`**:
+  - `isFoliage: true`
+  - `rigidity` (`0..1`): rigidez estrutural (`0` = muito flexível, ex.: juncos/flores; `1` = quase rígido, ex.: troncos grossos).
+  - `windScale`: multiplicador da resposta ao campo de vento `WindField`.
+  - `pushRadius`: raio (em unidades de mundo) no qual personagens/entidades exercem empuxo lateral ao atravessar ou roçar a folhagem.
+  - `pushStrength`: intensidade da força repulsiva $\mathbf{F}_{\text{push}}$ aplicada ao vetor de flexão.
+  - `leafColors`: paleta de cores das folhas/pétalas desprendidas para partículas e itens flutuantes.
+
+1. **Flexão Parabólica em Balanço (*Cantilever Slice Bend*)**:
+   $$\Delta\mathbf{p}(s_z) = \left(\frac{s_z}{H - 1}\right)^2 \mathbf{b}$$
+   - A base (`s_z = 0`) fica **100% cravada no solo** ($\Delta\mathbf{p}(0) = \mathbf{0}$) enquanto cada fatia superior $s_z$ translada em proporção quadrática até a copa ($s_z = H - 1$), curvando suavemente o volume sem rotacionar nem borrar pixels individuais.
+2. **Mola Amortecida + Interferência (`WindField` & Entidades)**:
+   $$\mathbf{a} = k_{\text{stiff}}\big(\mathbf{W}(x,y,t)\cdot \text{windScale}\cdot(1 - \text{rigidity}) - \mathbf{b}\big) + \mathbf{F}_{\text{push}}(\text{entidades}) - c_{\text{damp}}\,\mathbf{v}$$
+   - Integra posição de flexão $\mathbf{b}$ e velocidade $\mathbf{v}$ com rigidez restauradora $k_{\text{stiff}}$, amortecimento $c_{\text{damp}}$, vento local $\mathbf{W}(x,y,t)$ ponderado por `windScale * (1 - rigidity)` e interferência radial $\mathbf{F}_{\text{push}}$ de personagens próximos (`pushRadius`, `pushStrength`).
+3. **Acoplamento Fluido ↔ Folhagem**:
+   - Personagens abrindo caminho dentro de `pushRadius` desprendem folhas/pétalas (`leafColors`) diretamente para `particlesByZ` (conduzidas pelo vento `WindField` com oclusão 360°).
+   - Pétalas e folhas que tocam células `MAT_WATER` convertem-se em **`floatingItems`** levados pela correnteza **`WaterFlow`** até o ponto de escoamento (*Drain Sink* com *smoothstep* até `u -> 0` e *despawn*).
 
 ---
 
@@ -942,4 +980,5 @@ REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
 3. RENDER & SILHUETA: Use squash = 0.75, drawStackObject com totalAngle = selfAngle + turn, e contorno único 1px (#3B2219 ou #3B2A20) via canvas offscreen após empilhar todas as fatias (PROIBIDO contornar fatias individuais).
 4. PAREDES & MÓVEIS OCOS: Use Wall Culling dinâmico (nyRot = nx*sin(turn) + ny*cos(turn) > 0.05 -> rodapé 3px + desativar hitbox) e oclusão angular em estantes/nichos (fundo + laterais sólidas + redesenho de paredes laterais por tier quando cosFront > 0.22).
 5. TERRENO & FÍSICA (se aplicável): Para paisagens naturais, prefira o Motor Micro-Voxel Orgânico 1080x1080 ("Pull-Chain", VOX=2u = 2.160x2.160u, Anti-Kaiju 1.5x; rios >= 3x largura do personagem ~54u, trilhas >= 2x, lagos >= 4x, biomas >= 250-400u): escultura via fbm2d/fbm2dFast/pullHill(cos^steepness)/pullPlateau(cliffMask; useWarp=false apenas em ruínas/estruturas humanas)/carveRiverPath/elasticChainRelax + Kit de 6 Fórmulas Geológicas (warp2d com fbm2dFast, smax/smin, ridgedFbm/pullRidge, rockTerrace, carveBenchTrail, thermalAndHydraulicErosion) + addArchBridge/getBridgeDeckZ (z_deck(u) = z_base + H_arch*(1-(2u-1)^2), tabuleiro 3 fatias sobre MAT_WATER intacto, pilares u <= 0.09 || u >= 0.91 + guarda-corpos) + lagos orgânicos (warp2d) + listras de espuma restritas a quedas reais (h - min8 > 4; lagos/nascentes com superfície cristalina max(Z_min, h-1)..h) + pullRuinsBlock (max(|dx|/halfW, |dy|/halfD) com bordas lascadas fbm2d * 0.08), pré-bake em Tight-Crop Bounded Slices ({canvas,offX,offY,w,h} via Uint32Array) com casca min8-2 + iluminação por gradiente + moitas orgânicas de grama 2-3px (fbm2d > 0.43 + hash sem grade, noOutline, 8 FPS), render slice-by-slice com interseção da câmera e skip em O(1) + entityLayer (destination-out + silhueta única 1px #3B2219) + particlesByZ (agrupar por Math.round(p.z) e desenhar no lowCtx dentro do loop após terrainSlices[z], sem contorno preto) + Mecânica de Fluidos 2.5D (WindField com altBoost e sombra ∇h·W<0; WaterFlow tangente com Drain Sink obrigatório via smoothstep até u->0 e despawn; WaveBuffer local 120x80 a 30 Hz com margens u=0, borda esponja 6 células γ=0.72 vs 0.955 + cutoff |u|<0.008->0 renderizado no loop Z-slice em z=-2/13) e física contínua (AUTO_STEP_MAX=5.5 + deslizamento tangencial ±35° + threshold mínimo de plataforma standableMap/cliffTopMap >= ~3.7x3.7 micro-voxels na janela 5x5). Para terrenos em blocos discretos (16x16), use traversão back-to-front O(W*H) via stepX/stepY, cell-bucketing, face culling até minNeighborZ e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
+6. TAXONOMIA DE 6 CLASSES & FOLHAGEM REATIVA (isCharacter / isFoliage): Classifique todo asset estritamente em uma das 6 classes oficiais: Character (isCharacter, humanos/NPCs/animais/criaturas; alias legado isPet), Fixed (isFixed), Movable (isMovable), Surface Prop (isProp), Wall/Portal (isWallItem/isDoor) ou Foliage (isFoliage com rigidity 0..1, windScale, pushRadius, pushStrength, leafColors). Para Foliage, aplique Flexão Parabólica em Balanço Δp(s_z) = (s_z/(H-1))^2 * b (base s_z=0 cravada no solo, sem rotacionar/borrar pixels), Mola Amortecida a = k_stiff*(W(x,y,t)*windScale*(1-rigidity) - b) + F_push(entidades) - c_damp*v, e acoplamento Fluido<->Folhagem: personagens desprendem folhas/pétalas para particlesByZ (WindField), e pétalas que tocam MAT_WATER viram floatingItems levados por WaterFlow até o Drain Sink.
 ```
