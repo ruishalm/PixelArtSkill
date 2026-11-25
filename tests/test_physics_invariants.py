@@ -70,6 +70,14 @@ class TestPixelArtSkill(unittest.TestCase):
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
 
+        # Verify all sfx*() calls across modules are defined in 01-assets-audio.js
+        assets_js = open(os.path.join(ROOT, 'src', 'terrain-world', '01-assets-audio.js'), 'r', encoding='utf-8').read()
+        defined_sfx = set(re.findall(r'const\s+(sfx[A-Za-z0-9_]+)\s*=', assets_js))
+        for mod in modules:
+            code = open(mod, 'r', encoding='utf-8').read()
+            for called in set(re.findall(r'\b(sfx[A-Za-z0-9_]+)\s*\(', code)):
+                self.assertIn(called, defined_sfx, f'Undefined SFX call {called}() in {mod}')
+
     def test_03_docs_hygiene(self):
         with open(os.path.join(ROOT, 'SKILL.md'), 'r', encoding='utf-8') as f:
             skill = f.read()
@@ -217,6 +225,38 @@ for (let i = 0; i < 600; i++) {
 }
 assert(T < 0.05, `Heat did not cool down without source (T=${T})`);
 assert(fuel === 0.70, 'Moist grass should not ignite while cooling below T_ign');
+
+// 9. Granular Matter angle-of-repose relaxation (talus = 2) conserves mass
+const pile = [0, 0, 8, 0, 0];
+const sumBefore = pile.reduce((a, b) => a + b, 0);
+for (let pass = 0; pass < 10; pass++) {
+  for (let i = 1; i < pile.length - 1; i++) {
+    if (pile[i] - pile[i - 1] > 2) { pile[i]--; pile[i - 1]++; }
+    if (pile[i] - pile[i + 1] > 2) { pile[i]--; pile[i + 1]++; }
+  }
+}
+const sumAfter = pile.reduce((a, b) => a + b, 0);
+assert.strictEqual(sumBefore, sumAfter, 'Granular avalanche must conserve total height/mass');
+for (let i = 0; i < pile.length - 1; i++) {
+  assert(Math.abs(pile[i] - pile[i + 1]) <= 2, 'Granular slope must settle within talus angle');
+}
+
+// 10. Verlet distance constraint solver preserves segment length under gravity
+let n0 = { x: 0, z: 20, pinned: true };
+let n1 = { x: 0, z: 14, ox: 0, oz: 14, pinned: false };
+const segLen = 6;
+for (let step = 0; step < 60; step++) {
+  const vz = (n1.z - n1.oz) * 0.96 - 190 * dt * dt;
+  n1.oz = n1.z;
+  n1.z += vz;
+  for (let it = 0; it < 4; it++) {
+    const dz = n1.z - n0.z;
+    const dist = Math.abs(dz) || 0.0001;
+    const diff = (dist - segLen) / dist;
+    n1.z -= dz * diff;
+  }
+}
+assert(Math.abs(Math.abs(n1.z - n0.z) - segLen) < 0.01, 'Verlet constraint did not preserve segment length');
 
 console.log('ALL_NODE_PHYSICS_INVARIANTS_OK');
 """
