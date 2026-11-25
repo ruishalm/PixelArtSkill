@@ -1,3 +1,4 @@
+import argparse
 import json
 import math
 import os
@@ -72,8 +73,19 @@ def upscale_voxel_model(slices, factor=1.5):
     return [[''.join(row) for row in out_vol[z]] for z in range(d2)]
 
 
+_SEED = 1337
+_SEED_MIX = 0
+
+
+def set_seed(seed: int) -> None:
+    """Configure deterministic seed for procedural voxel generation."""
+    global _SEED, _SEED_MIX
+    _SEED = int(seed)
+    _SEED_MIX = 0 if _SEED == 1337 else ((_SEED * 2654435761) & 0xFFFFFFFF)
+
+
 def hash3(x, y, z):
-    n = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791)
+    n = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791) ^ _SEED_MIX
     return (n ^ (n >> 13)) & 0xFFFFFFFF
 
 
@@ -2520,7 +2532,8 @@ def validate_pack(pack):
     return results
 
 
-def main():
+def build_pack(seed=1337):
+    set_seed(seed)
     pack = {
         'pine_tree': build_pine_tree(),
         'sakura_oak': build_sakura_oak(),
@@ -2555,8 +2568,21 @@ def main():
     for name, factor in SCALE_FACTORS.items():
         if factor != 1.0:
             pack[name]['slices'] = upscale_voxel_model(pack[name]['slices'], factor)
+    return pack
 
-    out_path = os.path.join(VOXELS_DIR, 'terrain_props_pack.json')
+
+def main():
+    parser = argparse.ArgumentParser(description='Generate procedural 3D pixel-art terrain props pack.')
+    parser.add_argument('--seed', type=int, default=1337, help='Deterministic PRNG seed (default: 1337)')
+    parser.add_argument(
+        '--out',
+        default=os.path.join(VOXELS_DIR, 'terrain_props_pack.json'),
+        help='Output JSON path (default: assets/voxels/terrain_props_pack.json)',
+    )
+    args = parser.parse_args()
+
+    pack = build_pack(seed=args.seed)
+    out_path = args.out
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(pack, f, indent=2)
 
@@ -2564,7 +2590,7 @@ def main():
         loaded = json.load(f)
 
     summary = validate_pack(loaded)
-    print(f"SUCCESS: {out_path} generated and validated ({len(summary)} models):")
+    print(f"SUCCESS (seed={args.seed}): {out_path} generated and validated ({len(summary)} models):")
     for name, info in summary.items():
         w, h, z = info['dims']
         print(f"  - {name}: {w}x{h}x{z}, palette={info['palette_len']} colors, voxels={info['voxels']}")
