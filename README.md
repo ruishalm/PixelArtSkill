@@ -151,6 +151,25 @@ Properties: `isFoliage: true`, `rigidity` (`0..1`), `windScale`, `pushRadius`, `
 - **`'trim'` (Low Foliage)**: strong spring oscillation + leaf cloud in `WindField`.
 - **Controls (`KeyR` / Click = Action, `KeyQ` & `KeyE` = Rotate, `KeyC` = Spawn)**: `tool_axe` (`2×` on `'chop'`), `tool_pickaxe` (`2×` on `'crumble'`), `tool_hoe` (`2×` on `'trim'`), or `1×` bare-paw default.
 
+### 13. Archimedes Buoyancy, Local Volume Displacement & Wave Coupling
+- **Vertical Buoyancy (`debrisDrops`)**: low-density bodies (`wood_log`, $\rho_{\text{rel}} < 1$) oscillate on a spring-damper equilibrium against the live `WaveBuffer` surface $z_{\text{surf}} + 1.4\,u$, while dense bodies (`stone_chunk`, $\rho_{\text{rel}} > 1$) sink to the riverbed `dc.h`.
+- **Wave Slope Drift**: floating bodies read $-\nabla u = (-\partial u / \partial x,\, -\partial u / \partial y)$ from `sampleWaveHeightAndGrad(wx, wy)` to drift down wave crests.
+- **Local Volume Displacement (`getLocalArchimedesRise`)**: entering/leaving water radiates a $\Delta V_{\text{sub}}$ wave crest/trough into `WaveBuffer`, while submerged bodies within `r <= 64u` at matching water elevation raise the local basin level without affecting disconnected lakes or oceans.
+
+### 14. 2D Thermodynamics, Heat Diffusion & Combustion (`stepThermodynamics` `48×36`, 15 Hz)
+- **Heat Diffusion + Wind Advection + Cooling**:
+$$\frac{\partial T}{\partial t} = \alpha\,\nabla^2 T - \beta\,(\mathbf{W}\cdot\nabla T) - \lambda\,T$$
+- **Moisture Evaporation & Ignition Gate**: while moisture $M > 0.05$, heat evaporates water ($dM/dt = -0.018\,T$) before $T$ can reach $T_{\text{ign}} = 42$. Only dry combustible cells (`fuel > 0.05`) ignite and release heat until `fuel` is exhausted, while `MAT_WATER` / `MAT_SHALLOW` quench $T \to 0$ and emit steam.
+
+### 15. Granular Matter (Angle of Repose) & Incremental Dirty-Rect Re-Bake
+- **Talus Avalanche (`relaxGranularBox`)**: granular cells (`MAT_SAND` `talus = 2`, `MAT_PEAK` `talus = 3`) transfer `1` height unit to lower neighbors whenever $\Delta h > \text{talus}$, conserving total mass.
+- **Incremental Dirty-Rect Re-Bake (`rebakeTerrainDirtyRect`)**: updates only the affected `[mx0..mx1, my0..my1]` pixels inside `terrainSlices[z]` via `getImageData` / `putImageData`, keeping real-time digging and footprints at ~60 FPS.
+
+### 16. 3D Verlet Cloth, Banners & Ropes (`verletChains`)
+- **Position-Based Verlet Integration**:
+$$\mathbf{x}_{t+1} = \mathbf{x}_t + (\mathbf{x}_t - \mathbf{x}_{t-1})\,\gamma + \mathbf{a}\,\Delta t^2, \qquad \mathbf{a} = \mathbf{g} + \mathbf{W}(x,y,t)\,k_{\text{wind}} + \mathbf{F}_{\text{cat}}$$
+  Solved with 4 Gauss-Seidel distance-constraint iterations per step and rendered inside the Z-slice loop for true 3D occlusion.
+
 ---
 
 ## 🎮 Live Demos
