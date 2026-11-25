@@ -1136,8 +1136,8 @@
       if (!model || count <= 0) return;
       const isLog = modelKey === 'wood_log';
       for (let i = 0; i < count; i++) {
-        const ang = Math.atan2(biasDy, biasDx) + (Math.random() - 0.5) * 2.2;
-        const hSpd = 24 + Math.random() * 34;
+        const ang = Math.atan2(biasDy, biasDx) + (Math.random() - 0.5) * 1.1;
+        const hSpd = 30 + Math.random() * 34;
         debrisDrops.push({
           modelKey,
           model,
@@ -1253,21 +1253,26 @@
         bestTarget.vy += fy * 38;
       }
 
+      // 3ª Lei de Newton (Ação e Reação): leve recuo do gato na direção oposta ao golpe
+      const rawDx = bestTarget.wx - cat.x;
+      const rawDy = bestTarget.wy - cat.y;
+      const rawLen = Math.hypot(rawDx, rawDy) || 1;
+      const hitDirX = (rawDx / rawLen) * 0.65 + fx * 0.35;
+      const hitDirY = (rawDy / rawLen) * 0.65 + fy * 0.35;
+      const hLen = Math.hypot(hitDirX, hitDirY) || 1;
+      const dirX = hitDirX / hLen;
+      const dirY = hitDirY / hLen;
+      const recX = cat.x - dirX * 2.0;
+      const recY = cat.y - dirY * 2.0;
+      if (!checkCollisionAt(recX, recY, cat.z, cat.onGround).blocked) {
+        cat.x = recX;
+        cat.y = recY;
+      }
+
       if (d.hp <= 0) {
         d.chopped = true;
         if (bestTarget.solidCollider) bestTarget.solidCollider.disabled = true;
         if (bestTarget.platCollider) bestTarget.platCollider.disabled = true;
-
-        let dirX = bestTarget.wx - cat.x;
-        let dirY = bestTarget.wy - cat.y;
-        const dLen = Math.hypot(dirX, dirY);
-        if (dLen < 0.001) {
-          dirX = fx;
-          dirY = fy;
-        } else {
-          dirX /= dLen;
-          dirY /= dLen;
-        }
 
         if (d.mode === 'chop') {
           const stumpH = d.zCut * bestTarget.scale;
