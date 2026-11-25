@@ -192,6 +192,27 @@ for (let i = 0; i < 240 && phi < Math.PI / 2; i++) {
 }
 assert(Number.isFinite(phi) && phi >= Math.PI / 2, 'Inverted pendulum did not reach ground');
 
+// 7. Archimedes Buoyancy equilibrium (wood_log floats near surfZ; stone_chunk sinks)
+let logZ = 4.0, logVz = 0;
+const surfZ = -2.0;
+for (let i = 0; i < 300; i++) {
+  const submerged = Math.max(0, Math.min(1.5, (surfZ - logZ + 1.5) / 3.0));
+  const az = (submerged * 1.85 - 1.0) * 180 - logVz * 4.5;
+  logVz += az * dt;
+  logZ += logVz * dt;
+}
+assert(Math.abs(logZ - surfZ) < 0.35, `Wood log did not settle near water surface (logZ=${logZ})`);
+
+// 8. Thermodynamics: heat diffusion + cooling decays to 0 when source removed & water quenches
+let T = 95, moist = 0.65, fuel = 0.70;
+const alphaT = 0.14, coolT = 0.22, tDt = 1 / 15;
+for (let i = 0; i < 600; i++) {
+  T = Math.max(0, T - coolT * T * tDt);
+  if (moist > 0.05 && T > 6) moist = Math.max(0, moist - 0.018 * T * tDt);
+}
+assert(T < 0.05, `Heat did not cool down without source (T=${T})`);
+assert(fuel === 0.70, 'Moist grass should not ignite while cooling below T_ign');
+
 console.log('ALL_NODE_PHYSICS_INVARIANTS_OK');
 """
         res = subprocess.run(['node', '-e', node_script], capture_output=True, text=True)

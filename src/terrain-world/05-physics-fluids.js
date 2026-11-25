@@ -774,6 +774,25 @@
              (buf[i00 + WAVE_W] * (1 - tx) + buf[i00 + WAVE_W + 1] * tx) * ty;
     }
 
+    // Amostragem de altura u(x,y) e gradiente ∇u do WaveBuffer para Empuxo de Arquimedes
+    function sampleWaveHeightAndGrad(wx, wy) {
+      const fx = (wx - waveOriginX) / WAVE_CELL - 0.5;
+      const fy = (wy - waveOriginY) / WAVE_CELL - 0.5;
+      if (fx < 1 || fx >= WAVE_W - 2 || fy < 1 || fy >= WAVE_H - 2) {
+        return { u: 0, gx: 0, gy: 0 };
+      }
+      const u = sampleWaveBilerp(waveCurr, fx, fy);
+      const uR = sampleWaveBilerp(waveCurr, fx + 1, fy);
+      const uL = sampleWaveBilerp(waveCurr, fx - 1, fy);
+      const uD = sampleWaveBilerp(waveCurr, fx, fy + 1);
+      const uU = sampleWaveBilerp(waveCurr, fx, fy - 1);
+      return {
+        u,
+        gx: (uR - uL) / (2 * WAVE_CELL),
+        gy: (uD - uU) / (2 * WAVE_CELL),
+      };
+    }
+
     function isInsideWaterObstacle(wx, wy, obs) {
       for (let i = 0; i < obs.length; i++) {
         const o = obs[i];
@@ -1902,11 +1921,12 @@
       for (let i = floatingItems.length - 1; i >= 0; i--) {
         const f = floatingItems[i];
         const flow = sampleWaterFlow(f.x, f.y);
-        f.x += flow.vx * dt;
-        f.y += flow.vy * dt;
+        const wave = sampleWaveHeightAndGrad(f.x, f.y);
+        f.x += (flow.vx - wave.gx * 18) * dt;
+        f.y += (flow.vy - wave.gy * 18) * dt;
         const fc = getCellAt(f.x, f.y);
         if (fc && isWetMat(fc.mat)) {
-          f.z = waterSurfZ(fc);
+          f.z = waterSurfZ(fc) + wave.u * 1.1;
         }
         if (f.y > 820 || flow.speed < 0.8 || !fc || !isWetMat(fc.mat)) {
           f.life -= dt * 1.2;
@@ -2032,14 +2052,31 @@
         }
         if (dr.inWater) {
           const flow = sampleWaterFlow(dr.x, dr.y);
-          dr.vx = flow.vx;
-          dr.vy = flow.vy;
+          const wave = sampleWaveHeightAndGrad(dr.x, dr.y);
+          const isHeavy = dr.modelKey === 'stone_chunk';
+          dr.vx = (isHeavy ? flow.vx * 0.25 : flow.vx - wave.gx * 28);
+          dr.vy = (isHeavy ? flow.vy * 0.25 : flow.vy - wave.gy * 28);
           dr.x += dr.vx * dt;
           dr.y += dr.vy * dt;
-          dr.selfAngle += dt * 0.6;
+          dr.selfAngle += dt * (isHeavy ? 0.1 : 0.6 + wave.gx * 0.8);
           const dc = getCellAt(dr.x, dr.y);
           if (dc && isWetMat(dc.mat)) {
-            dr.z = waterSurfZ(dc) + Math.sin(fluidTime * 3.5 + dr.x * 0.1) * 0.35;
+            if (isHeavy) {
+              // Pedregulho (densidade > 1): afunda até o leito
+              dr.vz -= 180 * dt;
+              dr.z = Math.max(dc.h, dr.z + dr.vz * dt);
+              if (dr.z <= dc.h + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
+            } else {
+              // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer
+              const surfZ = waterSurfZ(dc) + wave.u * 1.4;
+              const submerged = Math.max(0, Math.min(1.5, (surfZ - dr.z + 1.5) / 3.0));
+              const az = (submerged * 1.85 - 1.0) * 180 - dr.vz * 4.5;
+              dr.vz += az * dt;
+              dr.z += dr.vz * dt;
+              if (Math.abs(dr.vz) > 4.0 && Math.random() < 0.25) {
+                injectWaterRipple(dr.x, dr.y, Math.max(-0.5, Math.min(0.5, -dr.vz * 0.025)), 1);
+              }
+            }
           } else {
             dr.inWater = false;
           }
@@ -2127,6 +2164,138 @@
         }
         stepWaterfallSim(1 / 30, true);
         stepWaveBuffer();
+      }
+      stepThermodynamics(dt);
+    }
+
+    // =========================================================================
+    // 9B. TERMODINÂMICA, DIFUSÃO DE CALOR & COMBUSTÃO (acoplada a WindField & Água)
+    // =========================================================================
+    const THERM_W = 48;
+    const THERM_H = 36;
+    const THERM_CELL = 8;
+    const tempGrid = new Float32Array(THERM_W * THERM_H);
+    const tempNext = new Float32Array(THERM_W * THERM_H);
+    const moistGrid = new Float32Array(THERM_W * THERM_H);
+    const fuelGrid = new Float32Array(THERM_W * THERM_H);
+    let thermInit = false;
+    let thermOriginX = 0;
+    let thermOriginY = 0;
+    let thermAccum = 0;
+    let warmthSpeakCd = 0;
+
+    function initThermGridAt(ox, oy) {
+      thermOriginX = ox;
+      thermOriginY = oy;
+      for (let iy = 0; iy < THERM_H; iy++) {
+        const wy = oy + (iy + 0.5) * THERM_CELL;
+        for (let ix = 0; ix < THERM_W; ix++) {
+          const wx = ox + (ix + 0.5) * THERM_CELL;
+          const idx = iy * THERM_W + ix;
+          const c = getCellAt(wx, wy);
+          tempGrid[idx] = 0;
+          if (!c || isWetMat(c.mat)) {
+            moistGrid[idx] = 1.0;
+            fuelGrid[idx] = 0.0;
+          } else if (c.mat === MAT_GRASS || c.mat === MAT_LILYPAD) {
+            moistGrid[idx] = 0.65;
+            fuelGrid[idx] = 0.70;
+          } else {
+            moistGrid[idx] = 0.20;
+            fuelGrid[idx] = 0.0;
+          }
+        }
+      }
+      thermInit = true;
+    }
+
+    function stepThermodynamics(dt) {
+      if (warmthSpeakCd > 0) warmthSpeakCd = Math.max(0, warmthSpeakCd - dt);
+      const targetOX = Math.floor((camX - (THERM_W * THERM_CELL) * 0.5) / THERM_CELL) * THERM_CELL;
+      const targetOY = Math.floor((camY - (THERM_H * THERM_CELL) * 0.5) / THERM_CELL) * THERM_CELL;
+      if (!thermInit || Math.abs(targetOX - thermOriginX) > 96 || Math.abs(targetOY - thermOriginY) > 96) {
+        initThermGridAt(targetOX, targetOY);
+      }
+
+      // Fontes de calor (campfires) + interação com o gatinho
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        if (p.destroyed || p.modelKey !== 'campfire') continue;
+        const dCat = Math.hypot(cat.x - p.wx, cat.y - p.wy);
+        if (dCat < 10 && cat.z <= p.wz + 8 && cat.hurtTimer <= 0) {
+          cat.hurtTimer = 1.0;
+          cat.vz = 130;
+          cat.onGround = false;
+          sfxHurt();
+          catSpeak('Ai! Quente! 🔥', 110);
+        } else if (dCat >= 10 && dCat < 26 && warmthSpeakCd <= 0 && !cat.speech) {
+          warmthSpeakCd = 14;
+          catSpeak('Quentinho! 🔥', 90);
+        }
+
+        // Injeta calor no centro da fogueira e emite brasas no WindField
+        const ix = Math.floor((p.wx - thermOriginX) / THERM_CELL);
+        const iy = Math.floor((p.wy - thermOriginY) / THERM_CELL);
+        if (ix >= 1 && ix < THERM_W - 1 && iy >= 1 && iy < THERM_H - 1) {
+          tempGrid[iy * THERM_W + ix] = 95;
+        }
+        if (Math.hypot(p.wx - camX, p.wy - camY) < 340 && Math.random() < dt * 10) {
+          spawnParticles(
+            p.wx + (Math.random() - 0.5) * 4,
+            p.wy + (Math.random() - 0.5) * 4,
+            p.wz + 7,
+            1,
+            ['#F97316', '#FACC15', '#EF4444'],
+            8,
+            { grav: -28, vz: 22 + Math.random() * 14, life: 0.55 + Math.random() * 0.35 }
+          );
+        }
+      }
+
+      thermAccum += dt;
+      const stepDt = 1 / 15;
+      while (thermAccum >= stepDt) {
+        thermAccum -= stepDt;
+        const alpha = 0.14;
+        const cool = 0.22;
+        const T_IGN = 42;
+        for (let iy = 1; iy < THERM_H - 1; iy++) {
+          const wy = thermOriginY + (iy + 0.5) * THERM_CELL;
+          const row = iy * THERM_W;
+          for (let ix = 1; ix < THERM_W - 1; ix++) {
+            const wx = thermOriginX + (ix + 0.5) * THERM_CELL;
+            const idx = row + ix;
+            const c = getCellAt(wx, wy);
+            let T = tempGrid[idx];
+            if (!c || isWetMat(c.mat)) {
+              if (T > 8 && Math.random() < 0.25) {
+                spawnParticles(wx, wy, waterSurfZ(c) + 1, 1, ['#E0F2FE', '#FFFFFF'], 6, { grav: -18, vz: 16, life: 0.5 });
+              }
+              tempNext[idx] = 0;
+              moistGrid[idx] = 1.0;
+              continue;
+            }
+            const lap = tempGrid[idx - 1] + tempGrid[idx + 1] + tempGrid[idx - THERM_W] + tempGrid[idx + THERM_W] - 4 * T;
+            const w = sampleWind(wx, wy, fluidTime);
+            const gradTx = (tempGrid[idx + 1] - tempGrid[idx - 1]) * 0.5;
+            const gradTy = (tempGrid[idx + THERM_W] - tempGrid[idx - THERM_W]) * 0.5;
+            const adv = -(w.wx * gradTx + w.wy * gradTy) * 0.04;
+            T = Math.max(0, T + alpha * lap + adv - cool * T * stepDt);
+
+            if (moistGrid[idx] > 0.05 && T > 6) {
+              moistGrid[idx] = Math.max(0, moistGrid[idx] - 0.018 * T * stepDt);
+              T = Math.min(T, T_IGN - 2);
+            } else if (T >= T_IGN && moistGrid[idx] <= 0.05 && fuelGrid[idx] > 0.05) {
+              T = Math.min(120, T + 22 * stepDt);
+              fuelGrid[idx] = Math.max(0, fuelGrid[idx] - 0.28 * stepDt);
+              if (Math.random() < 0.3) {
+                spawnParticles(wx, wy, c.h + 2, 1, ['#F97316', '#FACC15'], 6, { grav: -22, vz: 18, life: 0.45 });
+              }
+            }
+            tempNext[idx] = T < 0.05 ? 0 : T;
+          }
+        }
+        tempGrid.set(tempNext);
       }
     }
 
