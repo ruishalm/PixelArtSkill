@@ -1,6 +1,6 @@
 import json
 import math
-from collections import deque
+from collections import Counter, deque
 
 
 def make_grid(w, h, fill=0):
@@ -22,6 +22,49 @@ def to_strings(slices):
         [''.join(encode_char(v) for v in row) for row in s]
         for s in slices
     ]
+
+
+def upscale_voxel_model(slices, factor=1.5):
+    """Upscale a base-36 slice stack (D x H x W) by factor with 1 pinhole-fill pass."""
+    d1 = len(slices)
+    h1 = len(slices[0])
+    w1 = len(slices[0][0])
+
+    d2 = int(round(d1 * factor))
+    h2 = int(round(h1 * factor))
+    w2 = int(round(w1 * factor))
+
+    # Step A: Resample at true 1:1 voxel density
+    vol = [
+        [
+            [
+                slices[min(d1 - 1, int(z2 * d1 / d2))][min(h1 - 1, int(y2 * h1 / h2))][min(w1 - 1, int(x2 * w1 / w2))]
+                for x2 in range(w2)
+            ]
+            for y2 in range(h2)
+        ]
+        for z2 in range(d2)
+    ]
+
+    # Step B: 1 gentle concave pinhole-fill smoothing pass on a copy (z2 > 0 only, never delete voxels)
+    out_vol = [[row[:] for row in slice_2d] for slice_2d in vol]
+    dirs = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+    for z2 in range(1, d2):
+        for y2 in range(h2):
+            for x2 in range(w2):
+                if vol[z2][y2][x2] != '0':
+                    continue
+                neighbors = []
+                for dx, dy, dz in dirs:
+                    nx, ny, nz = x2 + dx, y2 + dy, z2 + dz
+                    if 0 <= nx < w2 and 0 <= ny < h2 and 0 <= nz < d2:
+                        ch = vol[nz][ny][nx]
+                        if ch != '0':
+                            neighbors.append(ch)
+                if len(neighbors) >= 5:
+                    out_vol[z2][y2][x2] = Counter(neighbors).most_common(1)[0][0]
+
+    return [[''.join(row) for row in out_vol[z]] for z in range(d2)]
 
 
 def hash3(x, y, z):
@@ -1985,7 +2028,7 @@ def build_baby_chick():
     return {'palette': palette, 'slices': to_strings(vol)}
 
 
-EXPECTED_SPECS = {
+BASE_SPECS = {
     'pine_tree': (28, 28, 48),
     'sakura_oak': (54, 54, 68),
     'boulder_large': (14, 14, 12),
@@ -2011,6 +2054,34 @@ EXPECTED_SPECS = {
     'baby_chick': (10, 10, 8),
 }
 
+SCALE_FACTORS = {
+    # 1.5x Monumental Structures & Trees
+    'cozy_cabin': 1.5,
+    'lighthouse': 1.5,
+    'torii_gate': 1.5,
+    'sakura_oak': 1.5,
+    'pine_tree': 1.5,
+    'ruin_pillar': 1.5,
+    'beach_umbrella': 1.5,
+    'wood_boat': 1.5,
+    'stone_lantern': 1.5,
+    # 1.4x Mid-Size & Jumpable Platforms
+    'mushroom_giant': 1.4,
+    'boulder_large': 1.4,
+    'hay_bale': 1.4,
+    'tree_stump': 1.4,
+    'sunflower': 1.4,
+    'bush_berry': 1.4,
+    'campfire': 1.4,
+    'wood_sign': 1.4,
+    'pumpkin_patch': 1.4,
+}
+
+EXPECTED_SPECS = {
+    name: tuple(int(round(dim * SCALE_FACTORS.get(name, 1.0))) for dim in dims)
+    for name, dims in BASE_SPECS.items()
+}
+
 
 def validate_pack(pack):
     assert set(pack.keys()) == set(EXPECTED_SPECS.keys()), (
@@ -2034,10 +2105,10 @@ def validate_pack(pack):
         assert isinstance(slices[0][0], str), f"{name}: slices[0][0] nao e str"
 
         if name == 'torii_gate':
-            # Confirmacao explicita: vao central x=12..37, z=0..35 deve ser 100% vazio ('0')
-            for z_chk in range(0, 36):
+            # Confirmacao explicita: vao central escalado 1.5x (x=18..56, z=0..53) deve ser 100% vazio ('0')
+            for z_chk in range(0, 54):
                 for y_chk in range(exp_h):
-                    for x_chk in range(12, 38):
+                    for x_chk in range(18, 57):
                         assert slices[z_chk][y_chk][x_chk] == '0', (
                             f"torii_gate vao central nao vazio em ({x_chk},{y_chk},{z_chk})"
                         )
@@ -2104,6 +2175,9 @@ def main():
         'grass_tuft_tall': build_grass_tuft_tall(),
         'baby_chick': build_baby_chick(),
     }
+
+    for name, factor in SCALE_FACTORS.items():
+        pack[name]['slices'] = upscale_voxel_model(pack[name]['slices'], factor)
 
     out_path = 'C:/github/PixelArt/terrain_props_pack.json'
     with open(out_path, 'w', encoding='utf-8') as f:

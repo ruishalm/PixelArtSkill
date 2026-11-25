@@ -1,155 +1,69 @@
-# 🐾 PixelArtSkill — 3D & Pseudo-3D Pixel Art Multi-Room Engine & Antigravity Skill
+# 🎨 `pixel-art-3d` — Skill de Pixel Art 3D & Sprite Stacking (Pure HTML5 Canvas 2D)
 
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live%20Demo-brightgreen?logo=github)](https://ruishalm.github.io/PixelArtSkill/)
-[![Tech](https://img.shields.io/badge/HTML5-Canvas%202D-E34F26?logo=html5&logoColor=white)](https://ruishalm.github.io/PixelArtSkill/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live%20Demos-brightgreen?logo=github)](https://ruishalm.github.io/PixelArtSkill/)
+[![Tech](https://img.shields.io/badge/HTML5-Canvas%202D%20Puro-E34F26?logo=html5&logoColor=white)](https://ruishalm.github.io/PixelArtSkill/)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Pure%20Vanilla%20JS)-blue)](#)
-[![No WebGL Required](https://img.shields.io/badge/3D%20Engine-No%20WebGL%20%2F%20No%20Three.js-orange)](#)
-[![Antigravity Skill](https://img.shields.io/badge/Antigravity-Custom%20Skill-purple)](https://ruishalm.github.io/PixelArtSkill/)
+[![No WebGL](https://img.shields.io/badge/3D%20Engine-No%20WebGL%20%2F%20No%20Three.js-orange)](#)
+[![Skill](https://img.shields.io/badge/Antigravity-pixel--art--3d%20Skill-purple)](./SKILL.md)
 
-> **Engine de Pixel Art 3D e Mansão Diorama Interativa Multi-Ambientes** construída 100% em **HTML5 Canvas 2D puro**, utilizando **Sprite Stacking (Fatiamento Voxel Z)**, rotação orbital 360°, projeção inversa para drag & drop com parenting hierárquico sincronizado, IA comportamental de pets, oclusão dinâmica de paredes e navegação por planta baixa arquitetural. Inspirado no universo aconchegante de *PurrModoro*, *The Sims* e *Animal Crossing*.
-
----
-
-## 🎮 Live Demos (Jogue no Navegador!)
-
-* 🏡 **[Diorama Multi-Ambientes Completo (room-3d.html / index.html)](https://ruishalm.github.io/PixelArtSkill/)**: Navegue livremente pelos 4 cômodos (Quarto, Sala de Estar, Cozinha e Jardim Externo), decore no modo Drag & Drop e interaja com os pets e murais!
-* 🏔️ **[Vale Felino 3D — Terreno Micro-Voxel Orgânico 720×720 ("Pull-Chain") (terrain-world.html)](https://ruishalm.github.io/PixelArtSkill/terrain-world.html)**: Paisagem contínua **720×720 micro-voxels (`VOX = 2u` = `1.440×1.440u`, `4×` mais área)** com **Tight-Crop Bounded Slices** (~50 MB RAM, 60 FPS), 8 biomas com proporção **Anti-Kaiju**, 2 cabanas na Vila, ~60 pinheiros, 7 cogumelos gigantes, 20 peixes dourados, grama em moitas orgânicas (`fbm2d`), oclusão unificada via `destination-out`, NPCs vivos (Popó e Pintinhos), balões vetoriais Hi-Res e controle **WASD + `Shift` (Sprint) + Espaço (pulo 2×H)**.
-* 🐱 **[Visualizador Anatômico do Gatinho 3D (cat-3d.html)](https://ruishalm.github.io/PixelArtSkill/cat-3d.html)**: Modelo quadrupedal de 16 fatias do gatinho com olhões expressivos e orelhas empinadas.
-* 🐔 **[Visualizador da Galinha Popó 3D (chicken-3d.html)](https://ruishalm.github.io/PixelArtSkill/chicken-3d.html)**: Modelo rechonchudo da galinha com crista, bico articulado anti-cisalhamento e ciclo de bicadas.
+> **`pixel-art-3d`** ([`SKILL.md`](./SKILL.md)) é uma skill de engenharia para agentes de IA criarem **cenas, objetos, personagens, dioramas e mundos abertos 3D/pseudo-3D** em **HTML5 Canvas 2D puro** usando **Sprite Stacking (fatiamento voxel no eixo Z)** — com **zero WebGL, zero Three.js e zero dependências externas em runtime**, gerando arquivos HTML totalmente autocontidos a ~60 FPS.
 
 ---
 
-## 🗺️ Os 4 Cômodos do Diorama Interativo
+## ⚡ Como Instalar & Usar
 
-Navegue clicando nas portas 3D com placas rústicas de madeira nobre ou abrindo o botão de **Planta Baixa (Minimapa 🗺️)** no canto superior direito:
+### Caminho da Skill
+- **Global (Antigravity):** `C:\Users\Ruishalm\.gemini\config\skills\pixel-art-3d\SKILL.md`
+- **Local (este repositório):** [`./SKILL.md`](./SKILL.md)
 
-```
-                  ┌──────────────────────┐
-                  │   🌳 Jardim Externo   │
-                  │ (Carvalho & Balanço) │
-                  └──────────▲───────────┘
-                             │ Porta Norte
-                             ▼
-┌──────────────────┐      ┌──────────────────────┐      ┌──────────────────────┐
-│    🛏️ Quarto     │◄────►│  🛋️ Sala de Estar    │◄────►│     🍽️ Cozinha       │
-│  (Setup & Cama)  │      │ (TV, Sofá & Estante) │      │(Mesa, Fogão & Gelad.)│
-└──────────────────┘      └──────────────────────┘      └──────────────────────┘
+### Fluxo Padrão em 3 Passos
+1. **Gerador Python (`make_grid` / `fill_box` / `to_strings`)**: modela cada asset em fatias horizontais `slices[z][y][x]` com paleta Base-36 (`'0'..'9'`, `'a'..'z'`).
+2. **Pacote JSON Base-36 / Heightfield**: exporta `{ "palette": [...], "slices": [[...]] }` (ou terreno procedural `1080×1080` diretamente no gerador).
+3. **HTML5 Canvas 2D Autocontido**: injeta os dados no template da engine (`imageSmoothingEnabled = false`), aplicando buffer *low-res*, upscale inteiro `1:1` e **Overlay Pass Hi-Res** para UI e textos.
+
+### Prompt Rápido Copiável
+
+```text
+REGRAS INEGOCIÁVEIS DO PROJETO (Pure Canvas 2D Sprite Stacking):
+1. TECNOLOGIA: Use EXCLUSIVAMENTE HTML5 Canvas 2D puro (ctx.imageSmoothingEnabled = false), buffer offscreen em baixa resolução + upscale inteiro e matrizes voxel JSON geradas em Python. PROIBIDO usar Three.js, WebGL, shaders ou bibliotecas 3D externas.
+2. MODELAGEM PYTHON -> JSON: Gere cada modelo com make_grid(w, h, fill=0), fill_box(...) e to_strings(slices) retornando list[list[str]] (NUNCA concatene todas as linhas de uma fatia em uma única string). Suporte base-36 ('0'..'9','a'..'z'), '0' transparente, y=0 TRASEIRA e y=H-1 FRENTE.
+3. RENDER & SILHUETA: Use squash = 0.75, drawStackObject com totalAngle = selfAngle + turn, e contorno único 1px (#3B2219 ou #3B2A20) via canvas offscreen após empilhar todas as fatias (PROIBIDO contornar fatias individuais).
+4. PAREDES & MÓVEIS OCOS: Use Wall Culling dinâmico (nyRot = nx*sin(turn) + ny*cos(turn) > 0.05 -> rodapé 3px + desativar hitbox) e oclusão angular em estantes/nichos (fundo + laterais sólidas + redesenho de paredes laterais por tier quando cosFront > 0.22).
+5. TERRENO & FÍSICA (se aplicável): Para paisagens naturais, prefira o Motor Micro-Voxel Orgânico 1080x1080 ("Pull-Chain", VOX=2u = 2.160x2.160u, Anti-Kaiju 1.5x): escultura via fbm2d/fbm2dFast/pullHill(cos^steepness)/pullPlateau(cliffMask; useWarp=false apenas em ruínas)/carveRiverPath/elasticChainRelax + Kit de 6 Fórmulas Geológicas (warp2d com fbm2dFast, smax/smin, ridgedFbm/pullRidge, rockTerrace, carveBenchTrail, thermalAndHydraulicErosion) + addArchBridge/getBridgeDeckZ (z_deck(u) = z_base + H_arch*(1-(2u-1)^2), tabuleiro 3 fatias sobre MAT_WATER, pilares u <= 0.09 || u >= 0.91 + guarda-corpos) + lagos orgânicos (warp2d) + espuma apenas em h - min8 > 4 (água calma max(Z_min, h-1)..h) + pullRuinsBlock (max(|dx|/halfW, |dy|/halfD) com fbm2d * 0.08), pré-bake em Tight-Crop Bounded Slices ({canvas,offX,offY,w,h} via Uint32Array) com casca min8-2 + iluminação por gradiente + moitas orgânicas de grama 2-3px (fbm2d > 0.43 + hash sem grade, noOutline, 8 FPS), render slice-by-slice com skip em O(1) + entityLayer (destination-out + silhueta única 1px #3B2219) + particlesByZ (Math.round(p.z) desenhadas dentro do loop após terrainSlices[z], sem contorno preto) e física contínua (AUTO_STEP_MAX=5.5 + deslizamento tangencial ±35° + standableMap/cliffTopMap 5x5). Para terrenos discretos (16x16), use traversão back-to-front O(W*H) via stepX/stepY, cell-bucketing, face culling até minNeighborZ e WASD relativo à câmera com targetAngle = Math.atan2(-worldMoveX, worldMoveY).
 ```
 
-1. **🛏️ Quarto Aconchegante**:
-   * Cama quentinha, lousa de cortiça com post-its funcionais interativos, estante modular e setup workstation de carvalho (laptop, tablet digitalizador, caneca fumegante, pilha de livros).
-   * Relógio de parede cilíndrico sincronizado com o horário real do seu sistema e janela com nuvens volumétricas em parallax.
+---
 
-2. **🛋️ Sala de Estar Retrô**:
-   * Sofá aconchegante de veludo com manta bordada, tapete escandinavo 3D, mesa de centro com café e livro aberto.
-   * TV retrô com tela azul e rack de madeira no centro da sala.
-   * Estante imponente de livros com 3 nichos fechados por painéis de nogueira maciça (anti-clipping lateral e traseiro).
-   * Quadro temático de galinhas no campo e janela colonial com vista ensolarada para o jardim.
+## 🧭 O que há na Skill (`SKILL.md`)
 
-3. **🍽️ Cozinha Pastel & Café**:
-   * Bancada contínua de ponta a ponta na parede Norte com pia de aço inox, cooktop e forno embutidos sob a janela.
-   * **Geladeira Retrô Pastel**: Interativa ao clique, abre um modal estilizado em formato de porta de geladeira com ímãs de frutas e lista de compras funcional com post-its.
-   * Mesa de jantar quadrada maciça e espaçosa com 4 cadeiras e fruteira central de cerâmica (maçãs, bananas e laranjas).
-   * Aparador rústico com gaveteiros e bule de louça na parede Oeste.
-
-4. **🌳 Jardim Externo & Céu Aberto**:
-   * Piso de grama viva com flores coloridas perimetrais ao longo de todas as bordas do diorama.
-   * **Carvalho Centenário Gigante**: Árvore com tronco massivo de 72x64 fatias e copa frondosa com brotos cor-de-rosa.
-   * **Balanço de Pneu Vertical**: Suspenso no galho horizontal da árvore por uma única corda trançada, onde a galinha Popó sobe para balançar no vento!
-   * Fachada colonial da casa com janela com floreiras, arbustos e cadeira de varanda aconchegante.
-   * Paredes substituídas por um horizonte panorâmico de céu azul infinito e nuvens ensolaradas.
+1. **Seletor de Paradigma (Pure Canvas 2D Obrigatório)**: define *Sprite Stacking* sobre Canvas 2D (`imageSmoothingEnabled = false`) como única arquitetura oficial, proibindo Three.js/WebGL/GLSL no fluxo padrão.
+2. **Taxonomia Estrita de 5 Classes de Assets**:
+   - **Entidades / Personagens**: locomoção biomecânica em 2 fases (*Swing* + *Stance*) e sub-pilhas rígidas articuladas (sem cisalhamento horizontal de fatias).
+   - **Estruturas Fixas (`isFixed`)**: âncoras arquiteturais protegidas contra arrasto.
+   - **Móveis Móveis (`isMovable`)**: reposicionáveis e rotacionáveis com **Parenting Hierárquico Sincronizado** (filhos rotacionam e transladam solidários ao pai).
+   - **Props de Superfície (`isProp`)**: encaixe automático na cota `liftZ` do suporte pai.
+   - **Itens de Parede e Portas (`isWallItem`)**: hitbox 3D projetada com bloqueio automático quando a parede é ocultada.
+3. **Convenção Canônica de Eixos (`+Y = Frente`)**: `y = 0` é a traseira, `y = H - 1` é a frente do modelo, `z = 0..D-1` cresce da base ao topo; tabela exata de `selfAngle` por parede (`0`, `π/2`, `π`, `-π/2`) para câmera padrão em `-45°`.
+4. **Formato Python → JSON Base-36 & RLE (`*ch<len>;`)**: helpers `make_grid(w, h, fill=0)`, `fill_box(...)` e `to_strings(slices)` retornando obrigatoriamente `list[list[str]]` (nunca string única achatada), com índice `'0'` transparente e `'1'..'z'` indexando até 35 cores; pacotes monumentais suportam compressão RLE por linha (`*<ch><len>;`) reduzindo o JSON em ~75% sem perda de velocidade no `buildSliceSheet`.
+5. **Silhueta Única `1px` & Exceção de Vegetação**: dilatação ortogonal `[-1,0],[1,0],[0,-1],[0,1]` em canvas auxiliar após empilhar todo o objeto (`#3B2219` ou `#3B2A20`, nunca preto puro e nunca por fatia individual); lâminas de grama `2–3px` usam `noOutline: true` para não virarem blocos de `3px`.
+6. **Wall Culling & Oclusão Angular**: colapso de paredes frontais (`nyRot > 0.05`) para rodapé `3px` com desativação de cliques, e oclusão por faixas Z em móveis ocos (`cosFront > 0.22`) redesenhando paredes laterais sólidas sobre props internos.
+7. **Motor de Terreno `1080×1080` (`VOX = 2u` = `2.160×2.160u`), Anti-Kaiju `1.5×` & Arquitetura `1:1` Monumental**: escultura *Pull-Chain*, Kit Geológico de 6 fórmulas, *Tight-Crop Bounded Slices*, oclusão `destination-out` via `entityLayer`, partículas 3D `particlesByZ`, pontes em arco parabólico, lagos orgânicos vs. quedas d'água, ruínas SDF e estruturas em densidade `1:1` real sem esticar `scale` (edificações `~5.0×H` a `~7.9×H`, arcos `~5.0×H` com vão `> 3×H`, árvores `~4.5×H` a `~6.4×H`).
+8. **5 Modos de Collider de Props**: `'solid'` (cilindro), `'box'` (caixa rotacionada), `'platform'` (pouso superior sem `AUTO_STEP` indevido), `'arch'` (dois pilares laterais com vão livre) e `'none'` (decorativo), além de desobstrução automática de trilhas/pontes em `addProp`.
+9. **Overlay Pass Hi-Res & Responsividade `1:1`**: textos e balões vetoriais (`roundRect`) sempre desenhados após o upscale *nearest-neighbor* no canvas principal, preservando pixels perfeitamente quadrados em qualquer viewport.
+10. **Checklist Pré-Modelagem de 8 Etapas & Persistência**: questionário obrigatório antes de gerar assets (categoria, voxel budget, frente em `y = H - 1`, `selfAngle`, hierarquia, superfície `liftZ`, interatividade e paleta/animação) + camada `DecorStorageService` em 3 slots.
 
 ---
 
-## 🏔️ Vale Felino 3D — Motor de Terreno Micro-Voxel Orgânico `720×720` ("Pull-Chain" + Tight-Crop Bounded Slices) (`terrain-world.html`)
+## 🧮 Fórmulas Matemáticas & Engenharia Completa da Engine
 
-Mapa aberto contínuo dobrado em **`720×720` micro-voxels (`VOX = 2u` = `1.440×1.440u`, `4×` mais área)**, substituindo blocos quadriculados por relevo orgânico fatiado horizontalmente sobre o motor **Pure HTML5 Canvas 2D**:
-- **Escultura "Pull-Chain" & Kit de 6 Fórmulas Geológicas**:
-  - **Colinas Suaves Escaláveis (`pullHill` + `elasticChainRelax`)**: Elevações orgânicas com curva elástica `cos^steepness` e relaxamento em corrente (puxar 1 pixel arrasta vizinhos proporcionalmente enquanto o chão ancora), gerando morros curvos e caminháveis.
-  - **Falésias Rochosas Naturais (`pullPlateau` + `cliffMask` + `fbm2d`)**: Terraços nivelados com paredões rochosos abruptos nas bordas mascaradas e iluminação direcional calculada pelo gradiente local de altura (`useWarp = false` reservado apenas a ruínas/estruturas humanas).
-  - **Kit de 6 Primitivas Geológicas Procedurais**: Combina **Domain Warping 2-Pass (`warp2d`)**, **Smooth Union/Carve (`smax`/`smin`)**, **Espinhas Multifractais (`ridgedFbm` + `pullRidge`)**, **Estratos Rochosos (`rockTerrace`)**, **Trilha Recortada na Encosta (`carveBenchTrail`)** sobre spline 3D e **Erosão Térmica & Gotas Hidráulicas (`thermalAndHydraulicErosion`)** para substituir "panquecas" e círculos uniformes por relevo geológico natural.
-  - **Rio Sinuoso (`carveRiverPath`) & Proporção Mundo vs. Personagem (Anti-Kaiju)**: Rios principais largos (`>= 3×` a largura do personagem, `~54u`), trilhas `>= 2×`, lagos `>= 4×` e biomas espaçados em `>= 250–400u` para que construções e paisagens respirem sem encolher o mundo.
-- **8 Biomas Conectados em Escala Ampla**: Vila da Clareira com **2 Cabanas** & Galinha Popó NPC, Campos de Girassol (2 Pintinhos Piu e Fardos de Feno), Circuito das Ruínas Antigas, Praia Dourada (Píer, Vitórias-Régias e Farol), Jardim Zen com Portal Torii (atravessável pelo vão central), Rio Cristalino com 2 Pontes, Bosque com **~60 Pinheiros** e **7 Cogumelos Gigantes** saltitantes (chapéus sólidos até `Z=40`) e Montanha do Pico Sakura (`Z=96`) com cachoeira dupla animada.
-- **Estruturas Monumentais em Escala Real (`1:1` Pixel Density)**: Construções modeladas em voxel real grande sem zoom artificial (`Cabana 52×46×54` `3.4×H`, `Farol 34×34×84` `5.25×H`, `Portal Torii 50×16×54`, `Sakura 54×54×68`, `Pinheiros 28×28×48`, `Pilares 18×18×34`, `Guarda-Sol 28×28×28` e `Barco 34×20×12`).
-- **Tight-Crop Bounded Slices (`terrainSlices[z]`) & Oclusão Unificada via `destination-out`**:
-  - Durante o pré-bake, calcula `[minX, maxX, minY, maxY]` de cada fatia `z` e aloca apenas o recorte justo `{ canvas, offX, offY, w, h }` via `Uint32Array` com espessura `min8 - 2` (**zero pinholes** em `360°`).
-  - No render loop, intersecta a janela visível da câmera com `[offX..offX+w]` e pula fatias fora da tela em **`O(1)`**, mantendo **~50 MB de RAM e 60 FPS** mesmo no mapa `4×` maior.
-  - Renderização unificada *slice-by-slice* intercalada com `entityLayer`, usando `globalCompositeOperation = 'destination-out'` e silhueta única `1px` (`#3B2219`) para **100% de oclusão** atrás de morros e sob arcos (como o Portal Torii).
-- **23 Modelos Voxel & Grama em Moitas Orgânicas (`fbm2d`)**: Lâminas de grama `2–3px` (`grassTipSlices`, `noOutline`) distribuídas via ruído coerente (`fbm2d > 0.43`) + hash sem grade, alternando clareiras limpas com moitas vivas animadas em 3 frames de vento a **8 FPS** + *rustle* sob as patas do gato.
-- **Balões Hi-Res & Responsividade 1:1**: Textos desenhados no `ctx` vetorial após o upscale garantindo letras nítidas (zero pixelização) e pixels 100% quadrados tanto em desktop widescreen quanto em celular vertical (com D-Pad touch).
-- **Física Contínua Calibrada pela Altura do Gato (`H = 16u`) & 5 Modos de Collider**:
-  - `ΔZ ≤ AUTO_STEP_MAX` (`5.5u`): Colinas orgânicas e margens suaves escaláveis andando continuamente.
-  - `5.5u < ΔZ ≤ 2.0H`: Degraus e plataformas transponíveis com pulo (`Espaço` = pico `~35u`, Coyote Time & Jump Buffer).
-  - `ΔZ > 2.0H` (falésias) ou **Água**: Intransponíveis com **deslizamento tangencial (`±35°`)** ao longo de encostas curvas e aviso visual do gato.
-  - **Colliders em Props**: `'solid'` (troncos, farol), `'box'` (paredes retangulares da cabana e barco), `'platform'` (cogumelos, fardos, tocos, pedras), `'arch'` (2 pilares laterais no Torii) e `'none'` (flores/grama).
-- **20 Peixes Dourados, Minimapa Topográfico (`720×720`) & Controles**: Botão `🧭 Viagem` rápida pelos marcos principais, toast de descoberta dos 8 biomas, `W A S D` / Setas relativos à câmera, **`Shift` para Sprint**, `Espaço` para pular `2×H`, `Q`/`E` ou arraste do mouse para girar 360°, `M` para miar e `R` para voltar ao Spawn.
-
----
-
-## ✨ Arquitetura & Taxonomia de Classes de Assets
-
-O ecossistema implementa rigorosamente a taxonomia descrita na skill oficial [SKILL.md](./SKILL.md):
-
-| Classe | Descrição | Exemplos | Comportamento no Modo Decor |
-| --- | --- | --- | --- |
-| **🐾 Pets / Personagens** | Entidades autônomas vivas com IA, ciclo de 2 fases e poleiros | Popó (galinha), Pipoca (gato), Pompom (pintinho) | Caminham, descansam, sobem em mesas/balanço e migram de cômodo |
-| **🧱 Móveis Fixos (`isFixed`)** | Estruturas arquiteturais âncoras do cômodo | Bancada da cozinha, geladeira retrô, carvalho gigante, canteiros | **Imóveis e protegidos contra arrasto**; podem abrir modais ao clique |
-| **🛋️ Móveis Móveis (`isMovable`)** | Mobília reposicionável com suporte a *Parenting Hierárquico* | Mesa de jantar, cadeiras, sofás, carrinho de mão, estante | **Arrastáveis e rotacionáveis (tecla R)**; movem todos os filhos juntos |
-| **🍎 Props / Superfície (`isProp`)** | Acessórios de tampo e prateleira com snapping inteligente | Fruteira, notebook, bule de chá, xícaras, livros, luminária | Snapping automático de altura (`liftZ`) e sincronizados ao móvel pai |
-| **🚪 Parede e Portas (`isWallItem`)** | Portas de transição, janelas, lousas e quadros | Portas rústicas com plaquinha, janela do jardim, lousa de post-its | Hitbox 3D na parede com culling automático se de costas para a câmera |
-
----
-
-## 📐 Regras Canônicas de Orientação e Rotação
-
-Para garantir que novos móveis nunca fiquem de costas para a câmera ou virados para a parede:
-
-* **Convenção das Fatias Voxel (`grid[y][x]`)**:
-  * `y = 0`: **Traseira (Costas)** do móvel.
-  * `y = H - 1`: **Frente** do móvel (portas, puxadores, gavetas, telas, ímãs e rostos).
-* **Ângulos Canônicos por Parede** (com câmera padrão em `-45°`):
-  * **Parede Norte (`y = -ROOM_R`)**: `selfAngle = 0` (frente voltada para o Sul / centro do cômodo).
-  * **Parede Oeste (`x = -ROOM_R`)**: `selfAngle = 0` (foco aberto para a câmera) ou `Math.PI / 2` (perpendicular para o Leste).
-  * **Parede Leste (`x = ROOM_R`)**: `selfAngle = Math.PI / 2` (voltado para o Oeste / centro).
-  * **Parede Sul (`y = ROOM_R`)**: `selfAngle = Math.PI` (voltado para o Norte / fundo).
-
----
-
-## 📋 Checklist Pré-Modelagem para Novos Assets
-
-Antes de gerar qualquer novo modelo para a engine, siga o questionário de 8 etapas do [SKILL.md](./SKILL.md):
-
-1. **Categoria**: Pet, Fixo, Móvel, Prop de Superfície ou Item de Parede?
-2. **Voxel Budget & Dimensões**: Largura $\times$ Profundidade $\times$ Altura de fatias.
-3. **Frente do Modelo**: A frente rica em detalhes está em `y = H - 1` e costas em `y = 0`?
-4. **Parede & Ângulo Canônico**: Posição e `selfAngle` segundo a tabela canônica.
-5. **Parenting Hierárquico**: O objeto carrega outros itens? Quais os offsets relativos (`offX, offY, liftZ`)?
-6. **Superfície de Apoio**: Qual o `liftZ` útil para descanso de pets ou apoio de props?
-7. **Interatividade**: Abre modal? Emite som? Tem física ou partículas?
-8. **Paleta & Animação**: Paleta restrita indexada e partes procedurais dinâmicas.
-
----
-
-## 💾 Sistema de Persistência (3 Slots & Cloud-Ready)
-
-* **3 Slots de Decoração**: Salve e restaure configurações da casa ("Original", "Custom A", "Custom B").
-* **Camada Desacoplada (`DecorStorageService`)**: Persiste instantaneamente via `localStorage` e já conta com ganchos nativos para envio de payloads JSON a backends e sistemas de login.
-
----
-
-## 🧮 Fórmulas Matemáticas & Engenharia da Engine
-
-Abaixo estão todas as equações centrais que governam a projeção, oclusão, controle, física, renderização micro-voxel e geologia procedural do repositório:
-
-### 1. Projeção 3D Sprite Stacking & Profundidade (`squash = 0.72–0.75`)
-Dado um ponto relativo à câmera $(\Delta x, \Delta y, \Delta z) = (w_x - \text{cam}_x,\, w_y - \text{cam}_y,\, w_z - \text{cam}_z)$ e o ângulo orbital da câmera $\theta = \text{turn}$:
+### 1. Projeção 3D (`project`) & Projeção Inversa (`unproject` / `unprojectToGrid`)
+Dado $(\Delta x, \Delta y, \Delta z) = (w_x - \text{cam}_x,\, w_y - \text{cam}_y,\, w_z - \text{cam}_z)$ e o ângulo orbital da câmera $\theta = \text{turn}$ (com $\text{squash} = 0.75$ no padrão oficial, nunca $< 0.60$):
 
 $$r_x = \Delta x \cos\theta - \Delta y \sin\theta, \qquad r_y = \Delta x \sin\theta + \Delta y \cos\theta$$
 
 $$s_x = c_x + r_x, \qquad s_y = c_y + r_y \cdot \text{squash} - \Delta z, \qquad \text{depth} = r_y$$
 
-- `squash` opera em **`0.72`** (`room-3d.html` / `terrain-world.html`) e **`0.75`** no padrão canônico da `SKILL.md` (nunca inferior a `0.60`), enquanto `depth = r_y` ordena entidades *back-to-front*.
-- **Projeção Inversa (`unproject` & `unprojectToGrid`)**: converte coordenadas de tela $(p_x, p_y)$ de volta para o plano do chão (Drag & Drop no diorama) ou para o índice contínuo do grid `720×720` em qualquer fatia $z$ (para calcular a janela visível da câmera):
+- **Projeção Inversa (`unproject` / `unprojectToGrid`)**: mapeia coordenadas da tela $(p_x, p_y)$ de volta ao plano $Z$ (para drag & drop e cálculo da sub-região visível do grid `1080×1080`):
 
 $$r_x = p_x - c_x, \qquad r_y = \frac{p_y - \big(c_y - (z - \text{cam}_z)\big)}{\text{squash}}$$
 
@@ -158,126 +72,129 @@ $$\Delta x = r_x \cos\theta + r_y \sin\theta, \qquad \Delta y = -r_x \sin\theta 
 $$g_x = \frac{\text{cam}_x + \Delta x}{\text{VOX}} + \text{HALF\_GRID}, \qquad g_y = \frac{\text{cam}_y + \Delta y}{\text{VOX}} + \text{HALF\_GRID}$$
 
 ### 2. Wall Culling Dinâmico & Oclusão Angular de Móveis Ocos
-- **Wall Culling Dinâmico**: para cada parede de normal unitária $(n_x, n_y)$, projeta-se a componente de profundidade da normal após a rotação $\theta$:
+- **Wall Culling Dinâmico**: para cada parede de normal unitária $(n_x, n_y)$:
 
 $$n_{y,\text{rot}} = n_x \sin\theta + n_y \cos\theta > 0.05$$
 
-  Quando verdadeira, a parede está entre a câmera e o interior do cômodo: colapsa para um rodapé discreto de `3px` (`z = 0..3`) e desativa os hitboxes de cliques nos itens pendurados nela.
-- **Oclusão Angular de Móveis Ocos** (estantes/nichos com frente aberta em `+Y`): avalia-se o ângulo total da câmera relativa ao móvel:
+  Quando verdadeiro, a parede volta-se para a câmera, colapsa para rodapé de `3px` (`z = 0..3`) e desativa os hitboxes de cliques nos itens montados nela.
+- **Oclusão Angular de Móveis Ocos** (abertura frontal em $+Y$):
 
 $$\cos(\text{selfAngle} + \theta) > 0.22$$
 
-  Se `> 0.22`, a abertura frontal está visível e o desenho intercala faixas Z de fatias, props internos ordenados por `depth` e redesenho das bordas laterais sólidas (`wallThick`); se `<= 0.22`, as paredes laterais e o fundo sólido do modelo ocluem 100% do interior.
+  Se $> 0.22$, intercala fatias por faixa Z, props internos ordenados por `depth` e redesenho das laterais sólidas (`wallThick`); se $\le 0.22$, o fundo e as laterais ocluem 100% do interior.
 
 ### 3. Controles WASD Relativos à Câmera & Direção Canônica (`+Y` = Frente)
-O vetor de entrada normalizado em tela $(i_x, i_y)$ é convertido para o espaço do mundo pela rotação inversa de `turn` e alinhado à orientação canônica dos modelos (`y = H - 1` = frente):
+Dado o vetor de entrada em tela $(i_x, i_y)$:
 
 $$\text{moveWorld}_x = i_x \cos\theta + i_y \sin\theta, \qquad \text{moveWorld}_y = -i_x \sin\theta + i_y \cos\theta$$
 
 $$\text{targetAngle} = \operatorname{atan2}(-\text{moveWorld}_x,\, \text{moveWorld}_y)$$
 
-O ângulo `selfAngle` interpola suavemente até `targetAngle` pelo menor arco em $[-\pi, \pi]$.
+Alinha estritamente a face frontal canônica (`y = H - 1`) ao vetor real de deslocamento sem inversões de eixo.
 
 ### 4. Física Vertical (`H = 16u`), Plataforma Mínima (`standableMap`) & Deslizamento (`±35°`)
-- **Cinemática de Pulo (`CAT_HEIGHT = 16u`, `GRAVITY = 1200`)**:
+- **Cinemática de Pulo (`H = 16u`, `g = 1200`)**:
 
 $$v_0 = \sqrt{2g(2H + \text{margem})} = \sqrt{2 \cdot 1200 \cdot 35.0} \approx 289.8\,\text{u/s}$$
 
-  Atinge ápice de **`~35u`** (supera degraus de `1H = 16u` e `2H = 32u`, bloqueia paredões `3H = 48u`), com **`AUTO_STEP_MAX = 5.5u`** (`~0.35H`) para subir colinas andando, **Coyote Time (`0.11s`)** e **Jump Buffer (`0.13s` teclado / `0.14s` touch)**.
-- **Filtro de Plataforma Mínima (`standableMap` + `cliffTopMap`)**: pré-calcula em janela **`5×5`** quais micro-voxels oferecem apoio real (`nearCount >= 14` de `25` células não-água com $|h_v - h_0| \le 3\text{u}$, equivalente a `~3.7×3.7` micro-voxels), mantendo **guarda de piso de vale** ($h_0 - \min_5 \le 2$) para não bloquear bases côncavas e rejeitando saliências isoladas de falésia (`max3 - h0 > 4 && h0 - min3 > 4`). Um segundo passe grava em `cliffTopMap` o pico local no raio `r = 5` para impedir escalar paredões por micro-degraus de `1–2px`.
-- **Deslizamento Tangencial (`±35°`)**: quando X e Y individuais encontram bloqueio em encostas curvas ou margens de rio, o resolvedor rotaciona o deslocamento $(\mathrm{d}x, \mathrm{d}y)$ em **`±35°`** (fator `0.85`), deslizando organicamente ao redor da curvatura.
+  Atinge ápice de `~35u`, com **`AUTO_STEP_MAX = 5.5u`** para subidas orgânicas caminhando, **Coyote Time (`0.11s`)** e **Jump Buffer (`0.13s`)**.
+- **Plataforma Mínima (`standableMap` + `cliffTopMap`)**: janela **`5×5`** exigindo **`nearCount >= 14`** de `25` micro-voxels não-água com $|h_v - h_0| \le 3\text{u}$, com **guarda de piso de vale** ($h_0 - \min_5 \le 2$) e rejeição de saliências estreitas de falésia (`max3 - h0 > 4 && h0 - min3 > 4`), complementada por `cliffTopMap` em raio **`r = 5`**.
+- **Deslizamento Tangencial (`±35°`)**: ao colidir com falésias ou bordas de água após tentativa nos eixos X/Y, rotaciona o vetor de movimento em até **`±35°`** para deslizar suavemente ao longo de encostas curvas.
 
-### 5. Renderização Slice-by-Slice, Casca Anti-Pinhole (`min8 - 2`), Iluminação por Gradiente & Grama `fbm2d`
-- **Casca Anti-Pinhole (`min8 - 2`)**: para cada micro-voxel de altura $h$, calcula-se $\min_8$ (menor altura entre os 8 vizinhos) e preenche-se a coluna de fatias no intervalo $[\max(Z_{\min}, \min_8 - 2),\, h]$, garantindo zero frestas transparentes em `360°`.
+### 5. Tight-Crop Slices, Casca `min8 - 2`, Gradiente, Grama, Upscale `1:1`, Hi-Res Overlay & `particlesByZ`
+- **Tight-Crop Bounded Slices & Skip em $O(1)$**: cada fatia pré-assada `{ canvas, offX, offY, w, h }` em `Uint32Array` recorta apenas o bounding box ocupado; no render, `unprojectToGrid` intersecta a janela visível e pula fatias fora da tela em $O(1)$, intercalando `entityLayer` (`destination-out` + silhueta única `1px` `#3B2219`).
+- **Casca Anti-Pinhole (`min8 - 2`)**: preenche cada coluna de $[\max(Z_{\min}, \min_8 - 2),\, h]$ para zero frestas transparentes em 360°.
 - **Iluminação Direcional por Gradiente Local**:
 
 $$\nabla_x h = h_R - h_L, \qquad \nabla_y h = h_D - h_U, \qquad \text{sunShade} = \operatorname{clamp}\!\left(\operatorname{round}\big((-\nabla_x h - \nabla_y h)\cdot 1.4\big),\, -22,\, 22\right)$$
 
-  Somado ao realce de quina exposta (`+10` quando $h_L < h$ ou $h_U < h$) para leitura nítida de relevo e sombras.
-- **Tight-Crop Bounded Slices & Skip em $O(1)$**: cada fatia `z` armazena apenas o retângulo ocupado `{ canvas, offX, offY, w, h }` em `Uint32Array`; no loop de render, `unprojectToGrid` nos 4 cantos da tela recorta a sub-região visível e pula fatias fora da janela em $O(1)$, intercalando `entityLayer` com `globalCompositeOperation = 'destination-out'` e contorno único `1px` (`#3B2219`).
-- **Grama em Moitas (`fbm2d > 0.43`)**: distribui lâminas `2–3px` (`noOutline`) quando `fbm2d(mx * 0.14, my * 0.14) + fine01 * 0.42 > 0.43` (`fine01 > 0.18` via hash XOR sem grade), animadas ao vento em **8 FPS** (`floor(t * 8)`).
-- **Upscale Inteiro 1:1 & Hi-Res Overlay Pass**:
+- **Grama em Moitas (`fbm2d > 0.43`)**: lâminas `2–3px` (`noOutline: true`) distribuídas por ruído coerente + hash sem grade e animadas em **8 FPS** (`Math.floor(t * 8)`).
+- **Upscale Inteiro `1:1` & Hi-Res Overlay Pass**:
 
 $$\text{pixelScale} = \operatorname{clamp}\!\left(\left\lfloor \frac{\min(W, H)}{260} \right\rfloor,\, 2,\, 4\right), \qquad \text{LOW\_W} = \left\lceil \frac{W}{\text{pixelScale}} \right\rceil, \qquad \text{LOW\_H} = \left\lceil \frac{H}{\text{pixelScale}} \right\rceil$$
 
-  O mundo 3D é renderizado no buffer `lowCanvas` com `imageSmoothingEnabled = false`, ampliado para o canvas principal e sobreposto por um **Hi-Res Overlay Pass** vetorial para balões de fala e textos sem pixelização.
+  Após `drawImage(lowCanvas, 0, 0, canvas.width, canvas.height)` com `imageSmoothingEnabled = false`, todos os balões e textos são desenhados em alta resolução no `ctx` principal.
+- **Oclusão 360° de Partículas 3D (`particlesByZ`)**: partículas são agrupadas por **`Math.round(p.z)`** e renderizadas no `lowCtx` **dentro** do loop *slice-by-slice* imediatamente após `terrainSlices[z]` (nunca após o fim do loop `z`), garantindo ocultação real atrás de morros e falésias sem contorno preto.
+- **Proporção Arquitetural Monumental `1:1` (`1.5×`) & Compressão RLE (`*ch<len>;`)**: estruturas monumentais preservam `scale = 1.0` ao lado do personagem (`H = 16u`) em resoluções reais (`~5.0×H` em `78×69×81` com porta `~33u`, `~7.9×H` em `51×51×126`, arcos `torii_gate` `~5.0×H` em `75×24×81` com vão `> 3×H`, e árvores de `~4.5×H` `42×42×72` a `~6.4×H` `81×81×102`), com pré-render quantizado em passos de `3°` e compressão RLE por linha (`*<ch><len>;`) reduzindo o JSON em ~75% sem custo perceptível no `buildSliceSheet`.
 
 ### 6. Kit de 6 Fórmulas Geológicas Procedurais
-Substitui formas uniformes ("panquecas" e elipses empilhadas) por geologia natural contínua (reservando `useWarp = false` em `pullPlateau` apenas para estruturas/ruínas humanas):
+1. **Domain Warping 2-Pass (`warp2d` com `fbm2dFast`)**:
 
-1. **Domain Warping 2-Pass (`warp2d`)**: distorce o domínio antes de medir distâncias para gerar baías, escarpas e penínsulas assimétricas:
+$$\mathbf{p}' = \mathbf{p} + A \cdot \text{fbm2dFast}\!\big(\mathbf{p}f + A\,\text{fbm2dFast}(\mathbf{p}f_1)\big)$$
 
-$$\mathbf{p}' = \mathbf{p} + A \cdot \text{fbm}\!\big(\mathbf{p}f + A\,\text{fbm}(\mathbf{p}f_1)\big)$$
-
-2. **Smooth Union / Carve (`smax` / `smin`)**: fusão e escavação polinomial suave de morros e esporões como argila, sem vincos duros:
+2. **Smooth Union / Carve (`smax` / `smin`)**:
 
 $$h = \operatorname{clamp}\!\left(0.5 + \frac{0.5(b - a)}{k},\, 0,\, 1\right), \qquad \text{smax}(a, b, k) = a + (b - a)h + k\,h(1 - h)$$
 
 $$\text{smin}(a, b, k) = a + (b - a)h' - k\,h'(1 - h'), \qquad h' = \operatorname{clamp}\!\left(0.5 - \frac{0.5(b - a)}{k},\, 0,\, 1\right)$$
 
-3. **Ridged Multifractal & Espinhas (`ridgedFbm` + `pullRidge`)**: acumula cristas geológicas afiladas ao longo de polilinhas com ramificações naturais:
+3. **Ridged Multifractal & Espinhas (`ridgedFbm` + `pullRidge`)**:
 
 $$\text{ridgedFbm}(\mathbf{p}) = \sum_i w_i\,\big(1 - |\text{noise}_i(\mathbf{p})|\big)^2$$
 
-4. **Estratos Rochosos Irregulares (`rockTerrace`)**: cria degraus sedimentares orgânicos modulando o passo da camada por ruído coerente:
+4. **Estratos Rochosos Irregulares (`rockTerrace`)**:
 
 $$\text{step}_{\text{eff}} = \text{step} \cdot \big(1 + 0.22 \cdot \text{fbm}(\mathbf{p})\big)$$
 
-5. **Trilha Recortada na Encosta (`carveBenchTrail`)**: executada *após* esculpir a montanha inteira, projeta uma spline 3D diretamente na encosta mantendo faixa interna plana `innerW` em `MAT_PATH` e mesclando o talude em `blendWidth` com interpolação *smoothstep* ($3t^2 - 2t^3$).
-6. **Erosão Térmica & Gotas Hidráulicas (`thermalAndHydraulicErosion`)**: relaxa declives acima do ângulo de repouso (`talus = 4` em pedra, `2` em terra) e simula `~260` gotas determinísticas descendo o gradiente para formar sulcos naturais e saias aluviais.
+5. **Trilha Recortada na Encosta (`carveBenchTrail`)**: aplica spline 3D após esculpir o maciço, mantendo faixa interna plana `innerW` em `MAT_PATH` e talude em `blendWidth` com *smoothstep* ($3t^2 - 2t^3$).
+6. **Erosão Térmica & Gotas Hidráulicas (`thermalAndHydraulicErosion`)**: relaxamento por ângulo de talus (`talus = 4` pedra, `2` terra) + `~260` gotas determinísticas descendo o gradiente.
+
+### 7. Ponte em Arco Parabólico, Lagos Orgânicos, Cachoeiras & Blocos de Ruína SDF
+- **Ponte em Arco Parabólico com Vão Real (`addArchBridge` / `getBridgeDeckZ`)**:
+
+$$z_{\text{deck}}(u) = z_{\text{base}} + H_{\text{arch}}\,\big(1 - (2u - 1)^2\big), \qquad u \in [0, 1]$$
+
+  Tabuleiro fino de **`3` fatias** sobre **`MAT_WATER` intacto**, pilares restritos às margens (**`u <= 0.09 || u >= 0.91`**) e guarda-corpos laterais.
+- **Lagos Orgânicos (`warp2d`) & Água Calma vs. Cachoeira (`h - min8 > 4`)**: bacias de lagos deformadas via `warp2d` para contornos naturais; listras verticais de espuma aplicadas estritamente onde **`h - min8 > 4`** (quedas d'água reais), mantendo lagos elevados e nascentes com superfície cristalina (**`max(Z_min, h - 1)..h`**).
+- **Blocos de Ruína Desgastados (`pullRuinsBlock`)**: distância retangular SDF com lascas procedurais nas bordas via `fbm2d`:
+
+$$d_{\text{rect}} = \max\!\left(\frac{|dx|}{\text{halfW}},\, \frac{|dy|}{\text{halfD}}\right) + 0.08 \cdot \text{fbm2d}(x, y)$$
+
+---
+
+## 🎮 Exemplos Gerados com a Skill (Live Demos)
+
+| Demo | Módulo Demonstrado da Skill | Link |
+|---|---|---|
+| **Terreno Micro-Voxel `1080×1080`** | Engine *Pull-Chain*, Tight-Crop Bounded Slices, física `AUTO_STEP_MAX` / `standableMap`, `addArchBridge`, `particlesByZ` e Overlay Hi-Res | [terrain-world.html](https://ruishalm.github.io/PixelArtSkill/terrain-world.html) |
+| **Diorama Multi-Ambientes** | *Wall Culling*, oclusão angular de móveis ocos, drag & drop por `unproject`, *Parenting Hierárquico* e persistência em 3 slots | [index.html](https://ruishalm.github.io/PixelArtSkill/) |
+| **Modelo Voxel Quadrúpede** | Fatiamento Base-36 em 16 fatias, rotação orbital 360°, `squash = 0.75` e silhueta única `1px` | [cat-3d.html](https://ruishalm.github.io/PixelArtSkill/cat-3d.html) |
+| **Modelo Voxel Articulado** | Sub-pilhas rígidas anti-cisalhamento e ciclo de locomoção biomecânica em 2 fases (*Swing* / *Stance*) | [chicken-3d.html](https://ruishalm.github.io/PixelArtSkill/chicken-3d.html) |
 
 ---
 
 ## 🚀 Como Rodar Localmente
 
-Zero build, zero npm, zero WebGL. Funciona imediatamente em qualquer navegador:
+Zero build, zero npm, zero WebGL:
 
 ```bash
-# Clone o repositório
 git clone https://github.com/ruishalm/PixelArtSkill.git
 cd PixelArtSkill
-
-# Inicie um servidor local simples
 python -m http.server 8088
-
-# Abra no navegador:
-# http://localhost:8088/index.html
+# Abra http://localhost:8088/index.html ou http://localhost:8088/terrain-world.html
 ```
 
 ---
 
 ## 📂 Estrutura do Repositório
 
-```
+```text
 PixelArtSkill/
-├── .github/workflows/deploy.yml         # GitHub Actions: Deploy contínuo no GitHub Pages
-├── SKILL.md                             # Antigravity Skill blindada (regras de render, terreno, modelagem e IA)
-├── index.html                           # Ponto de entrada padrão (Diorama 3D Multi-Ambientes)
-├── room-3d.html                         # Diorama 3D com os 4 cômodos e modo Decor
-├── terrain-world.html                   # Mundo Aberto 3D 720×720 ("Pull-Chain", Tight-Crop Bounded Slices, 8 Biomas Anti-Kaiju, Moitas fbm2d & Shift Sprint)
-├── cat-3d.html                          # Visualizador 3D do gatinho
-├── chicken-3d.html                      # Visualizador 3D da galinha Popó
-├── generate_mega_room.py                # Script principal gerador do mundo 3D multi-cômodos
-├── generate_terrain_world.py            # Construtor do Vale Felino 3D (Micro-Voxel 720×720 Pull-Chain, Tight-Crop, Anti-Kaiju, Hi-Res)
-├── generate_terrain_props.py            # Construtor dos 23 modelos voxel do mapa aberto (incl. grama e pintinho)
-├── generate_kitchen_and_garden_packs.py # Construtor voxel da Cozinha e Jardim
-├── generate_living_room_pack.py         # Construtor voxel da Sala de Estar
-├── generate_modular_furniture.py        # Construtor voxel do Quarto e Móveis Modulares
-├── build_chicken_slices.py              # Construtor anatômico da galinha e pintinho
-├── terrain_props_pack.json              # Voxel slices dos 23 modelos do terreno (cabana, torii, farol, grama, etc.)
-├── kitchen_pack.json                    # Voxel slices da Cozinha (bancada, geladeira, mesa, fruteira)
-├── garden_pack.json                     # Voxel slices do Jardim (carvalho gigante, balanço de pneu, cadeira)
-├── living_room_pack.json                # Voxel slices da Sala (sofá, estante sólida, TV retrô, mesa)
-├── furniture_pack.json                  # Voxel slices do Quarto (caminha, monstera, torre)
-├── modular_desk_pack.json               # Voxel slices da Workstation (mesa, note, tablet, caneca)
-├── chicken_slices.json                  # Fatias anatômicas da galinha e pintinho
-├── slices_v5.json                       # Fatias anatômicas do gatinho calico
-├── README.md                            # Documentação completa da engine
-└── LICENSE                              # Licença MIT
+├── SKILL.md                  # Especificação canônica da skill pixel-art-3d
+├── README.md                 # Documentação técnica da skill e fórmulas da engine
+├── LICENSE                   # Licença MIT
+├── index.html                # Exemplo: diorama multi-ambientes (Wall Culling + Drag & Drop)
+├── room-3d.html              # Fonte espelho do diorama multi-ambientes
+├── terrain-world.html        # Exemplo: terreno micro-voxel 1080×1080 e física contínua
+├── cat-3d.html               # Exemplo: visualizador voxel quadrúpede 360°
+├── chicken-3d.html           # Exemplo: visualizador voxel articulado anti-cisalhamento
+├── generate_*.py             # Scripts Python geradores de matrizes voxel JSON e HTML
+├── build_chicken_slices.py   # Script Python gerador de fatias articuladas Base-36
+└── *_pack.json / *_slices.json # Matrizes voxel exportadas em formato Base-36
 ```
 
 ---
 
 ## 📄 Licença
 
-Distribuído sob a licença MIT. Desenvolvido com carinho e precisão artesanal em Pixel Art 3D! 🐾
+Distribuído sob a licença **MIT**. Consulte [`LICENSE`](./LICENSE) para mais detalhes.
