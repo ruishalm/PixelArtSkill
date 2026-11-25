@@ -419,7 +419,7 @@
         npcs.push({
           kind: 'chick', name: 'Piu', model: propModels.baby_chick, scale: 0.95,
           x: cx, y: cy, z: c ? c.h : 0, homeX: cx, homeY: cy, roamR: 48,
-          selfAngle: 0, walkPhase: 0, timer: 0.8 + Math.random(), moving: true, dirX: -1, dirY: 0.5,
+          selfAngle: 0, walkPhase: 0, timer: 0.8 + worldRand(), moving: true, dirX: -1, dirY: 0.5,
           speech: null
         });
       }

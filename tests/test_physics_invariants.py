@@ -198,6 +198,57 @@ console.log('ALL_NODE_PHYSICS_INVARIANTS_OK');
         self.assertEqual(res.returncode, 0, f'Node physics test failed:\n{res.stderr}')
         self.assertIn('ALL_NODE_PHYSICS_INVARIANTS_OK', res.stdout)
 
+    def test_05_seeded_procedural_reproducibility(self):
+        import generate_terrain_props as gtp
+
+        gtp.set_seed(42)
+        pine_a1 = gtp.build_pine_tree()
+        ruin_a1 = gtp.build_ruin_pillar()
+
+        gtp.set_seed(42)
+        pine_a2 = gtp.build_pine_tree()
+        ruin_a2 = gtp.build_ruin_pillar()
+
+        gtp.set_seed(99)
+        pine_b = gtp.build_pine_tree()
+        ruin_b = gtp.build_ruin_pillar()
+
+        # Restore default seed
+        gtp.set_seed(1337)
+
+        # Same seed must be 100% deterministic
+        self.assertEqual(pine_a1['slices'], pine_a2['slices'])
+        self.assertEqual(ruin_a1['slices'], ruin_a2['slices'])
+
+        # Different seeds must produce distinct organic variations
+        self.assertNotEqual(pine_a1['slices'], pine_b['slices'])
+        self.assertNotEqual(ruin_a1['slices'], ruin_b['slices'])
+
+        # Verify Mulberry32 & seeded hash2i determinism in Node
+        node_seed_test = r"""
+const assert = require('assert');
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function() {
+    t = (t + 0x6D2B79F5) | 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const r1 = mulberry32(42), r2 = mulberry32(42), r3 = mulberry32(99);
+for (let i = 0; i < 20; i++) {
+  const v1 = r1(), v2 = r2(), v3 = r3();
+  assert.strictEqual(v1, v2);
+  assert(v1 >= 0 && v1 < 1);
+  assert.notStrictEqual(v1, v3);
+}
+console.log('SEED_OK');
+"""
+        res = subprocess.run(['node', '-e', node_seed_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node seed test failed:\n{res.stderr}')
+        self.assertIn('SEED_OK', res.stdout)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -1408,6 +1408,16 @@
     document.getElementById('btnRotL').addEventListener('click', () => { targetTurn += Math.PI / 4; });
     document.getElementById('btnRotR').addEventListener('click', () => { targetTurn -= Math.PI / 4; });
     document.getElementById('btnReset').addEventListener('click', resetCatToSpawn);
+    const btnSeedEl = document.getElementById('btnSeed');
+    if (btnSeedEl) {
+      btnSeedEl.textContent = `🎲 Seed: ${WORLD_SEED}`;
+      btnSeedEl.addEventListener('click', () => {
+        const nextSeed = 1000 + Math.floor(Math.random() * 90000);
+        const url = new URL(window.location.href);
+        url.searchParams.set('seed', String(nextSeed));
+        window.location.href = url.toString();
+      });
+    }
     document.getElementById('btnTravel').addEventListener('click', () => {
       travelIdx = (travelIdx + 1) % TRAVEL_SPOTS.length;
       const spot = TRAVEL_SPOTS[travelIdx];

@@ -58,9 +58,29 @@
       };
     }
 
+    // Seed determinística do mundo (?seed=<N>, padrão 1337 = mapa clássico)
+    const DEFAULT_WORLD_SEED = 1337;
+    const _rawSeedParam = new URLSearchParams(window.location.search).get('seed');
+    const _parsedSeed = _rawSeedParam !== null ? parseInt(_rawSeedParam, 10) : NaN;
+    const WORLD_SEED = Number.isFinite(_parsedSeed) ? (_parsedSeed >>> 0) : DEFAULT_WORLD_SEED;
+    const SEED_HASH_MIX = WORLD_SEED === DEFAULT_WORLD_SEED
+      ? 0
+      : (Math.imul(WORLD_SEED ^ (WORLD_SEED >>> 16), 2246822519) | 0);
+
+    function mulberry32(seed) {
+      let t = seed >>> 0;
+      return function() {
+        t = (t + 0x6D2B79F5) | 0;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const worldRand = mulberry32(WORLD_SEED);
+
     // Ruído 2D determinístico (3 oitavas suaves) para contornos orgânicos
     function hash2i(ix, iy) {
-      let n = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) | 0;
+      let n = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + SEED_HASH_MIX) | 0;
       n = Math.imul(n ^ (n >>> 13), 1274126177);
       return ((n ^ (n >>> 16)) >>> 0) * 2.3283064365386963e-10;
     }

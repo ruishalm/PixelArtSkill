@@ -285,7 +285,7 @@ PixelArtSkill/
 
 Baliza de evolução do laboratório de **funções matemáticas aplicadas a voxels** em Pure HTML5 Canvas 2D:
 
-- [ ] **Geração Procedural por Seed (`WORLD_SEED` + `--seed`)**: PRNG determinístico (*Mulberry32* no JS + `random.Random(seed)` em `generate_terrain_props.py`) parametrizando permutações do `fbm2d`, posições dos biomas (respeitando distância mínima Anti-Kaiju `>= 250u`), *waypoints* de rio/montanha e variações orgânicas de árvores, rochas e construções.
+- [x] **Geração Procedural por Seed (`WORLD_SEED` + `--seed`)**: PRNG determinístico (*Mulberry32* no JS + `set_seed(seed)` / `--seed` em `generate_terrain_props.py`), parâmetro `?seed=<N>` na URL e botão `🎲 Seed` no HUD variando o `fbm2d`, contornos orgânicos e props mantendo `seed=1337` como mapa clássico.
 - [ ] **Termodinâmica, Fogo & Combustão**: equação de difusão de calor + autômato celular de ignição/umidade acoplado ao `WindField` (vento inclina chamas e arrasta brasas em `particlesByZ`) e `MAT_WATER` / `MAT_SHALLOW` (água apaga fogo e solta vapor), com carbonização progressiva na paleta voxel antes de virar cinzas.
 - [ ] **Empuxo de Arquimedes & Acoplamento Onda ↔ Corpo Rígido**: `wood_log`, `wood_boat` e itens flutuantes lendo altura $u(x,y)$ e gradiente $\nabla u$ do `WaveBuffer` para oscilar verticalmente, inclinar com a onda e devolver impulsos ao buffer ao cair/mover.
 - [ ] **Matéria Granular & Re-Bake Incremental (*Dirty Rect*)**: areia, neve e terra solta com ângulo de repouso dinâmico (pegadas, escavação e avalanches locais), atualizando apenas o retângulo sujo nas `terrainSlices[z]` sem rebakar o mapa `1080×1080` inteiro.
