@@ -1,4 +1,9 @@
 import json
+import os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 def make_grid(w, h, fill=0):
     return [[fill for _ in range(w)] for _ in range(h)]
@@ -258,7 +263,7 @@ for z in range(30):
 pack['bookshelf'] = to_strings(shelf_slices)
 
 # Salva o arquivo de móveis da Sala de Estar
-with open('C:/github/PixelArt/living_room_pack.json', 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'living_room_pack.json'), 'w', encoding='utf-8') as f:
     json.dump(pack, f, indent=2)
 
 print("SUCCESS: living_room_pack.json generated with Sofa, Coffee Table, TV Rack, and Bookshelf!")

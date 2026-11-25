@@ -1,7 +1,12 @@
 import json
+import os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 # 1. Carrega dados de fatias
-with open('C:/github/PixelArt/slices_v5.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'slices_v5.json'), 'r', encoding='utf-8') as f:
     cat_slices_raw = json.load(f)
 
 # Criando slices do corpo (fatias 0 e 1 sem as patas)
@@ -23,11 +28,11 @@ cat_body_slices[4][8][17] = '4'
 
 cat_body_slices = [[''.join(r) for r in s] for s in cat_body_slices]
 
-with open('C:/github/PixelArt/cat_belly_slices.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'cat_belly_slices.json'), 'r', encoding='utf-8') as f:
     cat_belly_slices_raw = json.load(f)
 cat_belly_slices_json = json.dumps(cat_belly_slices_raw)
 
-with open('C:/github/PixelArt/hats_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'hats_pack.json'), 'r', encoding='utf-8') as f:
     hats_pack = json.load(f)
 
 witch_hat_slices = json.dumps(hats_pack['witch'])
@@ -54,10 +59,10 @@ cat_paw_slices = [
 cat_body_slices_json = json.dumps(cat_body_slices)
 cat_paw_slices_json = json.dumps(cat_paw_slices)
 
-with open('C:/github/PixelArt/furniture_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'furniture_pack.json'), 'r', encoding='utf-8') as f:
     furn_pack = json.load(f)
 
-with open('C:/github/PixelArt/modular_desk_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'modular_desk_pack.json'), 'r', encoding='utf-8') as f:
     mod_pack = json.load(f)
 
 desk_slices = json.dumps(mod_pack['desk'])
@@ -70,7 +75,7 @@ plant_slices = json.dumps(furn_pack['plant'])
 bed_slices = json.dumps(furn_pack['bed'])
 tree_slices = json.dumps(furn_pack['cat_tree'])
 
-with open('C:/github/PixelArt/living_room_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'living_room_pack.json'), 'r', encoding='utf-8') as f:
     living_pack = json.load(f)
 
 sofa_slices = json.dumps(living_pack['sofa'])
@@ -83,7 +88,7 @@ bs_crystal_slices = json.dumps(living_pack['bs_crystal'])
 bs_stack_slices = json.dumps(living_pack['bs_stack'])
 bs_trophy_slices = json.dumps(living_pack['bs_trophy'])
 
-with open('C:/github/PixelArt/kitchen_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'kitchen_pack.json'), 'r', encoding='utf-8') as f:
     kitchen_pack = json.load(f)
 
 counter_slices = json.dumps(kitchen_pack['kitchen_counter'])
@@ -93,7 +98,7 @@ dining_table_slices = json.dumps(kitchen_pack['dining_table'])
 dining_chair_slices = json.dumps(kitchen_pack['dining_chair'])
 fruit_bowl_slices = json.dumps(kitchen_pack['fruit_bowl'])
 
-with open('C:/github/PixelArt/garden_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'garden_pack.json'), 'r', encoding='utf-8') as f:
     garden_pack = json.load(f)
 
 garden_tree_slices = json.dumps(garden_pack['garden_tree'])
@@ -6052,10 +6057,10 @@ html_final = html_template.replace('__CAT_BODY_SLICES__', cat_body_slices_json)\
                           .replace('__WHEELBARROW_SLICES__', wheelbarrow_slices)\
                           .replace('__FLOWER_BED_SLICES__', flower_bed_slices)
 
-with open('C:/github/PixelArt/room-3d.html', 'w', encoding='utf-8') as f:
+with open(os.path.join(EXAMPLES_DIR, 'room-3d.html'), 'w', encoding='utf-8') as f:
     f.write(html_final)
 
-with open('C:/github/PixelArt/index.html', 'w', encoding='utf-8') as f:
+with open(os.path.join(ROOT, 'index.html'), 'w', encoding='utf-8') as f:
     f.write(html_final)
 
-print("SUCCESS: C:/github/PixelArt/room-3d.html and index.html generated with clean shelf and movable wall items!")
+print("SUCCESS: examples/room-3d.html and index.html generated with clean shelf and movable wall items!")

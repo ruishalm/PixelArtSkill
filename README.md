@@ -208,10 +208,10 @@ $$x(s_z) = x_0 + \Delta z\sin(\phi)\hat{d}_x, \qquad y(s_z) = y_0 + \Delta z\sin
 
 | Demo | Módulo Demonstrado da Skill | Link |
 |---|---|---|
-| **Terreno Micro-Voxel `1080×1080`** | Engine *Pull-Chain*, Tight-Crop Bounded Slices, física `AUTO_STEP_MAX` / `standableMap`, `addArchBridge`, `particlesByZ` e Overlay Hi-Res | [terrain-world.html](https://ruishalm.github.io/PixelArtSkill/terrain-world.html) |
-| **Diorama Multi-Ambientes** | *Wall Culling*, oclusão angular de móveis ocos, drag & drop por `unproject`, *Parenting Hierárquico* e persistência em 3 slots | [index.html](https://ruishalm.github.io/PixelArtSkill/) |
-| **Modelo Voxel Quadrúpede** | Fatiamento Base-36 em 16 fatias, rotação orbital 360°, `squash = 0.75` e silhueta única `1px` | [cat-3d.html](https://ruishalm.github.io/PixelArtSkill/cat-3d.html) |
-| **Modelo Voxel Articulado** | Sub-pilhas rígidas anti-cisalhamento e ciclo de locomoção biomecânica em 2 fases (*Swing* / *Stance*) | [chicken-3d.html](https://ruishalm.github.io/PixelArtSkill/chicken-3d.html) |
+| **Terreno Micro-Voxel `1080×1080`** | Engine *Pull-Chain*, Tight-Crop Bounded Slices, física `AUTO_STEP_MAX` / `standableMap`, `addArchBridge`, `particlesByZ` e Overlay Hi-Res | [examples/terrain-world.html](https://ruishalm.github.io/PixelArtSkill/examples/terrain-world.html) |
+| **Diorama Multi-Ambientes** | *Wall Culling*, oclusão angular de móveis ocos, drag & drop por `unproject`, *Parenting Hierárquico* e persistência em 3 slots | [`index.html` / `examples/room-3d.html`](https://ruishalm.github.io/PixelArtSkill/) |
+| **Modelo Voxel Quadrúpede** | Fatiamento Base-36 em 16 fatias, rotação orbital 360°, `squash = 0.75` e silhueta única `1px` | [examples/cat-3d.html](https://ruishalm.github.io/PixelArtSkill/examples/cat-3d.html) |
+| **Modelo Voxel Articulado** | Sub-pilhas rígidas anti-cisalhamento e ciclo de locomoção biomecânica em 2 fases (*Swing* / *Stance*) | [examples/chicken-3d.html](https://ruishalm.github.io/PixelArtSkill/examples/chicken-3d.html) |
 
 ---
 
@@ -223,7 +223,13 @@ Zero build, zero npm, zero WebGL:
 git clone https://github.com/ruishalm/PixelArtSkill.git
 cd PixelArtSkill
 python -m http.server 8088
-# Abra http://localhost:8088/index.html ou http://localhost:8088/terrain-world.html
+# Abra http://localhost:8088/index.html ou http://localhost:8088/examples/terrain-world.html
+```
+
+Para regenerar as demos HTML a partir das matrizes voxel em `assets/voxels/`, execute os scripts em `scripts/`:
+
+```bash
+python scripts/generate_terrain_world.py
 ```
 
 ---
@@ -232,17 +238,34 @@ python -m http.server 8088
 
 ```text
 PixelArtSkill/
-├── SKILL.md                  # Especificação canônica da skill pixel-art-3d
-├── README.md                 # Documentação técnica da skill e fórmulas da engine
-├── LICENSE                   # Licença MIT
-├── index.html                # Exemplo: diorama multi-ambientes (Wall Culling + Drag & Drop)
-├── room-3d.html              # Fonte espelho do diorama multi-ambientes
-├── terrain-world.html        # Exemplo: terreno micro-voxel 1080×1080 e física contínua
-├── cat-3d.html               # Exemplo: visualizador voxel quadrúpede 360°
-├── chicken-3d.html           # Exemplo: visualizador voxel articulado anti-cisalhamento
-├── generate_*.py             # Scripts Python geradores de matrizes voxel JSON e HTML
-├── build_chicken_slices.py   # Script Python gerador de fatias articuladas Base-36
-└── *_pack.json / *_slices.json # Matrizes voxel exportadas em formato Base-36
+├── .github/workflows/deploy.yml   # GitHub Pages: deploy contínuo automático na main
+├── .gitignore
+├── LICENSE
+├── README.md                      # Documentação oficial, fórmulas matemáticas e guia da skill
+├── SKILL.md                       # Antigravity Skill blindada (regras, fórmulas e prompt)
+├── index.html                     # Ponto de entrada padrão (GitHub Pages)
+├── docs/
+│   └── sprite-stacking-prompt-guide.md
+├── examples/                      # Demos autocontidas geradas com a skill
+│   ├── terrain-world.html
+│   ├── room-3d.html
+│   ├── cat-3d.html
+│   └── chicken-3d.html
+├── scripts/                       # Geradores Python portáteis (leem assets/voxels → escrevem examples/)
+│   ├── generate_terrain_world.py
+│   ├── generate_terrain_props.py
+│   ├── generate_mega_room.py
+│   ├── generate_kitchen_and_garden_packs.py
+│   ├── generate_living_room_pack.py
+│   ├── generate_modular_furniture.py
+│   ├── generate_full_3d_room.py
+│   ├── generate_room.py
+│   ├── generate_html.py
+│   ├── generate_chicken_html.py
+│   └── build_chicken_slices.py
+└── assets/
+    ├── voxels/                    # 13 matrizes/packs JSON Base-36 (cabana, torii, ferramentas, móveis...)
+    └── previews/                  # 15 imagens de referência e renders de validação
 ```
 
 ---

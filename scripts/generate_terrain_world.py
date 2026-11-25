@@ -2,7 +2,9 @@ import json
 import os
 import re
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 _RLE_RE = re.compile(r'(.)\1{2,}')
 
 
@@ -18,16 +20,16 @@ def rle_compress_props(pack):
         }
     return compressed
 
-with open(os.path.join(ROOT, 'slices_v5.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'slices_v5.json'), 'r', encoding='utf-8') as f:
     cat_slices = json.load(f)
 
-with open(os.path.join(ROOT, 'hats_pack.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'hats_pack.json'), 'r', encoding='utf-8') as f:
     hats_pack = json.load(f)
 
-with open(os.path.join(ROOT, 'chicken_slices.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'chicken_slices.json'), 'r', encoding='utf-8') as f:
     chicken_data = json.load(f)
 
-with open(os.path.join(ROOT, 'terrain_props_pack.json'), 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'terrain_props_pack.json'), 'r', encoding='utf-8') as f:
     props_pack = json.load(f)
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -5049,7 +5051,7 @@ html_out = (
     .replace('__PROPS_PACK__', json.dumps(rle_compress_props(props_pack), separators=(',', ':')))
 )
 
-out_path = os.path.join(ROOT, 'terrain-world.html')
+out_path = os.path.join(EXAMPLES_DIR, 'terrain-world.html')
 with open(out_path, 'w', encoding='utf-8') as f:
     f.write(html_out)
 
