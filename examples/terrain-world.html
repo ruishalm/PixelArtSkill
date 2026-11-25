@@ -221,6 +221,7 @@
     .obs-jump { background: #FEF3C7; color: #92400E; border-color: #F59E0B; }
     .obs-high { background: #FEE2E2; color: #991B1B; border-color: #EF4444; }
     .obs-water { background: #DBEAFE; color: #1E40AF; border-color: #3B82F6; }
+    .obs-shallow { background: #CFFAFE; color: #0E7490; border-color: #06B6D4; }
 
     .keys-hint {
       font-size: 11px;
@@ -493,6 +494,10 @@
       playTone(135, 48, 0.18, 'sawtooth', 0.09);
       setTimeout(() => playTone(95, 40, 0.22, 'triangle', 0.08), 55);
     };
+    const sfxShallowStep = () => {
+      playTone(420, 240, 0.055, 'sine', 0.035);
+      playTone(680, 380, 0.04, 'triangle', 0.02);
+    };
 
     // =========================================================================
     // 4. HEIGHTFIELD MICRO-VOXEL 1080×1080 & ESCULTURA ORGÂNICA "PULL-CHAIN"
@@ -526,9 +531,10 @@
       'Bosque Cogumelos',
       'Pico Sakura'
     ];
-    // Materiais: 0: grass, 1: path, 2: sand, 3: stone, 4: water, 5: bridge, 6: peak, 7: lilypad
+    // Materiais: 0: grass, 1: path, 2: sand, 3: stone, 4: water, 5: bridge, 6: peak, 7: lilypad, 8: shallow
     const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
-          MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7;
+          MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7, MAT_SHALLOW = 8;
+    function isWetMat(m) { return m === MAT_WATER || m === MAT_SHALLOW; }
 
     const hmap = new Int16Array(mw * mh);
     const biomeMap = new Uint8Array(mw * mh);
@@ -974,7 +980,7 @@
             const n = fbm2dFast(wx * 0.028 + 4.2, wy * 0.028 - 2.1) * 4.8;
             if (d <= halfWidth + n) {
               const idx = row + mx;
-              if (matMap[idx] !== MAT_WATER && matMap[idx] !== MAT_BRIDGE) {
+              if (!isWetMat(matMap[idx]) && matMap[idx] !== MAT_BRIDGE) {
                 matMap[idx] = mat;
                 if (forceFlatZ !== null && !getBridgeAt(wx, wy)) hmap[idx] = forceFlatZ;
               }
@@ -1092,7 +1098,7 @@
           for (let mx = 1; mx < mw - 1; mx++) {
             const idx = row + mx;
             const m = matMap[idx];
-            if (cliffMask[idx] || m === MAT_WATER || m === MAT_BRIDGE || m === MAT_LILYPAD) continue;
+            if (cliffMask[idx] || isWetMat(m) || m === MAT_BRIDGE || m === MAT_LILYPAD) continue;
             const talus = (m === MAT_STONE) ? 4 : 2;
             const nb0 = idx - 1, nb1 = idx + 1, nb2 = idx - mw, nb3 = idx + mw;
             let lowNb = nb0, lowH = hmap[nb0];
@@ -1101,7 +1107,7 @@
             if (hmap[nb3] < lowH) { lowH = hmap[nb3]; lowNb = nb3; }
             if (hmap[idx] - lowH > talus) {
               const nbMat = matMap[lowNb];
-              if (!cliffMask[lowNb] && nbMat !== MAT_WATER && nbMat !== MAT_BRIDGE && nbMat !== MAT_LILYPAD) {
+              if (!cliffMask[lowNb] && !isWetMat(nbMat) && nbMat !== MAT_BRIDGE && nbMat !== MAT_LILYPAD) {
                 const delta = Math.max(1, Math.round(((hmap[idx] - lowH) - talus) * 0.30));
                 tmp[idx] = Math.max(0, tmp[idx] - delta);
                 tmp[lowNb] = Math.min(64, tmp[lowNb] + delta);
@@ -1124,7 +1130,7 @@
           const tx = 8 + Math.floor(nextRand() * (mw - 16));
           const ty = 8 + Math.floor(nextRand() * (mh - 16));
           const tidx = ty * mw + tx;
-          if (hmap[tidx] >= 14 && !cliffMask[tidx] && matMap[tidx] !== MAT_PATH && matMap[tidx] !== MAT_WATER) {
+          if (hmap[tidx] >= 14 && !cliffMask[tidx] && matMap[tidx] !== MAT_PATH && !isWetMat(matMap[tidx])) {
             mx = tx;
             my = ty;
             found = true;
@@ -1154,7 +1160,7 @@
           }
           const drop = curH - lowH;
           const nbMat = matMap[lowNb];
-          if (drop <= 0 || cliffMask[lowNb] || nbMat === MAT_WATER || nbMat === MAT_BRIDGE || nbMat === MAT_LILYPAD) {
+          if (drop <= 0 || cliffMask[lowNb] || isWetMat(nbMat) || nbMat === MAT_BRIDGE || nbMat === MAT_LILYPAD) {
             if (sediment > 0 && !cliffMask[idx] && matMap[idx] !== MAT_PATH) {
               hmap[idx] = Math.min(64, hmap[idx] + 1);
             }
@@ -1181,7 +1187,7 @@
           const row = my * mw;
           for (let mx = 1; mx < mw - 1; mx++) {
             const idx = row + mx;
-            if (cliffMask[idx] || matMap[idx] === MAT_WATER || matMap[idx] === MAT_BRIDGE || matMap[idx] === MAT_LILYPAD) {
+            if (cliffMask[idx] || isWetMat(matMap[idx]) || matMap[idx] === MAT_BRIDGE || matMap[idx] === MAT_LILYPAD) {
               continue;
             }
             const hC = hmap[idx];
@@ -1220,7 +1226,7 @@
             standableMap[idx] = 0;
             continue;
           }
-          if (mat === MAT_BRIDGE || mat === MAT_LILYPAD) {
+          if (mat === MAT_BRIDGE || mat === MAT_LILYPAD || mat === MAT_SHALLOW) {
             standableMap[idx] = 1;
             continue;
           }
@@ -1277,7 +1283,7 @@
         const y1 = Math.min(mh - 1, my + 5);
         for (let mx = 0; mx < mw; mx++) {
           const idx = row + mx;
-          if (standableMap[idx] !== 0 || matMap[idx] === MAT_WATER) continue;
+          if (standableMap[idx] !== 0 || isWetMat(matMap[idx])) continue;
           const x0 = Math.max(0, mx - 5);
           const x1 = Math.min(mw - 1, mx + 5);
           let maxH = hmap[idx];
@@ -1507,7 +1513,7 @@
       // Parte C1: Riacho plano (Z=-5) ligando o pé da cachoeira (wx=225) ao rio principal (wx=144)
       carveRiverPath([[225, -495], [185, -490], [144, -488]], 32, -5);
 
-      // Parte C2: Poço circular com borda rasa arenosa ao pé da falésia (sem corroer a rocha alta h > 10)
+      // Parte C2: Poço circular com borda rasa caminhável (MAT_SHALLOW, d in [16..26]) ao pé da falésia
       {
         const gx0 = Math.max(0, Math.floor(204 / VOX + HALF_GRID));
         const gx1 = Math.min(mw - 1, Math.ceil(282 / VOX + HALF_GRID));
@@ -1521,12 +1527,17 @@
             const idx = row + mx;
             if (hmap[idx] > 10) continue;
             const d = Math.hypot(wx - 238, wy + 495) + fbm2d(wx * 0.12, wy * 0.12) * 1.6;
-            if (d <= 22) {
+            if (d <= 16) {
               hmap[idx] = -5;
               matMap[idx] = MAT_WATER;
               biomeMap[idx] = 5;
               cliffMask[idx] = 1;
-            } else if (d <= 27 && matMap[idx] !== MAT_WATER && hmap[idx] <= 2) {
+            } else if (d <= 26) {
+              hmap[idx] = -2;
+              matMap[idx] = MAT_SHALLOW;
+              biomeMap[idx] = 5;
+              cliffMask[idx] = 1;
+            } else if (d <= 30 && !isWetMat(matMap[idx]) && hmap[idx] <= 2) {
               hmap[idx] = Math.min(hmap[idx], 0);
               matMap[idx] = MAT_SAND;
               biomeMap[idx] = 5;
@@ -1535,33 +1546,45 @@
         }
       }
 
-      // Partes A & B: Nascente rebaixada no platô (h>=44 -> 46) + Cortina vertical colada à encosta da falésia (1<=h<=48)
+      // Partes A & B: Nascente no platô (wx>=309) + Calha úmida escura de pedra (wx=250..308, SEM MAT_WATER estático!)
+      // + Terraços Z=48 acessíveis ao norte e sul (incluindo (298, -468))
       {
-        const gx0 = Math.max(0, Math.floor(224 / VOX + HALF_GRID));
-        const gx1 = Math.min(mw - 1, Math.ceil(348 / VOX + HALF_GRID));
-        const gy0 = Math.max(0, Math.floor(-525 / VOX + HALF_GRID));
-        const gy1 = Math.min(mh - 1, Math.ceil(-465 / VOX + HALF_GRID));
+        const gx0 = Math.max(0, Math.floor(248 / VOX + HALF_GRID));
+        const gx1 = Math.min(mw - 1, Math.ceil(354 / VOX + HALF_GRID));
+        const gy0 = Math.max(0, Math.floor(-534 / VOX + HALF_GRID));
+        const gy1 = Math.min(mh - 1, Math.ceil(-456 / VOX + HALF_GRID));
         for (let my = gy0; my <= gy1; my++) {
           const wy = (my - HALF_GRID + 0.5) * VOX;
+          const dy = Math.abs(wy + 495);
           const row = my * mw;
           for (let mx = gx0; mx <= gx1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const idx = row + mx;
-            const curH = hmap[idx];
-            const n = fbm2d(wx * 0.05, wy * 0.05) * 4.5;
-            if (Math.abs(wy + 495 + n) <= 15.0) {
-              if (wx >= 265 && curH >= 44) {
-                // Parte A: Nascente encaixada 2u abaixo da borda Z=48 da montanha
+            if (dy <= 17.0) {
+              if (wx >= 309 && wx <= 346) {
                 hmap[idx] = 46;
                 matMap[idx] = MAT_WATER;
                 biomeMap[idx] = 7;
                 cliffMask[idx] = 1;
-              } else if (wx <= 315 && curH >= 1 && curH <= 48) {
-                // Parte B: Cortina vertical acompanhando o relevo real da falésia (zero rampa flutuante)
-                matMap[idx] = MAT_WATER;
+              } else if (wx >= 272 && wx <= 308) {
+                hmap[idx] = wx >= 286 ? 46 : 44;
+                matMap[idx] = MAT_STONE;
+                shadowMask[idx] = Math.max(shadowMask[idx], 26);
+                biomeMap[idx] = 7;
+                cliffMask[idx] = 1;
+              } else if (wx >= 250 && wx < 272) {
+                hmap[idx] = Math.max(0, Math.min(43, Math.round(43 * (wx - 250) / 22)));
+                matMap[idx] = MAT_STONE;
+                shadowMask[idx] = Math.max(shadowMask[idx], 26);
                 biomeMap[idx] = 7;
                 cliffMask[idx] = 1;
               }
+            } else if (wx >= 284 && wx <= 348) {
+              // Margens Z=48 firmes e caminháveis (acesso ao topo da cachoeira em (298, -468) e margem norte)
+              hmap[idx] = 48;
+              matMap[idx] = MAT_STONE;
+              biomeMap[idx] = 7;
+              cliffMask[idx] = 1;
             }
           }
         }
@@ -1587,22 +1610,24 @@
           const shoreY = shoreYByCol[mx];
           const sandStart = sandStartByCol[mx];
 
-          if (wy >= shoreY + 8) {
+          if (wy >= shoreY + 14) {
             hmap[idx] = -6;
             matMap[idx] = MAT_WATER;
             biomeMap[idx] = 3;
           } else if (wy >= shoreY) {
-            hmap[idx] = -4;
-            matMap[idx] = MAT_WATER;
-            biomeMap[idx] = 3;
-          } else if (wy >= shoreY - 10) {
             if (matMap[idx] !== MAT_WATER) {
+              hmap[idx] = -2;
+              matMap[idx] = MAT_SHALLOW;
+              biomeMap[idx] = 3;
+            }
+          } else if (wy >= shoreY - 10) {
+            if (!isWetMat(matMap[idx])) {
               hmap[idx] = -1;
               matMap[idx] = MAT_SAND;
               biomeMap[idx] = 3;
             }
           } else if (wy >= sandStart) {
-            if (matMap[idx] !== MAT_WATER) {
+            if (!isWetMat(matMap[idx])) {
               hmap[idx] = Math.max(0, hmap[idx]);
               matMap[idx] = MAT_SAND;
               biomeMap[idx] = 3;
@@ -1647,6 +1672,31 @@
         setCirclePatch(sx, 495, 12.0, 2, MAT_STONE, 5, true);
       }
 
+      // Vau Raso do Rio perto da Vila (wy = 225..295, sul da Ponte Central) -> MAT_SHALLOW caminhável
+      {
+        const gx0 = Math.max(0, Math.floor(72 / VOX + HALF_GRID));
+        const gx1 = Math.min(mw - 1, Math.ceil(208 / VOX + HALF_GRID));
+        const gy0 = Math.max(0, Math.floor(225 / VOX + HALF_GRID));
+        const gy1 = Math.min(mh - 1, Math.ceil(295 / VOX + HALF_GRID));
+        for (let my = gy0; my <= gy1; my++) {
+          const wy = (my - HALF_GRID + 0.5) * VOX;
+          const tSeg = Math.max(0, Math.min(1, (wy - 108) / (435 - 108)));
+          const centerWx = 134 + (144 - 134) * tSeg;
+          const row = my * mw;
+          for (let mx = gx0; mx <= gx1; mx++) {
+            const wx = (mx - HALF_GRID + 0.5) * VOX;
+            const idx = row + mx;
+            const dRiver = Math.abs(wx - centerWx);
+            if (matMap[idx] === MAT_WATER || dRiver <= 38) {
+              hmap[idx] = -2;
+              matMap[idx] = MAT_SHALLOW;
+              biomeMap[idx] = 5;
+              cliffMask[idx] = 1;
+            }
+          }
+        }
+      }
+
       // ---------------------------------------------------------------------
       // BIOMA 2: RUÍNAS ORGÂNICAS & 4 BLOCOS ERODIOS DE TESTE (cliffMask=1)
       // ---------------------------------------------------------------------
@@ -1663,7 +1713,7 @@
           for (let mx = gx0; mx <= gx1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const idx = row + mx;
-            if (matMap[idx] !== MAT_WATER) {
+            if (!isWetMat(matMap[idx])) {
               hmap[idx] = 0;
               biomeMap[idx] = 2;
               cliffMask[idx] = 1;
@@ -1799,6 +1849,7 @@
     };
 
     const props = [];
+    let damBoulder = null;
     const foliageProps = [];
     const propColliders = [];
     const platformColliders = [];
@@ -1841,8 +1892,8 @@
       if (!c || !propModels[modelKey]) return;
       const meta = PROP_COLLIDER_META[modelKey] || { mode: 'none' };
 
-      if (!options.allowOnPath && meta.mode !== 'none' && meta.mode !== 'arch') {
-        if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || c.mat === MAT_WATER || c.mat === MAT_LILYPAD || getBridgeAt(wx, wy, 2)) {
+      if (!options.allowOnPath && !options.allowInWater && meta.mode !== 'none' && meta.mode !== 'arch') {
+        if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || isWetMat(c.mat) || c.mat === MAT_LILYPAD || getBridgeAt(wx, wy, 2)) {
           return;
         }
       }
@@ -1865,9 +1916,11 @@
         selfAngle: angle,
         scale,
         isFire: modelKey === 'campfire' || modelKey === 'stone_lantern',
+        isDamBoulder: !!options.isDamBoulder,
         isPlatform: meta.mode === 'platform',
         platTopZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ
       };
+      if (item.isDamBoulder) damBoulder = item;
       const fMeta = FOLIAGE_META[modelKey];
       if (fMeta) {
         item.foliage = fMeta;
@@ -1951,7 +2004,7 @@
           if (getBridgeAt(wx + dx, wy + dy, 0)) return true;
           const c = getCellAt(wx + dx, wy + dy);
           if (!c) return true;
-          if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || c.mat === MAT_WATER || c.mat === MAT_LILYPAD) {
+          if (c.mat === MAT_PATH || c.mat === MAT_BRIDGE || isWetMat(c.mat) || c.mat === MAT_LILYPAD) {
             return true;
           }
         }
@@ -2037,7 +2090,14 @@
       addProp('wood_boat', 345,  720, { angle: 0.16 });
       addProp('wood_boat', -465, 726, { angle: -0.22 });
       addProp('boulder_large', 234, 870);
-      addProp('boulder_large', -540, 756);
+      addProp('boulder_large', -540, 756, { allowInWater: true });
+
+      // Obstáculos Fluídicos Dinâmicos no Rio & Cachoeira (desvio Rankine Dipole + Barragem Quebrável)
+      addProp('boulder_large', 112, 258, { allowInWater: true });
+      addProp('boulder_large', 132, -80, { allowInWater: true, liftZ: -4 });
+      addProp('boulder_large', 278, -495, { allowInWater: true, allowOnPath: true, liftZ: 44, isDamBoulder: true });
+      addProp('ruin_pillar', 154, 375, { allowInWater: true, liftZ: -3 });
+      addProp('tree_stump', 114, -225, { allowInWater: true, liftZ: -3 });
 
       // 4. Jardim Zen & Portal Torii Gigante
       addProp('torii_gate', -435, -405, { angle: 0, allowOnPath: true });
@@ -2311,6 +2371,12 @@
             }
             continue;
           }
+          if (mat === MAT_SHALLOW) {
+            const zStartBed = Math.max(Z_MIN, min8 - 2);
+            for (let z = zStartBed; z <= h; z++) markT(z, mx, my);
+            markT(h < 0 ? -1 : h, mx, my);
+            continue;
+          }
 
           const zStart = min8 - 2 > Z_MIN ? min8 - 2 : Z_MIN;
           if (zStart <= h) {
@@ -2420,6 +2486,11 @@
       const COL_DROP_FOAM = packRGBA(224, 242, 254, 255);
       const COL_DROP_TOP = packRGBA(56, 189, 248, 240);
       const COL_DROP_BODY = packRGBA(28, 158, 224, 255);
+      const COL_SHALLOW_BED_A = packRGBA(198, 178, 134, 255);
+      const COL_SHALLOW_BED_B = packRGBA(182, 162, 120, 255);
+      const COL_SHALLOW_SURF_A = packRGBA(103, 232, 249, 200);
+      const COL_SHALLOW_SURF_B = packRGBA(125, 240, 252, 200);
+      const COL_SHALLOW_SHIMMER = packRGBA(224, 252, 255, 225);
 
       // Passo 2: Preenche diretamente os buffers recortados (Tight-Crop)
       for (let my = 0; my < mh; my++) {
@@ -2475,6 +2546,22 @@
                 }
               }
             }
+            continue;
+          }
+
+          if (mat === MAT_SHALLOW) {
+            const zStartBed = Math.max(Z_MIN, min8 - 2);
+            const bedCol = (nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B;
+            for (let z = zStartBed; z <= h; z++) {
+              const si = z - Z_MIN;
+              terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = bedCol;
+            }
+            const surfZ = h < 0 ? -1 : h;
+            const siSurf = surfZ - Z_MIN;
+            const shimmer = (nHash % 17) === 0;
+            terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = shimmer
+              ? COL_SHALLOW_SHIMMER
+              : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B);
             continue;
           }
 
@@ -2681,7 +2768,9 @@
       { wx: -615, wy: 795,  label: '🗼 Farol Monumental' },
       { wx: -435, wy: -315, label: '⛩️ Jardim Zen & Torii' },
       { wx: 426,  wy: 228,  label: '🍄 Bosque Cogumelos' },
+      { wx: 112,  wy: 232,  label: '💧 Vau Raso do Rio' },
       { wx: 615,  wy: -66,  label: '🥾 Base da Montanha' },
+      { wx: 298,  wy: -468, label: '🌊 Topo da Cachoeira (Pedra)' },
       { wx: 480,  wy: -495, label: '🌸 Pico Sakura (Z=64)' }
     ];
     let travelIdx = 0;
@@ -2720,6 +2809,8 @@
     }
 
     function waterSurfZ(cell) {
+      if (!cell) return -2;
+      if (cell.mat === MAT_SHALLOW) return cell.h < 0 ? -1 : cell.h;
       return cell.h < 0 ? -2 : cell.h;
     }
 
@@ -2936,7 +3027,12 @@
       }
 
       const dz = targetH - cat.groundZ;
-      if (dz <= AUTO_STEP_MAX) {
+      const curCell = getCellAt(cat.x, cat.y);
+      const onCurBr = curBr && cat.groundZ >= getBridgeDeckZ(curBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround && dz <= AUTO_STEP_MAX) {
+        cat.obstacleHint = 'shallow';
+        cat.obstacleLabel = '💧 Água Rasa (Molhando as Patas!)';
+      } else if (dz <= AUTO_STEP_MAX) {
         cat.obstacleHint = 'ok';
         cat.obstacleLabel = dz > 0.5 ? '✅ Rampa Suave (≤0.35H)' : '✅ Caminho Livre';
       } else if (dz <= CAT_HEIGHT * 2.0 + 0.5) {
@@ -3002,9 +3098,75 @@
       return { wx: vx, wy: vy, mag: Math.hypot(vx, vy) };
     }
 
-    function sampleWaterFlow(wx, wy) {
+    function getActiveWaterObstacles(includeCat = true) {
+      const obs = [];
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        if (p.destroyed || (p.destr && p.destr.chopped) || p.isDamBoulder) continue;
+        const pc = getCellAt(p.wx, p.wy);
+        if (!pc || !isWetMat(pc.mat)) continue;
+        const meta = PROP_COLLIDER_META[p.modelKey];
+        const r = meta ? ((meta.r || Math.max(meta.halfW || 6, meta.halfD || 6)) * (p.scale || 1)) : 6.0;
+        obs.push({ wx: p.wx, wy: p.wy, r });
+      }
+      for (let i = 0; i < debrisDrops.length; i++) {
+        const dr = debrisDrops[i];
+        if (dr.inWater) obs.push({ wx: dr.x, wy: dr.y, r: 5.2 });
+      }
+      if (includeCat) {
+        const cc = getCellAt(cat.x, cat.y);
+        const br = getBridgeAt(cat.x, cat.y);
+        const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+        if (cc && cc.mat === MAT_SHALLOW && !onBr && cat.onGround) {
+          obs.push({ wx: cat.x, wy: cat.y, r: 7.5 });
+        }
+      }
+      return obs;
+    }
+
+    function applyRankineDipole(wx, wy, ux0, uy0) {
+      const U0 = Math.hypot(ux0, uy0);
+      if (U0 < 0.001) return { vx: ux0, vy: uy0, speed: 0 };
+      const hx = ux0 / U0;
+      const hy = uy0 / U0;
+      const px = -hy;
+      const py = hx;
+      let vx = ux0;
+      let vy = uy0;
+
+      const obs = getActiveWaterObstacles(true);
+      for (let i = 0; i < obs.length; i++) {
+        const o = obs[i];
+        const dx = wx - o.wx;
+        const dy = wy - o.wy;
+        const r2Raw = dx * dx + dy * dy;
+        const a = o.r * 1.18;
+        const cutR = a * 4.0;
+        if (r2Raw >= cutR * cutR) continue;
+        const rRaw = Math.sqrt(r2Raw);
+        const r = Math.max(rRaw, a * 1.04);
+        const r2 = r * r;
+        const r4 = r2 * r2;
+        const xPar = dx * hx + dy * hy;
+        const yPerp = dx * px + dy * py;
+        const a2 = a * a;
+        const falloff = rRaw > a * 3.0 ? Math.max(0, 1 - (rRaw - a * 3.0) / a) : 1.0;
+        const dvPar = -U0 * (a2 * (xPar * xPar - yPerp * yPerp) / r4) * falloff;
+        const dvPerp = -U0 * (2 * a2 * xPar * yPerp / r4) * falloff;
+        vx += (hx * dvPar + px * dvPerp);
+        vy += (hy * dvPar + py * dvPerp);
+        if (rRaw < a && rRaw > 0.001) {
+          const push = U0 * 0.55 * (1 - rRaw / a);
+          vx += (dx / rRaw) * push;
+          vy += (dy / rRaw) * push;
+        }
+      }
+      return { vx, vy, speed: Math.hypot(vx, vy) };
+    }
+
+    function sampleBaseWaterFlow(wx, wy) {
       const c = getCellAt(wx, wy);
-      if (!c || c.mat !== MAT_WATER) return { vx: 0, vy: 0, speed: 0 };
+      if (!c || !isWetMat(c.mat)) return { vx: 0, vy: 0, speed: 0 };
 
       let drainFactor = 1.0;
       if (wy >= 740) {
@@ -3013,13 +3175,15 @@
         if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
       }
 
+      const shallowScale = c.mat === MAT_SHALLOW ? 0.55 : 1.0;
+
       if (wx < -450 && wy < -420 && c.h > 5) {
         const dx = -690 - wx;
         const dy = -585 - wy;
         const dist = Math.hypot(dx, dy);
         if (dist < 1) return { vx: 0, vy: 0, speed: 0 };
         const rad = Math.min(1, dist / 48);
-        const speedScale = 7.5 * rad * rad;
+        const speedScale = 7.5 * rad * rad * shallowScale;
         if (speedScale < 0.02) return { vx: 0, vy: 0, speed: 0 };
         const nx = dx / dist, ny = dy / dist;
         const vx = (-ny * 0.78 + nx * 0.35) * speedScale;
@@ -3030,8 +3194,8 @@
       }
 
       if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
-        const vx = -34 * drainFactor;
-        const vy = 4 * drainFactor;
+        const vx = -34 * drainFactor * shallowScale;
+        const vy = 4 * drainFactor * shallowScale;
         return { vx, vy, speed: Math.hypot(vx, vy) };
       }
 
@@ -3051,8 +3215,14 @@
           bestTy = seg.ty;
         }
       }
-      const speed = 26 * drainFactor;
+      const speed = 26 * drainFactor * shallowScale;
       return { vx: bestTx * speed, vy: bestTy * speed, speed };
+    }
+
+    function sampleWaterFlow(wx, wy) {
+      const base = sampleBaseWaterFlow(wx, wy);
+      if (base.speed <= 0.001) return base;
+      return applyRankineDipole(wx, wy, base.vx, base.vy);
     }
 
     const floatingItems = [];
@@ -3060,7 +3230,7 @@
     let floatingSpawnAccum = 0;
 
     function spawnFloatingPetal(wx, wy, color = null, z = -2) {
-      if (floatingItems.length >= 48) return;
+      if (floatingItems.length >= 64) return;
       floatingItems.push({
         x: wx,
         y: wy,
@@ -3083,7 +3253,7 @@
       const mx = Math.floor(wx / VOX + HALF_GRID);
       const my = Math.floor(wy / VOX + HALF_GRID);
       if (mx < 0 || my < 0 || mx >= mw || my >= mh) return false;
-      return matMap[my * mw + mx] === MAT_WATER;
+      return isWetMat(matMap[my * mw + mx]);
     }
 
     function syncWaveOrigin() {
@@ -3165,7 +3335,7 @@
           const idx = row + dx;
           const wx = waveOriginX + (dx + 0.5) * WAVE_CELL;
           const mx = Math.floor(wx / VOX + HALF_GRID);
-          if (mx < 0 || mx >= mw || matMap[my * mw + mx] !== MAT_WATER) {
+          if (mx < 0 || mx >= mw || !isWetMat(matMap[my * mw + mx])) {
             waveTmp[idx] = 0;
             continue;
           }
@@ -3182,6 +3352,182 @@
       wavePrev = waveCurr;
       waveCurr = waveTmp;
       waveTmp = oldPrev;
+    }
+
+    // =========================================================================
+    // 8C. VIRTUAL PIPE SHALLOW WATER (waterfallSim 40×26, WF_CELL=4)
+    // =========================================================================
+    const WF_W = 40, WF_H = 26, WF_CELL = 4;
+    const WF_X0 = 208, WF_Y0 = -545;
+    const wfH = new Float32Array(WF_W * WF_H);
+    const wfBedZ = new Float32Array(WF_W * WF_H);
+    const wfBlockH = new Float32Array(WF_W * WF_H);
+    const wfFL = new Float32Array(WF_W * WF_H);
+    const wfFR = new Float32Array(WF_W * WF_H);
+    const wfFT = new Float32Array(WF_W * WF_H);
+    const wfFB = new Float32Array(WF_W * WF_H);
+
+    function rebuildWaterfallBlocks() {
+      wfBlockH.fill(0);
+      for (let iy = 0; iy < WF_H; iy++) {
+        const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+        for (let ix = 0; ix < WF_W; ix++) {
+          const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+          const idx = iy * WF_W + ix;
+          const h = getHeightAt(wx, wy);
+          wfBedZ[idx] = h !== null ? Math.max(-2, h) : 0;
+          if (wx >= 250 && Math.abs(wy + 495) > 17.5) {
+            wfBlockH[idx] = 48;
+          }
+        }
+      }
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        if (p.destroyed || (p.destr && p.destr.chopped)) continue;
+        if (p.wx < WF_X0 - 16 || p.wx > WF_X0 + WF_W * WF_CELL + 16) continue;
+        if (p.wy < WF_Y0 - 16 || p.wy > WF_Y0 + WF_H * WF_CELL + 16) continue;
+        const meta = PROP_COLLIDER_META[p.modelKey] || { r: 6 };
+        const obsR = (meta.r || 6) * (p.scale || 1) + 0.4;
+        for (let iy = 0; iy < WF_H; iy++) {
+          const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+          for (let ix = 0; ix < WF_W; ix++) {
+            const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+            if (Math.hypot(wx - p.wx, wy - p.wy) <= obsR) {
+              const idx = iy * WF_W + ix;
+              wfBlockH[idx] = Math.max(wfBlockH[idx], 24);
+              wfH[idx] = 0;
+              wfFL[idx] = wfFR[idx] = wfFT[idx] = wfFB[idx] = 0;
+            }
+          }
+        }
+      }
+    }
+
+    function stepWaterfallSim(dtSim = 1 / 30, emitEffects = true) {
+      const substeps = 3;
+      const dtSub = dtSim / substeps;
+      const pipeAccel = 160.0 / WF_CELL;
+      const damp = 0.92;
+
+      for (let sub = 0; sub < substeps; sub++) {
+        // 1. Inflow source upstream of (278, -495)
+        for (let iy = 8; iy <= 16; iy++) {
+          const row = iy * WF_W;
+          for (let ix = 22; ix <= 28; ix++) {
+            const idx = row + ix;
+            if (wfBlockH[idx] === 0) {
+              wfH[idx] = Math.min(4.2, wfH[idx] + 28.0 * dtSub);
+            }
+          }
+        }
+
+        // 2. Virtual Pipe accelerations + depth-proportional Chézy cap + mass-preserving scaling
+        for (let iy = 0; iy < WF_H; iy++) {
+          const row = iy * WF_W;
+          for (let ix = 0; ix < WF_W; ix++) {
+            const idx = row + ix;
+            const hCell = wfH[idx];
+            if (wfBlockH[idx] > 0 || hCell <= 1e-5) {
+              wfFL[idx] = wfFR[idx] = wfFT[idx] = wfFB[idx] = 0;
+              continue;
+            }
+            const Hc = wfBedZ[idx] + hCell;
+            const cap = Math.min(36.0, hCell * 8.5);
+            let fL = 0, fR = 0, fT = 0, fB = 0;
+            if (ix > 0 && wfBlockH[idx - 1] === 0) {
+              fL = Math.min(cap, Math.max(0, wfFL[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx - 1] + wfH[idx - 1]))));
+            }
+            if (ix < WF_W - 1 && wfBlockH[idx + 1] === 0) {
+              fR = Math.min(cap, Math.max(0, wfFR[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx + 1] + wfH[idx + 1]))));
+            }
+            if (iy > 0 && wfBlockH[idx - WF_W] === 0) {
+              fT = Math.min(cap, Math.max(0, wfFT[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx - WF_W] + wfH[idx - WF_W]))));
+            }
+            if (iy < WF_H - 1 && wfBlockH[idx + WF_W] === 0) {
+              fB = Math.min(cap, Math.max(0, wfFB[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx + WF_W] + wfH[idx + WF_W]))));
+            }
+
+            const sumOut = fL + fR + fT + fB;
+            if (sumOut * dtSub > hCell && sumOut > 1e-6) {
+              const K = hCell / (sumOut * dtSub);
+              fL *= K; fR *= K; fT *= K; fB *= K;
+            }
+            wfFL[idx] = fL;
+            wfFR[idx] = fR;
+            wfFT[idx] = fT;
+            wfFB[idx] = fB;
+          }
+        }
+
+        // 3. Conservative depth update + plunge pool drain (wx < 245)
+        for (let iy = 0; iy < WF_H; iy++) {
+          const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+          const row = iy * WF_W;
+          for (let ix = 0; ix < WF_W; ix++) {
+            const idx = row + ix;
+            if (wfBlockH[idx] > 0) {
+              wfH[idx] = 0;
+              continue;
+            }
+            const inL = ix > 0 ? wfFR[idx - 1] : 0;
+            const inR = ix < WF_W - 1 ? wfFL[idx + 1] : 0;
+            const inT = iy > 0 ? wfFB[idx - WF_W] : 0;
+            const inB = iy < WF_H - 1 ? wfFT[idx + WF_W] : 0;
+            let nextH = wfH[idx] + dtSub * ((inL + inR + inT + inB) - (wfFL[idx] + wfFR[idx] + wfFT[idx] + wfFB[idx]));
+            if (nextH < 1e-5) nextH = 0;
+
+            const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+            if (wx < 245 && nextH > 0) {
+              const drain = nextH * Math.min(1, 12.0 * dtSub);
+              nextH -= drain;
+              if (emitEffects && sub === substeps - 1 && drain > 0.015) {
+                injectWaterRipple(wx, wy, Math.min(1.3, drain * 2.2), 1);
+              }
+            }
+            wfH[idx] = nextH;
+          }
+        }
+      }
+    }
+
+    function getWaterfallSplitStats() {
+      let nSum = 0, nCnt = 0;
+      let cSum = 0, cCnt = 0;
+      let sSum = 0, sCnt = 0;
+      let totalVolume = 0;
+
+      for (let iy = 0; iy < WF_H; iy++) {
+        const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
+        const row = iy * WF_W;
+        for (let ix = 0; ix < WF_W; ix++) {
+          const idx = row + ix;
+          const d = wfH[idx];
+          totalVolume += d * WF_CELL * WF_CELL;
+          const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+          if (wx >= 252 && wx <= 268) {
+            if (wy >= -515 && wy < -499) {
+              nSum += d; nCnt++;
+            } else if (wy >= -499 && wy <= -491) {
+              cSum += d; cCnt++;
+            } else if (wy > -491 && wy <= -475) {
+              sSum += d; sCnt++;
+            }
+          }
+        }
+      }
+
+      return {
+        damIntact: Boolean(damBoulder && !damBoulder.destroyed && !(damBoulder.destr && damBoulder.destr.chopped)),
+        northBranchDepth: nCnt > 0 ? nSum / nCnt : 0,
+        southBranchDepth: sCnt > 0 ? sSum / sCnt : 0,
+        centerDownstreamDepth: cCnt > 0 ? cSum / cCnt : 0,
+        totalVolume
+      };
+    }
+
+    rebuildWaterfallBlocks();
+    for (let i = 0; i < 70; i++) {
+      stepWaterfallSim(1 / 30, false);
     }
 
     const canvas = document.getElementById('viewport');
@@ -3407,6 +3753,9 @@
           sfxCrumble();
           spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 4, 22, d.colors, 52, { grav: 240, life: 0.75 });
           spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 3, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
+          if (bestTarget.modelKey === 'boulder_large') {
+            rebuildWaterfallBlocks();
+          }
           destructStats.crumbledCount++;
         } else if (d.mode === 'trim') {
           bestTarget.destroyed = true;
@@ -3564,7 +3913,7 @@
           const nx = npc.x + npc.dirX * sp * dt;
           const ny = npc.y + npc.dirY * sp * dt;
           const c = getCellAt(nx, ny);
-          if (c && c.mat !== MAT_WATER && Math.abs(c.h - npc.z) <= 5.5) {
+          if (c && !isWetMat(c.mat) && Math.abs(c.h - npc.z) <= 5.5) {
             let hitProp = false;
             for (const sc of propColliders) {
               if (sc.disabled) continue;
@@ -3716,8 +4065,15 @@
       }
     }
 
+    let shallowStepTimer = 0;
+    let shallowSplashTimer = 0;
+    let shallowRippleTimer = 0;
+
     function updatePhysics(dt) {
       fluidTime += dt;
+      if (shallowStepTimer > 0) shallowStepTimer = Math.max(0, shallowStepTimer - dt);
+      if (shallowSplashTimer > 0) shallowSplashTimer = Math.max(0, shallowSplashTimer - dt);
+      if (shallowRippleTimer > 0) shallowRippleTimer = Math.max(0, shallowRippleTimer - dt);
       for (let i = windImpulses.length - 1; i >= 0; i--) {
         windImpulses[i].life -= dt;
         if (windImpulses[i].life <= 0) windImpulses.splice(i, 1);
@@ -3764,7 +4120,12 @@
 
       const isSprinting = !!(keys['ShiftLeft'] || keys['ShiftRight']);
       const baseSpeed = isSprinting ? 205 : 124;
-      const speed = cat.onGround ? baseSpeed : Math.round(baseSpeed * 0.85);
+      const preCell = getCellAt(cat.x, cat.y);
+      const preBr = getBridgeAt(cat.x, cat.y);
+      const onPreBr = preBr && cat.z >= getBridgeDeckZ(preBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      const isWadingPre = !onPreBr && cat.onGround && preCell && preCell.mat === MAT_SHALLOW;
+      const wadingDrag = isWadingPre ? 0.86 : 1.0;
+      const speed = (cat.onGround ? baseSpeed : Math.round(baseSpeed * 0.85)) * wadingDrag;
       if (ilen > 0) {
         const dx = moveWorldX * speed * dt;
         const dy = moveWorldY * speed * dt;
@@ -3833,7 +4194,7 @@
         spawnParticles(cat.x, cat.y, cat.z + 1, 7, ['#FFF8EC', '#E7D8C2'], 22);
         injectWindImpulse(cat.x, cat.y, -Math.sin(cat.selfAngle) * 1.4, Math.cos(cat.selfAngle) * 1.4, 36, 0.5);
         const jc = getCellAt(cat.x, cat.y);
-        if (jc && jc.mat === MAT_WATER) injectWaterRipple(cat.x, cat.y, 2.2, 2);
+        if (jc && isWetMat(jc.mat)) injectWaterRipple(cat.x, cat.y, 2.2, 2);
       }
 
       const wasOnGround = cat.onGround;
@@ -3848,8 +4209,14 @@
         cat.groundZ = sup.bestH;
         if (cat.z <= sup.bestH + 0.05 && cat.vz <= 0 && (wasOnGround || prevZ >= sup.bestH - 2.0)) {
           if (!wasOnGround && cat.vz < -90) {
-            sfxLand();
-            spawnParticles(cat.x, cat.y, sup.bestH + 1, 6, ['#FDF6E9', '#D6C4AA'], 24);
+            if (sup.centerCell && sup.centerCell.mat === MAT_SHALLOW) {
+              sfxShallowStep();
+              injectWaterRipple(cat.x, cat.y, 1.8, 2);
+              spawnParticles(cat.x, cat.y, waterSurfZ(sup.centerCell) + 0.5, 6, ['#E0F2FE', '#67E8F9', '#FFFFFF'], 24);
+            } else {
+              sfxLand();
+              spawnParticles(cat.x, cat.y, sup.bestH + 1, 6, ['#FDF6E9', '#D6C4AA'], 24);
+            }
           }
           cat.z = sup.bestH;
           cat.vz = 0;
@@ -3905,8 +4272,31 @@
         }
       }
 
-      // Grama rustle & descoberta de bioma
+      // Grama rustle, água rasa wading feedback & descoberta de bioma
       const curCell = sup.centerCell;
+      const curBr = getBridgeAt(cat.x, cat.y);
+      const onCurBr = curBr && cat.z >= getBridgeDeckZ(curBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
+        if (cat.isWalking) {
+          if (shallowRippleTimer <= 0) {
+            shallowRippleTimer = 0.04;
+            injectWaterRipple(cat.x, cat.y, 0.75, 2);
+          }
+          if (shallowSplashTimer <= 0) {
+            shallowSplashTimer = isSprinting ? 0.10 : 0.16;
+            spawnParticles(
+              cat.x + (Math.random() - 0.5) * 4,
+              cat.y + (Math.random() - 0.5) * 4,
+              waterSurfZ(curCell) + 0.5,
+              2, ['#E0F2FE', '#67E8F9', '#FFFFFF'], 20, { grav: 190, vz: 26, life: 0.35 }
+            );
+          }
+          if (shallowStepTimer <= 0) {
+            shallowStepTimer = isSprinting ? 0.22 : 0.30;
+            sfxShallowStep();
+          }
+        }
+      }
       if (curCell) {
         if (cat.onGround && (curCell.mat === MAT_GRASS || curCell.mat === MAT_PEAK) && cat.isWalking && curCell.idx !== lastRustleCell) {
           lastRustleCell = curCell.idx;
@@ -3960,16 +4350,22 @@
       // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul
       floatingSpawnAccum += dt;
       const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
-      const spawnInterval = nearWaterfall ? 0.28 : 0.65;
+      const spawnInterval = nearWaterfall ? 0.28 : 0.55;
       if (floatingSpawnAccum >= spawnInterval) {
         floatingSpawnAccum = 0;
-        if (floatingItems.length < 48) {
+        if (floatingItems.length < 64) {
           spawnFloatingPetal(
             232 + (Math.random() - 0.5) * 14,
             -495 + (Math.random() - 0.5) * 14,
             null,
             -2
           );
+          if (Math.hypot(camX - 118, camY - 220) < 420) {
+            spawnFloatingPetal(134 + (Math.random() - 0.5) * 32, 165 + (Math.random() - 0.5) * 14, null, -2);
+          }
+          if (Math.hypot(camX - 132, camY + 80) < 420) {
+            spawnFloatingPetal(126 + (Math.random() - 0.5) * 32, -130 + (Math.random() - 0.5) * 14, null, -2);
+          }
         }
       }
 
@@ -3979,10 +4375,10 @@
         f.x += flow.vx * dt;
         f.y += flow.vy * dt;
         const fc = getCellAt(f.x, f.y);
-        if (fc && fc.mat === MAT_WATER) {
+        if (fc && isWetMat(fc.mat)) {
           f.z = waterSurfZ(fc);
         }
-        if (f.y > 820 || flow.speed < 0.8 || !fc || fc.mat !== MAT_WATER) {
+        if (f.y > 820 || flow.speed < 0.8 || !fc || !isWetMat(fc.mat)) {
           f.life -= dt * 1.2;
         }
         if (f.life <= 0) floatingItems.splice(i, 1);
@@ -4001,16 +4397,16 @@
         p.life -= dt;
 
         const pc = getCellAt(p.x, p.y);
-        if (pc && pc.mat === MAT_WATER && p.z <= waterSurfZ(pc) + 0.5) {
-          const isSplashDrop = p.color === '#93C5FD' || p.color === '#FFFFFF' || p.color === '#7DD3FC';
-          if (!isSplashDrop && floatingItems.length < 48) {
+        if (pc && isWetMat(pc.mat) && p.z <= waterSurfZ(pc) + 0.5) {
+          const isSplashDrop = p.color === '#93C5FD' || p.color === '#FFFFFF' || p.color === '#7DD3FC' || p.color === '#67E8F9' || p.color === '#E0F2FE';
+          if (!isSplashDrop && floatingItems.length < 64) {
             spawnFloatingPetal(p.x, p.y, p.color, waterSurfZ(pc));
           }
           injectWaterRipple(p.x, p.y, isSplashDrop ? 0.55 : 0.35, 1);
           particles.splice(i, 1);
           continue;
         }
-        if (p.isLeaf && pc && pc.mat !== MAT_WATER && p.z < pc.h + 0.4) {
+        if (p.isLeaf && pc && !isWetMat(pc.mat) && p.z < pc.h + 0.4) {
           p.z = pc.h + 0.4;
           p.vx *= 0.85;
           p.vy *= 0.85;
@@ -4077,7 +4473,7 @@
             const ix = fb.wx + L * frac * sinP * fb.dx;
             const iy = fb.wy + L * frac * sinP * fb.dy;
             const ic = getCellAt(ix, iy);
-            if (ic && ic.mat === MAT_WATER) {
+            if (ic && isWetMat(ic.mat)) {
               injectWaterRipple(ix, iy, 2.4, 3);
               spawnParticles(ix, iy, waterSurfZ(ic) + 1, 10, ['#93C5FD', '#FFFFFF', '#E0F2FE'], 36);
             }
@@ -4112,7 +4508,7 @@
           dr.y += dr.vy * dt;
           dr.selfAngle += dt * 0.6;
           const dc = getCellAt(dr.x, dr.y);
-          if (dc && dc.mat === MAT_WATER) {
+          if (dc && isWetMat(dc.mat)) {
             dr.z = waterSurfZ(dc) + Math.sin(fluidTime * 3.5 + dr.x * 0.1) * 0.35;
           } else {
             dr.inWater = false;
@@ -4129,7 +4525,7 @@
             debrisDrops.splice(i, 1);
             continue;
           }
-          if (dc.mat === MAT_WATER && dr.z <= waterSurfZ(dc) + 0.5) {
+          if (isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {
             dr.inWater = true;
             dr.z = waterSurfZ(dc);
             dr.vz = 0;
@@ -4138,7 +4534,7 @@
             dr.vy = flow.vy;
             injectWaterRipple(dr.x, dr.y, 1.4, 2);
             spawnParticles(dr.x, dr.y, dr.z + 1, 6, ['#93C5FD', '#FFFFFF'], 24);
-          } else if (dc.mat !== MAT_WATER && dr.z <= dc.h) {
+          } else if (!isWetMat(dc.mat) && dr.z <= dc.h) {
             dr.z = dc.h;
             if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
               dr.vz = -dr.vz * 0.45;
@@ -4171,6 +4567,25 @@
         if (Math.hypot(camX - 242, camY + 495) < 420 && Math.random() < 0.45) {
           injectWaterRipple(242 + (Math.random() - 0.5) * 10, -495 + (Math.random() - 0.5) * 10, 0.65, 2);
         }
+        // Espuma sutil de esteira atrás de pedras/obstáculos no rio
+        const wObs = getActiveWaterObstacles(false);
+        for (let i = 0; i < wObs.length; i++) {
+          const o = wObs[i];
+          if (Math.hypot(o.wx - camX, o.wy - camY) > 420) continue;
+          const baseF = sampleBaseWaterFlow(o.wx, o.wy);
+          if (baseF.speed > 2 && Math.random() < 0.25) {
+            const ux = baseF.vx / baseF.speed;
+            const uy = baseF.vy / baseF.speed;
+            const wxWake = o.wx + ux * (o.r + 3.5) + (Math.random() - 0.5) * o.r * 0.9;
+            const wyWake = o.wy + uy * (o.r + 3.5) + (Math.random() - 0.5) * o.r * 0.9;
+            const wc = getCellAt(wxWake, wyWake);
+            if (wc && isWetMat(wc.mat)) {
+              injectWaterRipple(wxWake, wyWake, 0.35, 1);
+              spawnParticles(wxWake, wyWake, waterSurfZ(wc) + 0.4, 1, ['#E0F2FE', '#FFFFFF'], 10, { grav: 40, vz: 6, life: 0.45 });
+            }
+          }
+        }
+        stepWaterfallSim(1 / 30, true);
         stepWaveBuffer();
       }
     }
@@ -4635,6 +5050,7 @@
       entityCtx.globalCompositeOperation = 'source-over';
       entityCtx.clearRect(0, 0, LOW_W, LOW_H);
       let entityStarted = false;
+      const wfVisible = maxVisWx >= WF_X0 && minVisWx <= WF_X0 + WF_W * WF_CELL && maxVisWy >= WF_Y0 && minVisWy <= WF_Y0 + WF_H * WF_CELL;
 
       for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
         // 4a. Fatia do terreno (Tight-Crop Bounded Slice + skip O(1))
@@ -4642,26 +5058,27 @@
         if (tSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
           drawBoundedSliceTo(lowCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
 
-          // Brilho animado na superfície da água (z = -2)
-          if (z === -2) {
-            lowCtx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+          // Brilho animado na superfície da água (z = -2 profunda, z = -1 rasa)
+          if (z === -2 || z === -1) {
+            lowCtx.fillStyle = z === -1 ? 'rgba(236, 254, 255, 0.62)' : 'rgba(224, 242, 254, 0.55)';
             const step = 12;
             const startX = Math.floor(minVisWx / step) * step;
             const startY = Math.floor(minVisWy / step) * step;
+            const targetMat = z === -1 ? MAT_SHALLOW : MAT_WATER;
             for (let wy = startY; wy <= maxVisWy; wy += step) {
               for (let wx = startX; wx <= maxVisWx; wx += step) {
                 const c = getCellAt(wx, wy);
-                if (!c || c.mat !== MAT_WATER || c.h >= 0) continue;
+                if (!c || c.mat !== targetMat || c.h >= 0) continue;
                 if (((c.mx + c.my + animTick) % 9) === 0) {
-                  const wp = project(wx, wy, -1.8);
+                  const wp = project(wx, wy, z + 0.2);
                   lowCtx.fillRect(Math.round(wp.x), Math.round(wp.y), 3, 1);
                 }
               }
             }
           }
 
-          // WaveBuffer (cristas/cavas) + FloatingItems respeitando oclusão 3D nas fatias z=-2 e z=13
-          if (z === -2 || z === 13) {
+          // WaveBuffer (cristas/cavas) + FloatingItems respeitando oclusão 3D nas fatias z=-2, z=-1 e z=13
+          if (z === -2 || z === -1 || z === 13) {
             for (let dy = 1; dy < WAVE_H - 1; dy++) {
               const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
               if (cwy < minVisWy || cwy > maxVisWy) continue;
@@ -4675,8 +5092,9 @@
                 const my = Math.floor(cwy / VOX + HALF_GRID);
                 if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
                 const wIdx = my * mw + mx;
-                if (matMap[wIdx] !== MAT_WATER) continue;
-                const surfZ = hmap[wIdx] < 0 ? -2 : hmap[wIdx];
+                const wMat = matMap[wIdx];
+                if (!isWetMat(wMat)) continue;
+                const surfZ = wMat === MAT_SHALLOW ? (hmap[wIdx] < 0 ? -1 : hmap[wIdx]) : (hmap[wIdx] < 0 ? -2 : hmap[wIdx]);
                 if (surfZ !== z) continue;
                 const wp = project(cwx, cwy, z + 0.2);
                 const px = Math.round(wp.x);
@@ -4711,6 +5129,45 @@
             drawBoundedSliceTo(entityCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
             entityCtx.globalCompositeOperation = 'source-over';
           }
+        }
+
+        // 4a-bis. Colunas e cortinas dinâmicas da cachoeira Virtual Pipe (waterfallSim)
+        if (wfVisible && z >= -2 && z <= 49) {
+          lowCtx.save();
+          lowCtx.translate(LOW_W / 2, LOW_H / 2 + 16 - (z - camZ));
+          lowCtx.scale(1, squash);
+          lowCtx.rotate(turn);
+          lowCtx.scale(VOX, VOX);
+          lowCtx.translate(-camX / VOX, -camY / VOX);
+          const wfCellVox = WF_CELL / VOX;
+          const streakTick = Math.floor(fluidTime * 14);
+          for (let iy = 0; iy < WF_H; iy++) {
+            const row = iy * WF_W;
+            for (let ix = 0; ix < WF_W; ix++) {
+              const idx = row + ix;
+              const d = wfH[idx];
+              if (d <= 0.04) continue;
+              const bed = wfBedZ[idx];
+              let minNb = bed;
+              if (ix > 0 && wfBedZ[idx - 1] < minNb) minNb = wfBedZ[idx - 1];
+              if (ix < WF_W - 1 && wfBedZ[idx + 1] < minNb) minNb = wfBedZ[idx + 1];
+              if (iy > 0 && wfBedZ[idx - WF_W] < minNb) minNb = wfBedZ[idx - WF_W];
+              if (iy < WF_H - 1 && wfBedZ[idx + WF_W] < minNb) minNb = wfBedZ[idx + WF_W];
+              const zTop = Math.min(TERRAIN_Z_MAX, Math.round(bed + Math.max(0.8, d)));
+              const zBot = Math.max(Z_MIN, Math.round(Math.min(bed - 1, minNb)));
+              if (z < zBot || z > zTop) continue;
+              const isTop = (z === zTop);
+              const isDrop = (bed - minNb) > 2;
+              const foam = isTop
+                ? ((d > 0.85 && ((ix + iy + streakTick) % 5 === 0)) || isDrop)
+                : ((((ix * 3 + z + streakTick) % 4) === 0) || z <= 1);
+              lowCtx.fillStyle = foam
+                ? 'rgba(224, 242, 254, 0.92)'
+                : (isTop ? 'rgba(103, 232, 249, 0.88)' : 'rgba(56, 189, 248, 0.88)');
+              lowCtx.fillRect((WF_X0 + ix * WF_CELL) / VOX, (WF_Y0 + iy * WF_CELL) / VOX, wfCellVox, wfCellVox);
+            }
+          }
+          lowCtx.restore();
         }
 
         // Sombras dinâmicas no chão na altura z
@@ -4822,11 +5279,12 @@
           const mat = matMap[idx];
           const hL = mx >= 9 ? hmap[my * mw + (mx - 9)] : h;
           const hU = my >= 9 ? hmap[(my - 9) * mw + mx] : h;
-          const isContour = mat !== MAT_WATER && mat !== MAT_BRIDGE &&
+          const isContour = !isWetMat(mat) && mat !== MAT_BRIDGE &&
             (Math.floor(h / 10) !== Math.floor(hL / 10) || Math.floor(h / 10) !== Math.floor(hU / 10));
 
           let rgb;
           if (mat === MAT_WATER) rgb = [56, 189, 248];
+          else if (mat === MAT_SHALLOW) rgb = [103, 232, 249];
           else if (mat === MAT_LILYPAD) rgb = [34, 197, 94];
           else if (mat === MAT_BRIDGE) rgb = [185, 122, 74];
           else if (mat === MAT_SAND) rgb = [243, 221, 169];
@@ -4961,6 +5419,18 @@
       speak: (text) => { catSpeak(text, 240); },
       sampleWind: (wx, wy, t = fluidTime) => sampleWind(wx, wy, t),
       sampleWaterFlow: (wx, wy) => sampleWaterFlow(wx, wy),
+      getWaterfallSplitStats: () => getWaterfallSplitStats(),
+      getShallowState: () => {
+        const c = getCellAt(cat.x, cat.y);
+        const br = getBridgeAt(cat.x, cat.y);
+        const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+        return {
+          inShallow: !!(c && c.mat === MAT_SHALLOW && !onBr && cat.onGround),
+          mat: c ? c.mat : null,
+          pos: { x: cat.x, y: cat.y, z: cat.z },
+          hurtTimer: cat.hurtTimer
+        };
+      },
       injectWaterRipple: (wx, wy, strength = 1.0, radiusCells = 2) => injectWaterRipple(wx, wy, strength, radiusCells),
       injectWindImpulse: (wx, wy, vx, vy, r = 42, life = 0.75) => injectWindImpulse(wx, wy, vx, vy, r, life),
       getFluidStats: () => ({
