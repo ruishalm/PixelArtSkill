@@ -697,6 +697,9 @@
       return isWetMat(matMap[my * mw + mx]);
     }
 
+    let waveSubmergedVol = 0;
+    let waveLevelRise = 0;
+
     function syncWaveOrigin() {
       const targetOX = Math.floor(camX / WAVE_CELL) * WAVE_CELL - (WAVE_W * WAVE_CELL) * 0.5;
       const targetOY = Math.floor(camY / WAVE_CELL) * WAVE_CELL - (WAVE_H * WAVE_CELL) * 0.5;
@@ -806,6 +809,7 @@
     function stepWaveBuffer() {
       const obs = cachedWaterObstacles;
       waveTmp.fill(0);
+      let wetCount = 0;
       for (let dy = 1; dy < WAVE_H - 1; dy++) {
         const wy = waveOriginY + (dy + 0.5) * WAVE_CELL;
         const my = Math.floor(wy / VOX + HALF_GRID);
@@ -820,6 +824,7 @@
             waveTmp[idx] = 0;
             continue;
           }
+          wetCount++;
           const isSponge = isSpongeY || dx < 6 || dx >= WAVE_W - 6;
           const damp = isSponge ? 0.72 : 0.955;
 
@@ -863,6 +868,9 @@
       wavePrev = waveCurr;
       waveCurr = waveTmp;
       waveTmp = oldPrev;
+      // Nível médio deslocado pelo volume submerso (Arquimedes: Δh = V_sub / A_bacia)
+      const targetRise = Math.min(1.5, (waveSubmergedVol * 12) / Math.max(40, wetCount));
+      waveLevelRise += (targetRise - waveLevelRise) * 0.25;
     }
 
     // =========================================================================
@@ -1831,6 +1839,12 @@
       const curCell = sup.centerCell;
       const curBr = getBridgeAt(cat.x, cat.y);
       const onCurBr = curBr && cat.z >= getBridgeDeckZ(curBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      const catSubVol = (curCell && isWetMat(curCell.mat) && !onCurBr && cat.z <= waterSurfZ(curCell) + 1.0) ? 1.6 : 0;
+      const prevCatSub = cat._prevSubVol || 0;
+      if (catSubVol !== prevCatSub) {
+        injectWaterRipple(cat.x, cat.y, (catSubVol - prevCatSub) * 1.1, 2);
+        cat._prevSubVol = catSubVol;
+      }
       if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
         if (cat.isWalking) {
           if (shallowRippleTimer <= 0) {
@@ -2042,7 +2056,8 @@
         }
       }
 
-      // Drops balísticos (toras & pedregulhos) + correnteza da água
+      // Drops balísticos (toras & pedregulhos) + correnteza da água + deslocamento de Arquimedes
+      let frameSubVol = cat._prevSubVol || 0;
       for (let i = debrisDrops.length - 1; i >= 0; i--) {
         const dr = debrisDrops[i];
         dr.life -= dt;
@@ -2061,23 +2076,31 @@
           dr.selfAngle += dt * (isHeavy ? 0.1 : 0.6 + wave.gx * 0.8);
           const dc = getCellAt(dr.x, dr.y);
           if (dc && isWetMat(dc.mat)) {
+            let subVol = 1.0;
             if (isHeavy) {
-              // Pedregulho (densidade > 1): afunda até o leito
+              // Pedregulho (densidade > 1): afunda até o leito deslocando seu volume inteiro
               dr.vz -= 180 * dt;
               dr.z = Math.max(dc.h, dr.z + dr.vz * dt);
               if (dr.z <= dc.h + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
             } else {
-              // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer
-              const surfZ = waterSurfZ(dc) + wave.u * 1.4;
-              const submerged = Math.max(0, Math.min(1.5, (surfZ - dr.z + 1.5) / 3.0));
-              const az = (submerged * 1.85 - 1.0) * 180 - dr.vz * 4.5;
+              // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer + nível deslocado
+              const surfZ = waterSurfZ(dc) + waveLevelRise + wave.u * 1.4;
+              subVol = Math.max(0, Math.min(1.5, (surfZ - dr.z + 1.5) / 3.0));
+              const az = (subVol * 1.85 - 1.0) * 180 - dr.vz * 4.5;
               dr.vz += az * dt;
               dr.z += dr.vz * dt;
-              if (Math.abs(dr.vz) > 4.0 && Math.random() < 0.25) {
-                injectWaterRipple(dr.x, dr.y, Math.max(-0.5, Math.min(0.5, -dr.vz * 0.025)), 1);
-              }
             }
+            const dVol = subVol - (dr._prevSubVol || 0);
+            if (Math.abs(dVol) > 0.06) {
+              injectWaterRipple(dr.x, dr.y, Math.max(-0.85, Math.min(0.85, dVol * 0.95)), 1);
+            }
+            dr._prevSubVol = subVol;
+            frameSubVol += subVol;
           } else {
+            if (dr._prevSubVol) {
+              injectWaterRipple(dr.x, dr.y, -dr._prevSubVol * 0.8, 1);
+              dr._prevSubVol = 0;
+            }
             dr.inWater = false;
           }
           if (!dc || dr.y > 860) dr.life = Math.min(dr.life, 0.5);
@@ -2119,6 +2142,7 @@
           }
         }
       }
+      waveSubmergedVol = frameSubVol;
 
       updateFoliage(dt);
 

@@ -202,6 +202,11 @@ for (let i = 0; i < 300; i++) {
   logZ += logVz * dt;
 }
 assert(Math.abs(logZ - surfZ) < 0.35, `Wood log did not settle near water surface (logZ=${logZ})`);
+// Volume displacement: basin water level rise Δh = V_sub / A_basin > 0 when submerged
+const smallPoolWet = 60, oceanWet = 4000;
+const riseSmall = Math.min(1.5, (2.5 * 12) / Math.max(40, smallPoolWet));
+const riseOcean = Math.min(1.5, (2.5 * 12) / Math.max(40, oceanWet));
+assert(riseSmall > riseOcean && riseSmall > 0.1, 'Submerged volume must raise small basin level more than ocean');
 
 // 8. Thermodynamics: heat diffusion + cooling decays to 0 when source removed & water quenches
 let T = 95, moist = 0.65, fuel = 0.70;
