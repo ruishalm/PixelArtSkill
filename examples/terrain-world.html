@@ -2032,7 +2032,9 @@
     function buildProceduralPineVariant(variantIdx) {
       const rng = mulberry32((WORLD_SEED ^ Math.imul(variantIdx + 1, 2654435761)) >>> 0);
       const w = 42, h = 42;
-      const count = 62 + Math.floor(rng() * 17); // 62..78 fatias de altura
+      // Arquétipos distintos: 0=cipreste esguio, 1=cedro largo, 2=pinheiro torto/inclinado, 3=pinheiro clássico em camadas
+      const arch = variantIdx % 4;
+      const count = arch === 0 ? (68 + Math.floor(rng() * 11)) : (arch === 1 ? (52 + Math.floor(rng() * 10)) : (56 + Math.floor(rng() * 18)));
       const palSets = [
         ['rgba(0,0,0,0)', '#3B2219', '#6B4226', '#8C5A38', '#143628', '#1B4332', '#2D6A4F', '#40916C', '#74C69D'],
         ['rgba(0,0,0,0)', '#3B2219', '#5E3A22', '#7D5132', '#123124', '#183D2D', '#255D44', '#378260', '#63B88D'],
@@ -2042,8 +2044,10 @@
       const palette = palSets[variantIdx % palSets.length];
       const vol = Array.from({ length: count }, () => new Uint8Array(w * h));
       const cx0 = w * 0.5 - 0.5, cy0 = h * 0.5 - 0.5;
-      const leanX = (rng() - 0.5) * 4.4;
-      const leanY = (rng() - 0.5) * 4.4;
+      const leanMag = arch === 2 ? 8.5 : 4.5;
+      const leanAng = rng() * Math.PI * 2;
+      const leanX = Math.cos(leanAng) * (2.0 + rng() * leanMag);
+      const leanY = Math.sin(leanAng) * (2.0 + rng() * leanMag);
       const trunkTop = Math.floor(count * 0.80);
 
       // 1. Raízes + tronco curvo orgânico
@@ -2053,14 +2057,14 @@
         const tz = z / Math.max(1, trunkTop);
         const cx = cx0 + leanX * tz * tz;
         const cy = cy0 + leanY * tz * tz;
-        const rad = z <= 3 ? (5.4 - z * 0.4) : (z <= 16 ? 4.2 : 3.0 * (1 - 0.45 * tz));
+        const rad = z <= 3 ? (5.6 - z * 0.4) : (z <= 18 ? 4.0 : 2.8 * (1 - 0.45 * tz));
         const sl = vol[z];
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
             const dx = x - cx, dy = y - cy;
             let hit = (dx * dx + dy * dy <= rad * rad);
             if (!hit && z <= 4) {
-              const reach = (1 - z / 5) * 4.5;
+              const reach = (1 - z / 5) * 5.0;
               for (let r = 0; r < numRoots; r++) {
                 const rx = cx0 + Math.cos(rootAngles[r]) * reach;
                 const ry = cy0 + Math.sin(rootAngles[r]) * reach;
@@ -2074,23 +2078,23 @@
         }
       }
 
-      // 2. Galhos lenhosos saindo entre as camadas inferiores
-      const branchCount = 4 + Math.floor(rng() * 4);
+      // 2. Galhos lenhosos expostos (mais longos nos pinheiros tortos/largos)
+      const branchCount = 4 + Math.floor(rng() * 5);
       for (let b = 0; b < branchCount; b++) {
-        const bz0 = Math.floor(count * (0.20 + rng() * 0.34));
+        const bz0 = Math.floor(count * (0.18 + rng() * 0.42));
         const tz = bz0 / Math.max(1, trunkTop);
         const bx0 = cx0 + leanX * tz * tz;
         const by0 = cy0 + leanY * tz * tz;
-        const bAng = (b / branchCount) * Math.PI * 2 + (rng() - 0.5) * 0.7;
-        const bLen = 6 + rng() * 6;
-        const bLift = 2 + rng() * 3.5;
-        for (let s = 0; s <= 10; s++) {
-          const u = s / 10;
+        const bAng = (b / branchCount) * Math.PI * 2 + (rng() - 0.5) * 0.8;
+        const bLen = (arch === 1 || arch === 2) ? (8 + rng() * 7) : (5 + rng() * 5);
+        const bLift = 1.5 + rng() * 4.5;
+        for (let s = 0; s <= 12; s++) {
+          const u = s / 12;
           const bx = bx0 + Math.cos(bAng) * bLen * u;
           const by = by0 + Math.sin(bAng) * bLen * u;
           const bz = Math.round(bz0 + bLift * u);
           if (bz < 0 || bz >= count) continue;
-          const br = 1.6 * (1 - 0.5 * u);
+          const br = 1.7 * (1 - 0.45 * u);
           const sl = vol[bz];
           for (let yy = Math.max(0, Math.floor(by - br)); yy <= Math.min(h - 1, Math.ceil(by + br)); yy++) {
             for (let xx = Math.max(0, Math.floor(bx - br)); xx <= Math.min(w - 1, Math.ceil(bx + br)); xx++) {
@@ -2102,28 +2106,30 @@
         }
       }
 
-      // 3. Camadas cônicas assimétricas de copa (3..5 níveis)
-      const tierCount = 3 + Math.floor(rng() * 3);
-      const lobeFreq = 5 + Math.floor(rng() * 5);
-      const canopyStart = Math.floor(count * 0.19);
+      // 3. Camadas de copa assimétricas por arquétipo (espaçadas para revelar tronco/galhos)
+      const tierCount = arch === 0 ? 5 : (arch === 1 ? 2 : (3 + Math.floor(rng() * 3)));
+      const lobeFreq = 3 + Math.floor(rng() * 5);
+      const canopyStart = Math.floor(count * (arch === 1 ? 0.30 : 0.21));
       const canopySpan = count - 1 - canopyStart;
+      const widthScale = arch === 0 ? 0.68 : (arch === 1 ? 1.15 : (0.85 + rng() * 0.25));
       for (let ti = 0; ti < tierCount; ti++) {
         const f0 = ti / tierCount;
-        const f1 = Math.min(1, (ti + 1.22) / tierCount);
+        const gap = arch === 2 ? 0.96 : 1.12;
+        const f1 = Math.min(1, (ti + gap) / tierCount);
         const zStart = canopyStart + Math.floor(f0 * canopySpan);
         const zEnd = Math.min(count - 1, canopyStart + Math.floor(f1 * canopySpan));
-        const rBot = (17.5 - ti * (10.5 / tierCount)) * (0.90 + rng() * 0.22);
-        const rTop = ti === tierCount - 1 ? 0.7 : rBot * (0.32 + rng() * 0.12);
-        const tierOffX = (rng() - 0.5) * 2.4;
-        const tierOffY = (rng() - 0.5) * 2.4;
+        const rBot = (16.5 - ti * (9.5 / Math.max(1, tierCount))) * widthScale;
+        const rTop = ti === tierCount - 1 ? 0.7 : rBot * (0.28 + rng() * 0.16);
+        const tierOffX = (rng() - 0.5) * (arch === 2 ? 5.2 : 3.2);
+        const tierOffY = (rng() - 0.5) * (arch === 2 ? 5.2 : 3.2);
         const lobePhase = rng() * Math.PI * 2;
         const span = Math.max(1, zEnd - zStart);
 
         for (let z = zStart; z <= zEnd; z++) {
           const t = (z - zStart) / span;
           const tz = Math.min(1, z / Math.max(1, trunkTop));
-          const cx = cx0 + leanX * tz * tz + tierOffX * (1 - t * 0.4);
-          const cy = cy0 + leanY * tz * tz + tierOffY * (1 - t * 0.4);
+          const cx = cx0 + leanX * tz * tz + tierOffX * (1 - t * 0.35);
+          const cy = cy0 + leanY * tz * tz + tierOffY * (1 - t * 0.35);
           const baseR = rBot * (1 - t) + rTop * t;
           const sl = vol[z];
           for (let y = 0; y < h; y++) {
@@ -2131,8 +2137,8 @@
               const dx = x - cx, dy = y - cy;
               const dist = Math.hypot(dx, dy);
               const ang = Math.atan2(dy, dx);
-              const wave = z >= count - 4 ? 0 : (1.25 * Math.cos(ang * lobeFreq + lobePhase) + 0.55 * Math.sin(ang * 3 - lobePhase));
-              const effR = Math.max(0.7, baseR + wave * (1 - 0.65 * t));
+              const wave = z >= count - 4 ? 0 : (2.2 * Math.cos(ang * lobeFreq + lobePhase) + 0.9 * Math.sin(ang * 2 - lobePhase));
+              const effR = Math.max(0.7, baseR + wave * (1 - 0.60 * t));
               if (dist <= effR) {
                 const isEdge = dist >= effR - 1.6;
                 const isLit = (dx + dy) > 1.0;

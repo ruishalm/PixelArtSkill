@@ -996,7 +996,29 @@ Para tornar árvores, estruturas/ruínas/pedras e folhagem baixa destrutíveis/c
 
 - **Ação & Multiplicadores de Ferramenta (`KeyR` / Clique = Ação / `KeyQ` & `KeyE` = Girar / `KeyC` = Spawn)**:
   - `KeyR` ou clique simples no canvas executa a ação direcional (e `KeyQ` / `KeyE` mantêm o giro orbital da câmera; `KeyC` retorna ao spawn).
+  - **3ª Lei de Newton (Ação e Reação)**: direção de queda/estilhaços combina `65% (alvo - gato) + 35% (olhar)` com recuo leve no personagem.
   - **Multiplicadores por afinidade**: `tool_axe` aplica **`2×`** em `'chop'`; `tool_pickaxe` aplica **`2×`** em `'crumble'`; `tool_hoe` aplica **`2×`** em `'trim'`; e a interação padrão sem ferramenta aplica **`1×`** em todos os modos.
+
+### 13. Empuxo de Arquimedes, Deslocamento Local & Acoplamento Onda ↔ Corpo Rígido
+- **Empuxo Vertical (`debrisDrops`)**: corpos pouco densos (`wood_log`, persistentes) oscilam em mola-amortecedor sobre `WaveBuffer` ($z_{\text{surf}} + 1.4\,u$), enquanto densos (`stone_chunk`) afundam até o leito `dc.h`.
+- **Deriva por Gradiente & Deslocamento Local (`getLocalArchimedesRise`)**: leitura de $-\nabla u$ via `sampleWaveHeightAndGrad`; entrada/saída irradia $\Delta V_{\text{sub}}$ no `WaveBuffer` e eleva o nível apenas na mesma cota d'água num raio **`<= 64u`** (lagos isolados não afetam outros corpos d'água).
+
+### 14. Termodinâmica 2D, Difusão de Calor & Combustão (`stepThermodynamics` `48×36`, 15 Hz)
+- **Difusão + Advecção pelo Vento + Resfriamento**:
+  $$\frac{\partial T}{\partial t} = \alpha\,\nabla^2 T - \beta\,(\mathbf{W}\cdot\nabla T) - \lambda\,T$$
+- **Umidade & Limiar de Ignição**: calor evapora umidade $M$ antes de $T$ atingir $T_{\text{ign}} = 42$; apenas células secas com `fuel > 0.05` queimam até exaurir `fuel`, enquanto `MAT_WATER` / `MAT_SHALLOW` zeram $T$ soltando vapor.
+
+### 15. Matéria Granular (Ângulo de Repouso) & Re-Bake Incremental (`Dirty Rect`)
+- **Avalanche por Talus (`relaxGranularBox`)**: células granulares (`MAT_SAND` `talus = 2`, `MAT_PEAK` `talus = 3`) transferem `1u` para vizinhos mais baixos conservando massa.
+- **Re-Bake Incremental (`rebakeTerrainDirtyRect`)**: atualiza apenas o retângulo `[mx0..mx1, my0..my1]` nos `terrainSlices[z]` afetados via `getImageData` / `putImageData` (~60 FPS).
+
+### 16. Tecidos, Cordas & Bandeirinhas (Integração de Verlet 3D)
+- **Verlet com Restrições de Distância (`verletChains`)**:
+  $$\mathbf{x}_{t+1} = \mathbf{x}_t + (\mathbf{x}_t - \mathbf{x}_{t-1})\,\gamma + \mathbf{a}\,\Delta t^2, \qquad \mathbf{a} = \mathbf{g} + \mathbf{W}(x,y,t)\,k_{\text{wind}} + \mathbf{F}_{\text{cat}}$$
+  4 iterações de Gauss-Seidel por passo, renderizadas por fatia Z com oclusão 3D real.
+
+### 17. Geração Procedural por Seed (`WORLD_SEED`) & Arquétipos de Árvores
+- PRNG determinístico `mulberry32(WORLD_SEED)` (`?seed=<N>` + botão `🎲 Seed`), variando `hash2i`, meandros do rio, costa, cordilheiras, lagos e **árvores procedurais** (`buildProceduralPineVariant` em 4 arquétipos — cipreste, cedro, torto, clássico — e `buildProceduralSakuraVariant` com troncos, raízes, galhos e nuvens únicas).
 
 ---
 
