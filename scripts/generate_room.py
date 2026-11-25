@@ -1,6 +1,11 @@
 import json
+import os
 
-with open('C:/github/PixelArt/slices_v5.json', 'r', encoding='utf-8') as f:
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
+
+with open(os.path.join(VOXELS_DIR, 'slices_v5.json'), 'r', encoding='utf-8') as f:
     slices_data = f.read().strip()
 
 html_code = """<!DOCTYPE html>
@@ -949,7 +954,7 @@ html_code = """<!DOCTYPE html>
 
 final_html = html_code.replace('__CAT_SLICES__', slices_data)
 
-with open('C:/github/PixelArt/room-3d.html', 'w', encoding='utf-8') as f:
+with open(os.path.join(EXAMPLES_DIR, 'room-3d.html'), 'w', encoding='utf-8') as f:
     f.write(final_html)
 
 print('room-3d.html regenerated with doubled size and true 3D rotating cat!')

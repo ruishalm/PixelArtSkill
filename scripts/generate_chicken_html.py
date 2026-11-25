@@ -4,8 +4,13 @@ Refinamento da ciscada: a cabeça mantém formato perfeitamente redondo e fofo (
 mergulhando para a frente e para baixo tocando os grãos no chão ("toc-toc"), subindo e voltando.
 """
 import json
+import os
 
-with open('chicken_slices.json', 'r', encoding='utf-8') as f:
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
+
+with open(os.path.join(VOXELS_DIR, 'chicken_slices.json'), 'r', encoding='utf-8') as f:
     chicken_data = json.load(f)
 
 chicken_json_str = json.dumps(chicken_data)
@@ -188,7 +193,7 @@ html_content = f"""<!DOCTYPE html>
           <h1>🐔 Galinha Cocoricó 3D</h1>
           <span class="tag">Sprite Stacking (16 Slices)</span>
         </div>
-        <a href="index.html" class="nav-btn">🏠 Voltar ao Quarto</a>
+        <a href="../index.html" class="nav-btn">🏠 Voltar ao Quarto</a>
       </div>
 
       <canvas id="viewCanvas" width="480" height="420"></canvas>
@@ -577,7 +582,7 @@ html_content = f"""<!DOCTYPE html>
 </html>
 """
 
-with open('chicken-3d.html', 'w', encoding='utf-8') as f:
+with open(os.path.join(EXAMPLES_DIR, 'chicken-3d.html'), 'w', encoding='utf-8') as f:
     f.write(html_content)
 
 print('chicken-3d.html atualizado com ciscada fofa e redonda!')

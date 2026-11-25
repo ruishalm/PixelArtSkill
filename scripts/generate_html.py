@@ -1,6 +1,11 @@
 import json
+import os
 
-with open('C:/github/PixelArt/slices_v5.json', 'r', encoding='utf-8') as f:
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
+
+with open(os.path.join(VOXELS_DIR, 'slices_v5.json'), 'r', encoding='utf-8') as f:
     slices_raw = json.load(f)
 
 # Criando slices do corpo (fatias 0 e 1 sem as patas)
@@ -38,11 +43,11 @@ cat_paw_slices = [
     ]
 ]
 
-with open('C:/github/PixelArt/cat_belly_slices.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'cat_belly_slices.json'), 'r', encoding='utf-8') as f:
     belly_slices_raw = json.load(f)
 belly_slices_json = json.dumps(belly_slices_raw)
 
-with open('C:/github/PixelArt/hats_pack.json', 'r', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'hats_pack.json'), 'r', encoding='utf-8') as f:
     hats_pack = json.load(f)
 
 witch_hat_slices = json.dumps(hats_pack['witch'])
@@ -719,7 +724,7 @@ output = template.replace('__BODY_SLICES__', json.dumps(cat_body_slices))\
                  .replace('__BERET_HAT_SLICES__', beret_hat_slices)\
                  .replace('__FLOWER_HAT_SLICES__', flower_hat_slices)
 
-with open('C:/github/PixelArt/cat-3d.html', 'w', encoding='utf-8') as f:
+with open(os.path.join(EXAMPLES_DIR, 'cat-3d.html'), 'w', encoding='utf-8') as f:
     f.write(output)
 
 print('cat-3d.html regenerated with hats, postures, reactions and anime butt mark (*)!')

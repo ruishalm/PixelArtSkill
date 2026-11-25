@@ -1,6 +1,11 @@
 import json
 import math
+import os
 from collections import Counter, deque
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 
 def make_grid(w, h, fill=0):
@@ -2551,7 +2556,7 @@ def main():
         if factor != 1.0:
             pack[name]['slices'] = upscale_voxel_model(pack[name]['slices'], factor)
 
-    out_path = 'C:/github/PixelArt/terrain_props_pack.json'
+    out_path = os.path.join(VOXELS_DIR, 'terrain_props_pack.json')
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(pack, f, indent=2)
 

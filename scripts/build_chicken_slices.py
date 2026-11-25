@@ -3,6 +3,11 @@ Gerador aprimorado de Fatias Sprite Stacking da Galinha 3D (24x24 x 16 camadas)
 Perfeitamente gordinha, com asas destacadas, cauda volumosa, crista ondulada e patas amarelas.
 """
 import json
+import os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 W, H = 24, 24
 NUM_SLICES = 16
@@ -152,7 +157,7 @@ slices[15][12][18] = 4; slices[15][12][17] = 4
 slices[15][12][15] = 4
 slices[15][12][13] = 4
 
-with open('chicken_slices.json', 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'chicken_slices.json'), 'w', encoding='utf-8') as f:
     json.dump({
         'name': 'Galinha Cocoricó',
         'width': W,
