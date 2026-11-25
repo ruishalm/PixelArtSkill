@@ -80,6 +80,14 @@
       cat.speech = { text, timer };
     }
 
+    const catGuidedFlags = new Set();
+    function guideSpeak(flag, text, timer = 130) {
+      if (catGuidedFlags.has(flag)) return false;
+      catGuidedFlags.add(flag);
+      catSpeak(text, timer);
+      return true;
+    }
+
     function waterSurfZ(cell) {
       if (!cell) return -2;
       if (cell.mat === MAT_SHALLOW) return cell.h < 0 ? -1 : cell.h;
@@ -1144,6 +1152,32 @@
       }
     }
 
+    function spawnPushableLog(wx, wy, angle = 0.35) {
+      const model = propModels.wood_log;
+      if (!model) return;
+      const c = getCellAt(wx, wy);
+      const gz = c ? (isWetMat(c.mat) ? waterSurfZ(c) : c.h) : 0;
+      debrisDrops.push({
+        modelKey: 'wood_log',
+        model,
+        x: wx,
+        y: wy,
+        z: gz,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        scale: 0.85,
+        selfAngle: angle,
+        spin: 0,
+        bounces: 0,
+        inWater: !!(c && isWetMat(c.mat)),
+        persistent: true,
+        life: 999999
+      });
+    }
+    spawnPushableLog(86, 248, 0.4);     // Tronco empurrável na margem do vau do Rio (perto da Vila)
+    spawnPushableLog(-618, -585, 0.8);  // Tronco empurrável na borda do Lago Zen
+
     function triggerAction() {
       if (actionCooldown > 0) return;
       actionCooldown = 0.22;
@@ -1304,6 +1338,7 @@
             spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 3, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
             if (bestTarget.modelKey === 'boulder_large') {
               rebuildWaterfallBlocks();
+              if (bestTarget.isDamBoulder) guideSpeak('dam_broken', 'Fluxo liberado! 💧', 120);
             }
             refreshWaterObstaclesCache();
             destructStats.crumbledCount++;
@@ -1847,6 +1882,7 @@
       }
       if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
         if (cat.isWalking) {
+          guideSpeak('shallow_wade', 'Partindo a correnteza! 🌊', 125);
           if (shallowRippleTimer <= 0) {
             shallowRippleTimer = 0.04;
             injectWaterRipple(cat.x, cat.y, 0.75, 2);
@@ -2056,11 +2092,11 @@
         }
       }
 
-      // Drops balísticos (toras & pedregulhos) + correnteza da água + deslocamento de Arquimedes
+      // Drops balísticos (toras & pedregulhos) + empurrão do gatinho + correnteza + Arquimedes
       let frameSubVol = cat._prevSubVol || 0;
       for (let i = debrisDrops.length - 1; i >= 0; i--) {
         const dr = debrisDrops[i];
-        dr.life -= dt;
+        if (!dr.persistent) dr.life -= dt;
         if (dr.life <= 0) {
           debrisDrops.splice(i, 1);
           continue;
@@ -2105,6 +2141,16 @@
           }
           if (!dc || dr.y > 860) dr.life = Math.min(dr.life, 0.5);
         } else {
+          // Gatinho empurra troncos/pedras na margem para dentro da água!
+          const dCatDr = Math.hypot(dr.x - cat.x, dr.y - cat.y);
+          if (dCatDr < 11 && dCatDr > 0.01 && Math.abs(dr.z - cat.z) < 8) {
+            const nx = (dr.x - cat.x) / dCatDr;
+            const ny = (dr.y - cat.y) / dCatDr;
+            const pushSpd = cat.isWalking ? 64 : 26;
+            dr.vx = nx * pushSpd;
+            dr.vy = ny * pushSpd;
+            dr.spin = (Math.random() - 0.5) * 3.0;
+          }
           dr.vz -= GRAVITY * 0.45 * dt;
           dr.x += dr.vx * dt;
           dr.y += dr.vy * dt;
@@ -2124,6 +2170,9 @@
             dr.vy = flow.vy;
             injectWaterRipple(dr.x, dr.y, 1.4, 2);
             spawnParticles(dr.x, dr.y, dr.z + 1, 6, ['#93C5FD', '#FFFFFF'], 24);
+            if (Math.hypot(dr.x - cat.x, dr.y - cat.y) < 140) {
+              guideSpeak('archimedes', 'Eureka! A água desloca! 🛁', 135);
+            }
           } else if (!isWetMat(dc.mat) && dr.z <= dc.h) {
             dr.z = dc.h;
             if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
@@ -2252,9 +2301,13 @@
           cat.onGround = false;
           sfxHurt();
           catSpeak('Ai! Quente! 🔥', 110);
-        } else if (dCat >= 10 && dCat < 26 && warmthSpeakCd <= 0 && !cat.speech) {
-          warmthSpeakCd = 14;
-          catSpeak('Quentinho! 🔥', 90);
+        } else if (dCat >= 10 && dCat < 26) {
+          if (!guideSpeak('warm_near', 'Quentinho! 🔥', 100) && warmthSpeakCd <= 0 && !cat.speech) {
+            warmthSpeakCd = 14;
+            catSpeak('Quentinho! 🔥', 90);
+          }
+        } else if (dCat >= 26 && dCat < 46) {
+          guideSpeak('warm_far', 'Já sinto calor daqui! 🌡️', 110);
         }
 
         // Injeta calor no centro da fogueira e emite brasas no WindField
