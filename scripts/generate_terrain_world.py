@@ -1640,11 +1640,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const wy = (my - HALF_GRID + 0.5) * VOX;
         const row = my * mw;
         for (let mx = 0; mx < mw; mx++) {
+          const wx = (mx - HALF_GRID + 0.5) * VOX;
           const idx = row + mx;
           const shoreY = shoreYByCol[mx];
           const sandStart = sandStartByCol[mx];
 
-          if (wy >= shoreY + 14) {
+          const shallowWidth = 56 + fbm2d(wx * 0.018 + 3.1, 7.4) * 18;
+          const shallowEndY = Math.min(842, shoreY + shallowWidth);
+          if (wy >= shallowEndY) {
             hmap[idx] = -6;
             matMap[idx] = MAT_WATER;
             biomeMap[idx] = 3;
@@ -1706,12 +1709,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         setCirclePatch(sx, 495, 12.0, 2, MAT_STONE, 5, true);
       }
 
-      // Vau Raso do Rio perto da Vila (wy = 225..295, sul da Ponte Central) -> MAT_SHALLOW caminhável
+      // Vau Raso Orgânico do Rio perto da Vila (sul da Ponte Central) -> MAT_SHALLOW caminhável com contorno fbm2d
       {
         const gx0 = Math.max(0, Math.floor(72 / VOX + HALF_GRID));
         const gx1 = Math.min(mw - 1, Math.ceil(208 / VOX + HALF_GRID));
-        const gy0 = Math.max(0, Math.floor(225 / VOX + HALF_GRID));
-        const gy1 = Math.min(mh - 1, Math.ceil(295 / VOX + HALF_GRID));
+        const gy0 = Math.max(0, Math.floor(195 / VOX + HALF_GRID));
+        const gy1 = Math.min(mh - 1, Math.ceil(330 / VOX + HALF_GRID));
         for (let my = gy0; my <= gy1; my++) {
           const wy = (my - HALF_GRID + 0.5) * VOX;
           const tSeg = Math.max(0, Math.min(1, (wy - 108) / (435 - 108)));
@@ -1720,8 +1723,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           for (let mx = gx0; mx <= gx1; mx++) {
             const wx = (mx - HALF_GRID + 0.5) * VOX;
             const idx = row + mx;
+            if (!isWetMat(matMap[idx]) && hmap[idx] > 1) continue;
             const dRiver = Math.abs(wx - centerWx);
-            if (matMap[idx] === MAT_WATER || dRiver <= 38) {
+            const diagTilt = (wx - centerWx) * 0.28;
+            const yNorth = 226 + diagTilt + fbm2d(wx * 0.028 + 1.3, 4.1) * 26 + Math.sin(wx * 0.055) * 6;
+            const ySouth = 296 + diagTilt + fbm2d(wx * 0.028 + 7.7, 9.2) * 26 - Math.cos(wx * 0.05) * 6;
+            const inMainSandbar = (wy >= yNorth && wy <= ySouth) && (matMap[idx] === MAT_WATER || dRiver <= 38);
+            const inBankShoal = (dRiver >= 27 && dRiver <= 39) && (wy >= yNorth - 22 && wy <= ySouth + 22) && (matMap[idx] === MAT_WATER) && (fbm2d(wx * 0.06, wy * 0.06) > -0.15);
+            if (inMainSandbar || inBankShoal) {
               hmap[idx] = -2;
               matMap[idx] = MAT_SHALLOW;
               biomeMap[idx] = 5;
@@ -2131,7 +2140,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       addProp('boulder_large', 132, -80, { allowInWater: true, liftZ: -4 });
       addProp('boulder_large', 278, -495, { allowInWater: true, allowOnPath: true, liftZ: 44, isDamBoulder: true });
       addProp('ruin_pillar', 154, 375, { allowInWater: true, liftZ: -3 });
-      addProp('tree_stump', 114, -225, { allowInWater: true, liftZ: -3 });
 
       // 4. Jardim Zen & Portal Torii Gigante
       addProp('torii_gate', -435, -405, { angle: 0, allowOnPath: true });
@@ -2548,13 +2556,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               }
               const siSurf = -2 - Z_MIN;
               const isShallow = h > -6;
-              const wxSurf = (mx - HALF_GRID + 0.5) * VOX;
-              const isPlungeFoam = (Math.hypot(wxSurf - 242, wySurf + 495) < 20) && ((nHash & 3) === 0);
-              terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isPlungeFoam
-                ? COL_FOAM_PLUNGE
-                : (isShallow
-                  ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
-                  : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B));
+              terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isShallow
+                ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
+                : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B);
             } else {
               const isWaterfallDrop = (h - min8) > 4;
               if (!isWaterfallDrop) {
@@ -3132,15 +3136,32 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       return { wx: vx, wy: vy, mag: Math.hypot(vx, vy) };
     }
 
+    let cachedWaterObstacles = [];
+    let cachedWaterObstaclesNoCat = [];
+
     function getActiveWaterObstacles(includeCat = true) {
       const obs = [];
       for (let i = 0; i < props.length; i++) {
         const p = props[i];
         if (p.destroyed || (p.destr && p.destr.chopped) || p.isDamBoulder) continue;
-        const pc = getCellAt(p.wx, p.wy);
-        if (!pc || !isWetMat(pc.mat)) continue;
         const meta = PROP_COLLIDER_META[p.modelKey];
-        const r = meta ? ((meta.r || Math.max(meta.halfW || 6, meta.halfD || 6)) * (p.scale || 1)) : 6.0;
+        const sr = Math.min(7, ((meta && meta.r) || 6) * 0.7);
+        let inWet = false;
+        const c0 = getCellAt(p.wx, p.wy);
+        if (c0 && isWetMat(c0.mat)) {
+          inWet = true;
+        } else {
+          const c1 = getCellAt(p.wx + sr, p.wy);
+          const c2 = getCellAt(p.wx - sr, p.wy);
+          const c3 = getCellAt(p.wx, p.wy + sr);
+          const c4 = getCellAt(p.wx, p.wy - sr);
+          if ((c1 && isWetMat(c1.mat)) || (c2 && isWetMat(c2.mat)) || (c3 && isWetMat(c3.mat)) || (c4 && isWetMat(c4.mat))) {
+            inWet = true;
+          }
+        }
+        if (!inWet) continue;
+        let r = meta ? ((meta.r || Math.max(meta.halfW || 6, meta.halfD || 6)) * (p.scale || 1)) : 6.0;
+        if (p.modelKey === 'ruin_pillar') r = Math.max(11.5, r);
         obs.push({ wx: p.wx, wy: p.wy, r });
       }
       for (let i = 0; i < debrisDrops.length; i++) {
@@ -3152,10 +3173,21 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         const br = getBridgeAt(cat.x, cat.y);
         const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
         if (cc && cc.mat === MAT_SHALLOW && !onBr && cat.onGround) {
-          obs.push({ wx: cat.x, wy: cat.y, r: 7.5 });
+          obs.push({ wx: cat.x, wy: cat.y, r: 8.2, isCat: true });
         }
       }
       return obs;
+    }
+
+    function refreshWaterObstaclesCache() {
+      cachedWaterObstaclesNoCat = getActiveWaterObstacles(false);
+      cachedWaterObstacles = cachedWaterObstaclesNoCat.slice();
+      const cc = getCellAt(cat.x, cat.y);
+      const br = getBridgeAt(cat.x, cat.y);
+      const onBr = br && cat.z >= getBridgeDeckZ(br, cat.x, cat.y) - AUTO_STEP_MAX - 1;
+      if (cc && cc.mat === MAT_SHALLOW && !onBr && cat.onGround) {
+        cachedWaterObstacles.push({ wx: cat.x, wy: cat.y, r: 8.2, isCat: true });
+      }
     }
 
     function applyRankineDipole(wx, wy, ux0, uy0) {
@@ -3168,7 +3200,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       let vx = ux0;
       let vy = uy0;
 
-      const obs = getActiveWaterObstacles(true);
+      const obs = cachedWaterObstacles;
       for (let i = 0; i < obs.length; i++) {
         const o = obs[i];
         const dx = wx - o.wx;
@@ -3275,6 +3307,147 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       });
     }
 
+    const FLOW_STREAK_COUNT = 180;
+    const flowStreaks = [];
+
+    function seedFlowStreak(s, randomAge = false) {
+      let sx = 0, sy = 0, fc = null, found = false;
+      const visObs = [];
+      for (let i = 0; i < cachedWaterObstacles.length; i++) {
+        const o = cachedWaterObstacles[i];
+        if (Math.hypot(o.wx - camX, o.wy - camY) < 420) visObs.push(o);
+      }
+
+      if (visObs.length > 0 && Math.random() < 0.40) {
+        const o = visObs[Math.floor(Math.random() * visObs.length)];
+        const base = sampleBaseWaterFlow(o.wx, o.wy);
+        if (base.speed > 1.5) {
+          const ux = base.vx / base.speed;
+          const uy = base.vy / base.speed;
+          const px = -uy;
+          const py = ux;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            const distUp = 14 + Math.random() * 24;
+            const lat = (Math.random() * 2 - 1) * 1.6 * o.r;
+            const tx = o.wx - ux * distUp + px * lat;
+            const ty = o.wy - uy * distUp + py * lat;
+            const c = getCellAt(tx, ty);
+            if (c && isWetMat(c.mat) && sampleBaseWaterFlow(tx, ty).speed >= 1.2) {
+              sx = tx; sy = ty; fc = c; found = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!found) {
+        for (let attempt = 0; attempt < 16; attempt++) {
+          const tx = camX + (Math.random() * 2 - 1) * 340;
+          const ty = camY + (Math.random() * 2 - 1) * 240;
+          const c = getCellAt(tx, ty);
+          if (c && isWetMat(c.mat) && sampleBaseWaterFlow(tx, ty).speed >= 1.2) {
+            sx = tx; sy = ty; fc = c; found = true;
+            break;
+          }
+        }
+      }
+
+      if (!found) {
+        const tx = 128 + (Math.random() * 2 - 1) * 44;
+        const ty = 200 + (Math.random() * 2 - 1) * 140;
+        const c = getCellAt(tx, ty);
+        if (c && isWetMat(c.mat)) {
+          sx = tx; sy = ty; fc = c; found = true;
+        }
+      }
+
+      if (!found) {
+        s.hLen = 0;
+        s.age = 0;
+        s.maxAge = 0.5;
+        s.deflect = 0;
+        return;
+      }
+
+      s.x = sx;
+      s.y = sy;
+      s.z = waterSurfZ(fc);
+      s.hist[0] = sx;
+      s.hist[1] = sy;
+      s.hLen = 1;
+      s.histAccum = 0;
+      s.maxAge = 1.3 + Math.random() * 1.3;
+      s.age = randomAge ? Math.random() * s.maxAge * 0.5 : 0;
+      s.deflect = 0;
+    }
+
+    function stepFlowStreaks(dt) {
+      for (let i = 0; i < flowStreaks.length; i++) {
+        const s = flowStreaks[i];
+        if (s.hLen === 0 || s.age >= s.maxAge || Math.hypot(s.x - camX, s.y - camY) > 480) {
+          seedFlowStreak(s, false);
+          if (s.hLen === 0) continue;
+        }
+        const v1 = sampleWaterFlow(s.x, s.y);
+        if (v1.speed < 1.2) {
+          seedFlowStreak(s, false);
+          continue;
+        }
+        const v2 = sampleWaterFlow(s.x + 0.5 * v1.vx * dt, s.y + 0.5 * v1.vy * dt);
+        if (v2.speed < 1.2) {
+          seedFlowStreak(s, false);
+          continue;
+        }
+        s.x += v2.vx * dt;
+        s.y += v2.vy * dt;
+        s.age += dt;
+
+        const fc = getCellAt(s.x, s.y);
+        if (!fc || !isWetMat(fc.mat)) {
+          seedFlowStreak(s, false);
+          continue;
+        }
+        s.z = waterSurfZ(fc);
+
+        const base = sampleBaseWaterFlow(s.x, s.y);
+        s.deflect = base.speed > 0.5
+          ? Math.hypot(v2.vx - base.vx, v2.vy - base.vy) / Math.max(2, base.speed)
+          : 0;
+
+        s.histAccum += dt;
+        if (s.histAccum >= 0.045) {
+          s.histAccum -= 0.045;
+          if (s.hLen < 6) {
+            s.hist[s.hLen * 2] = s.x;
+            s.hist[s.hLen * 2 + 1] = s.y;
+            s.hLen++;
+          } else {
+            for (let k = 0; k < 10; k++) s.hist[k] = s.hist[k + 2];
+            s.hist[10] = s.x;
+            s.hist[11] = s.y;
+          }
+        }
+      }
+    }
+
+    function initFlowStreaks() {
+      refreshWaterObstaclesCache();
+      flowStreaks.length = 0;
+      for (let i = 0; i < FLOW_STREAK_COUNT; i++) {
+        const s = {
+          x: 0, y: 0, z: -2,
+          hist: new Float32Array(12),
+          hLen: 0, histAccum: 0,
+          age: 0, maxAge: 1.8, deflect: 0
+        };
+        seedFlowStreak(s, true);
+        flowStreaks.push(s);
+      }
+      for (let tick = 0; tick < 25; tick++) {
+        stepFlowStreaks(1 / 30);
+      }
+    }
+
     const WAVE_W = 120, WAVE_H = 80, WAVE_CELL = 6;
     let waveCurr = new Float32Array(WAVE_W * WAVE_H);
     let wavePrev = new Float32Array(WAVE_W * WAVE_H);
@@ -3357,7 +3530,28 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     }
 
+    function sampleWaveBilerp(buf, fx, fy) {
+      const x0 = Math.max(0, Math.min(WAVE_W - 2, Math.floor(fx)));
+      const y0 = Math.max(0, Math.min(WAVE_H - 2, Math.floor(fy)));
+      const tx = Math.max(0, Math.min(1, fx - x0));
+      const ty = Math.max(0, Math.min(1, fy - y0));
+      const i00 = y0 * WAVE_W + x0;
+      return (buf[i00] * (1 - tx) + buf[i00 + 1] * tx) * (1 - ty) +
+             (buf[i00 + WAVE_W] * (1 - tx) + buf[i00 + WAVE_W + 1] * tx) * ty;
+    }
+
+    function isInsideWaterObstacle(wx, wy, obs) {
+      for (let i = 0; i < obs.length; i++) {
+        const o = obs[i];
+        const dx = wx - o.wx;
+        const dy = wy - o.wy;
+        if (dx * dx + dy * dy < o.r * o.r) return true;
+      }
+      return false;
+    }
+
     function stepWaveBuffer() {
+      const obs = cachedWaterObstacles;
       waveTmp.fill(0);
       for (let dy = 1; dy < WAVE_H - 1; dy++) {
         const wy = waveOriginY + (dy + 0.5) * WAVE_CELL;
@@ -3369,13 +3563,43 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           const idx = row + dx;
           const wx = waveOriginX + (dx + 0.5) * WAVE_CELL;
           const mx = Math.floor(wx / VOX + HALF_GRID);
-          if (mx < 0 || mx >= mw || !isWetMat(matMap[my * mw + mx])) {
+          if (mx < 0 || mx >= mw || !isWetMat(matMap[my * mw + mx]) || isInsideWaterObstacle(wx, wy, obs)) {
             waveTmp[idx] = 0;
             continue;
           }
           const isSponge = isSpongeY || dx < 6 || dx >= WAVE_W - 6;
           const damp = isSponge ? 0.72 : 0.955;
-          let next = ((waveCurr[idx - 1] + waveCurr[idx + 1] + waveCurr[idx - WAVE_W] + waveCurr[idx + WAVE_W]) * 0.5 - wavePrev[idx]) * damp;
+
+          const base = sampleBaseWaterFlow(wx, wy);
+          let sx = dx;
+          let sy = dy;
+          if (base.speed > 0.1) {
+            const advX = Math.max(-0.45, Math.min(0.45, -base.vx * 0.012));
+            const advY = Math.max(-0.45, Math.min(0.45, -base.vy * 0.012));
+            const candX = Math.max(1, Math.min(WAVE_W - 2, dx + advX));
+            const candY = Math.max(1, Math.min(WAVE_H - 2, dy + advY));
+            const upWx = waveOriginX + (candX + 0.5) * WAVE_CELL;
+            const upWy = waveOriginY + (candY + 0.5) * WAVE_CELL;
+            if (isWaterFast(upWx, upWy) && !isInsideWaterObstacle(upWx, upWy, obs)) {
+              sx = candX;
+              sy = candY;
+            }
+          }
+
+          let next;
+          if (sx === dx && sy === dy) {
+            next = ((waveCurr[idx - 1] + waveCurr[idx + 1] + waveCurr[idx - WAVE_W] + waveCurr[idx + WAVE_W]) * 0.5 - wavePrev[idx]) * damp;
+          } else {
+            const cAvg = (
+              sampleWaveBilerp(waveCurr, sx - 1, sy) +
+              sampleWaveBilerp(waveCurr, sx + 1, sy) +
+              sampleWaveBilerp(waveCurr, sx, sy - 1) +
+              sampleWaveBilerp(waveCurr, sx, sy + 1)
+            ) * 0.5;
+            const pVal = sampleWaveBilerp(wavePrev, sx, sy);
+            next = (cAvg - pVal) * damp;
+          }
+
           if (Math.abs(next) < 0.008) next = 0;
           else if (next > 4.0) next = 4.0;
           else if (next < -4.0) next = -4.0;
@@ -3421,7 +3645,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         if (p.wx < WF_X0 - 16 || p.wx > WF_X0 + WF_W * WF_CELL + 16) continue;
         if (p.wy < WF_Y0 - 16 || p.wy > WF_Y0 + WF_H * WF_CELL + 16) continue;
         const meta = PROP_COLLIDER_META[p.modelKey] || { r: 6 };
-        const obsR = (meta.r || 6) * (p.scale || 1) + 0.4;
+        const obsR = p.isDamBoulder ? 10.8 : ((meta.r || 6) * (p.scale || 1) + 0.4);
         for (let iy = 0; iy < WF_H; iy++) {
           const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
           for (let ix = 0; ix < WF_W; ix++) {
@@ -3450,7 +3674,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           for (let ix = 22; ix <= 28; ix++) {
             const idx = row + ix;
             if (wfBlockH[idx] === 0) {
-              wfH[idx] = Math.min(4.2, wfH[idx] + 28.0 * dtSub);
+              wfH[idx] = Math.min(7.5, wfH[idx] + 72.0 * dtSub);
             }
           }
         }
@@ -3466,7 +3690,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               continue;
             }
             const Hc = wfBedZ[idx] + hCell;
-            const cap = Math.min(36.0, hCell * 8.5);
+            const cap = Math.min(32.0, hCell * 7.2);
+            const wxCell = WF_X0 + (ix + 0.5) * WF_CELL;
+            const steepDrop = (ix > 0 && (wfBedZ[idx] - wfBedZ[idx - 1]) >= 1.5) || (wxCell < 273);
+            const latGain = steepDrop ? 0.025 : 1.0;
+            const latDamp = steepDrop ? 0.45 : damp;
             let fL = 0, fR = 0, fT = 0, fB = 0;
             if (ix > 0 && wfBlockH[idx - 1] === 0) {
               fL = Math.min(cap, Math.max(0, wfFL[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx - 1] + wfH[idx - 1]))));
@@ -3475,10 +3703,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               fR = Math.min(cap, Math.max(0, wfFR[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx + 1] + wfH[idx + 1]))));
             }
             if (iy > 0 && wfBlockH[idx - WF_W] === 0) {
-              fT = Math.min(cap, Math.max(0, wfFT[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx - WF_W] + wfH[idx - WF_W]))));
+              fT = Math.min(cap, Math.max(0, wfFT[idx] * latDamp + dtSub * pipeAccel * latGain * (Hc - (wfBedZ[idx - WF_W] + wfH[idx - WF_W]))));
             }
             if (iy < WF_H - 1 && wfBlockH[idx + WF_W] === 0) {
-              fB = Math.min(cap, Math.max(0, wfFB[idx] * damp + dtSub * pipeAccel * (Hc - (wfBedZ[idx + WF_W] + wfH[idx + WF_W]))));
+              fB = Math.min(cap, Math.max(0, wfFB[idx] * latDamp + dtSub * pipeAccel * latGain * (Hc - (wfBedZ[idx + WF_W] + wfH[idx + WF_W]))));
             }
 
             const sumOut = fL + fR + fT + fB;
@@ -3493,7 +3721,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           }
         }
 
-        // 3. Conservative depth update + plunge pool drain (wx < 245)
+        // 3. Conservative depth update + plunge pool drain (wx < 245) & live impact foam
         for (let iy = 0; iy < WF_H; iy++) {
           const wy = WF_Y0 + (iy + 0.5) * WF_CELL;
           const row = iy * WF_W;
@@ -3511,6 +3739,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             if (nextH < 1e-5) nextH = 0;
 
             const wx = WF_X0 + (ix + 0.5) * WF_CELL;
+            if (emitEffects && sub === substeps - 1 && wx >= 240 && wx <= 250 && nextH > 0.18) {
+              if (Math.hypot(camX - wx, camY - wy) < 460 && particles.length < 220 && Math.random() < 0.22) {
+                spawnParticles(
+                  wx + (Math.random() - 0.5) * 3,
+                  wy + (Math.random() - 0.5) * 3,
+                  0.4, 1, ['#E0F2FE', '#FFFFFF', '#7DD3FC'], 16,
+                  { grav: 75, vz: 14 + Math.random() * 12, life: 0.48 }
+                );
+              }
+            }
             if (wx < 245 && nextH > 0) {
               const drain = nextH * Math.min(1, 12.0 * dtSub);
               nextH -= drain;
@@ -3563,6 +3801,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     for (let i = 0; i < 70; i++) {
       stepWaterfallSim(1 / 30, false);
     }
+    initFlowStreaks();
 
     const canvas = document.getElementById('viewport');
     const ctx = canvas.getContext('2d');
@@ -3764,39 +4003,57 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           });
           destructStats.choppedCount++;
         } else if (d.mode === 'crumble') {
-          const baseH = d.zCut * bestTarget.scale;
-          bestTarget.renderMaxSlice = d.zCut;
-          bestTarget.topZ = bestTarget.baseZ + Math.ceil(baseH);
-          bestTarget.isFire = false;
-          const ruinPlat = {
-            wx: bestTarget.wx,
-            wy: bestTarget.wy,
-            r: Math.max(6, ((PROP_COLLIDER_META[bestTarget.modelKey] && PROP_COLLIDER_META[bestTarget.modelKey].r) || 8) * bestTarget.scale),
-            baseZ: bestTarget.wz,
-            topZ: bestTarget.wz + baseH,
-            modelKey: bestTarget.modelKey + '_rubble',
-            disabled: false
-          };
-          platformColliders.push(ruinPlat);
-          bestTarget.platCollider = ruinPlat;
-          bestTarget.isPlatform = true;
-          bestTarget.platTopZ = ruinPlat.topZ;
-
-          shakeTimer = 0.16;
-          shakeMag = 2.5;
-          sfxCrumble();
-          spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 4, 22, d.colors, 52, { grav: 240, life: 0.75 });
-          spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 3, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
-          if (bestTarget.modelKey === 'boulder_large') {
+          if (bestTarget.isDamBoulder) {
+            bestTarget.destroyed = true;
+            bestTarget.isPlatform = false;
+            bestTarget.isFire = false;
+            if (bestTarget.platCollider) bestTarget.platCollider.disabled = true;
+            shakeTimer = 0.18;
+            shakeMag = 3.0;
+            sfxCrumble();
+            spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, 28, d.colors, 58, { grav: 240, life: 0.80 });
+            spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 5, 18, ['#E0F2FE', '#FFFFFF', '#67E8F9'], 46, { grav: 150, vz: 32, life: 0.65 });
+            spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
             rebuildWaterfallBlocks();
+            refreshWaterObstaclesCache();
+            destructStats.crumbledCount++;
+          } else {
+            const baseH = d.zCut * bestTarget.scale;
+            bestTarget.renderMaxSlice = d.zCut;
+            bestTarget.topZ = bestTarget.baseZ + Math.ceil(baseH);
+            bestTarget.isFire = false;
+            const ruinPlat = {
+              wx: bestTarget.wx,
+              wy: bestTarget.wy,
+              r: Math.max(6, ((PROP_COLLIDER_META[bestTarget.modelKey] && PROP_COLLIDER_META[bestTarget.modelKey].r) || 8) * bestTarget.scale),
+              baseZ: bestTarget.wz,
+              topZ: bestTarget.wz + baseH,
+              modelKey: bestTarget.modelKey + '_rubble',
+              disabled: false
+            };
+            platformColliders.push(ruinPlat);
+            bestTarget.platCollider = ruinPlat;
+            bestTarget.isPlatform = true;
+            bestTarget.platTopZ = ruinPlat.topZ;
+
+            shakeTimer = 0.16;
+            shakeMag = 2.5;
+            sfxCrumble();
+            spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 4, 22, d.colors, 52, { grav: 240, life: 0.75 });
+            spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 3, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
+            if (bestTarget.modelKey === 'boulder_large') {
+              rebuildWaterfallBlocks();
+            }
+            refreshWaterObstaclesCache();
+            destructStats.crumbledCount++;
           }
-          destructStats.crumbledCount++;
         } else if (d.mode === 'trim') {
           bestTarget.destroyed = true;
           bestTarget.foliage = null;
           spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, 14, d.colors, 36, {
             isLeaf: true, grav: 32, vz: 18 + Math.random() * 14, life: 2.0
           });
+          refreshWaterObstaclesCache();
           destructStats.trimmedCount++;
         }
       }
@@ -3862,6 +4119,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       camY = cat.y;
       camZ = cat.z;
       syncWaveOrigin();
+      refreshWaterObstaclesCache();
       if (msg) catSpeak(msg, 125);
     }
 
@@ -4373,13 +4631,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       obsEl.textContent = cat.obstacleLabel;
       obsEl.className = 'obstacle-chip obs-' + cat.obstacleHint;
 
-      if (Math.hypot(cat.x - 242, cat.y + 495) < 420 && Math.random() < dt * 14) {
-        spawnParticles(
-          242 + (Math.random() - 0.5) * 16,
-          -495 + (Math.random() - 0.5) * 18,
-          1, 1, ['#E0F2FE', '#FFFFFF', '#7DD3FC'], 16
-        );
-      }
+      refreshWaterObstaclesCache();
 
       // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul
       floatingSpawnAccum += dt;
@@ -4595,27 +4847,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       camZ += (cat.groundZ + (cat.z - cat.groundZ) * 0.45 - camZ) * Math.min(1, dt * 6.5);
 
       syncWaveOrigin();
+      stepFlowStreaks(dt);
       waveAccum += dt;
       while (waveAccum >= 1 / 30) {
         waveAccum -= 1 / 30;
-        if (Math.hypot(camX - 242, camY + 495) < 420 && Math.random() < 0.45) {
-          injectWaterRipple(242 + (Math.random() - 0.5) * 10, -495 + (Math.random() - 0.5) * 10, 0.65, 2);
-        }
-        // Espuma sutil de esteira atrás de pedras/obstáculos no rio
-        const wObs = getActiveWaterObstacles(false);
+        // Micro-impulsos sutis de onda de proa e flancos de cisalhamento nos obstáculos do rio
+        const wObs = cachedWaterObstaclesNoCat;
         for (let i = 0; i < wObs.length; i++) {
           const o = wObs[i];
           if (Math.hypot(o.wx - camX, o.wy - camY) > 420) continue;
           const baseF = sampleBaseWaterFlow(o.wx, o.wy);
-          if (baseF.speed > 2 && Math.random() < 0.25) {
+          if (baseF.speed > 2 && Math.random() < 0.28) {
             const ux = baseF.vx / baseF.speed;
             const uy = baseF.vy / baseF.speed;
-            const wxWake = o.wx + ux * (o.r + 3.5) + (Math.random() - 0.5) * o.r * 0.9;
-            const wyWake = o.wy + uy * (o.r + 3.5) + (Math.random() - 0.5) * o.r * 0.9;
+            const px = -uy;
+            const py = ux;
+            const pick = Math.random();
+            let wxWake, wyWake;
+            if (pick < 0.4) {
+              wxWake = o.wx - ux * (o.r + 1.5) + px * (Math.random() - 0.5) * o.r * 0.4;
+              wyWake = o.wy - uy * (o.r + 1.5) + py * (Math.random() - 0.5) * o.r * 0.4;
+            } else {
+              const side = pick < 0.7 ? 1 : -1;
+              wxWake = o.wx + px * side * (o.r + 1.5) + ux * (Math.random() - 0.2) * 3.0;
+              wyWake = o.wy + py * side * (o.r + 1.5) + uy * (Math.random() - 0.2) * 3.0;
+            }
             const wc = getCellAt(wxWake, wyWake);
             if (wc && isWetMat(wc.mat)) {
-              injectWaterRipple(wxWake, wyWake, 0.35, 1);
-              spawnParticles(wxWake, wyWake, waterSurfZ(wc) + 0.4, 1, ['#E0F2FE', '#FFFFFF'], 10, { grav: 40, vz: 6, life: 0.45 });
+              injectWaterRipple(wxWake, wyWake, 0.22, 1);
+              if (Math.random() < 0.35) {
+                spawnParticles(wxWake, wyWake, waterSurfZ(wc) + 0.4, 1, ['#E0F2FE', '#FFFFFF'], 10, { grav: 40, vz: 6, life: 0.40 });
+              }
             }
           }
         }
@@ -5143,6 +5405,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               }
             }
 
+            for (let i = 0; i < flowStreaks.length; i++) {
+              const s = flowStreaks[i];
+              if (s.hLen < 2 || Math.round(s.z) !== z) continue;
+              if (s.x < minVisWx - 24 || s.x > maxVisWx + 24 || s.y < minVisWy - 24 || s.y > maxVisWy + 24) continue;
+              const isDefl = s.deflect >= 0.16;
+              lowCtx.strokeStyle = isDefl ? 'rgba(248, 253, 255, 0.88)' : 'rgba(224, 242, 254, 0.42)';
+              lowCtx.lineWidth = s.deflect > 0.35 ? 1.5 : 1;
+              lowCtx.beginPath();
+              const p0 = project(s.hist[0], s.hist[1], z + 0.25);
+              lowCtx.moveTo(p0.x, p0.y);
+              for (let k = 1; k < s.hLen; k++) {
+                const pk = project(s.hist[k * 2], s.hist[k * 2 + 1], z + 0.25);
+                lowCtx.lineTo(pk.x, pk.y);
+              }
+              lowCtx.stroke();
+            }
+
             for (let i = 0; i < floatingItems.length; i++) {
               const f = floatingItems[i];
               if (Math.round(f.z) !== z) continue;
@@ -5166,7 +5445,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
 
         // 4a-bis. Colunas e cortinas dinâmicas da cachoeira Virtual Pipe (waterfallSim)
-        if (wfVisible && z >= -2 && z <= 49) {
+        if (wfVisible && z >= -2 && z <= 50) {
           lowCtx.save();
           lowCtx.translate(LOW_W / 2, LOW_H / 2 + 16 - (z - camZ));
           lowCtx.scale(1, squash);
@@ -5174,30 +5453,33 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           lowCtx.scale(VOX, VOX);
           lowCtx.translate(-camX / VOX, -camY / VOX);
           const wfCellVox = WF_CELL / VOX;
-          const streakTick = Math.floor(fluidTime * 14);
+          const streakTick = Math.floor(fluidTime * 10);
           for (let iy = 0; iy < WF_H; iy++) {
             const row = iy * WF_W;
+            const laneOff = ((iy * 13) ^ (iy >> 1)) & 3;
             for (let ix = 0; ix < WF_W; ix++) {
               const idx = row + ix;
               const d = wfH[idx];
-              if (d <= 0.04) continue;
+              if (d <= 0.12) continue;
               const bed = wfBedZ[idx];
               let minNb = bed;
               if (ix > 0 && wfBedZ[idx - 1] < minNb) minNb = wfBedZ[idx - 1];
               if (ix < WF_W - 1 && wfBedZ[idx + 1] < minNb) minNb = wfBedZ[idx + 1];
               if (iy > 0 && wfBedZ[idx - WF_W] < minNb) minNb = wfBedZ[idx - WF_W];
               if (iy < WF_H - 1 && wfBedZ[idx + WF_W] < minNb) minNb = wfBedZ[idx + WF_W];
-              const zTop = Math.min(TERRAIN_Z_MAX, Math.round(bed + Math.max(0.8, d)));
+              const zTop = Math.min(50, Math.round(bed + Math.min(2.0, Math.max(0.8, d))));
               const zBot = Math.max(Z_MIN, Math.round(Math.min(bed - 1, minNb)));
               if (z < zBot || z > zTop) continue;
               const isTop = (z === zTop);
               const isDrop = (bed - minNb) > 2;
-              const foam = isTop
-                ? ((d > 0.85 && ((ix + iy + streakTick) % 5 === 0)) || isDrop)
-                : ((((ix * 3 + z + streakTick) % 4) === 0) || z <= 1);
+              const alpha = Math.min(0.94, Math.max(0.28, (d - 0.10) / 0.45));
+              const colOff = (ix * 5 + iy * 3) & 3;
+              const foam = (d > 0.22) && (isTop
+                ? ((d > 0.65 && (((ix + streakTick + laneOff) % 6) === 0)) || isDrop)
+                : ((((z + streakTick + colOff) % 4) === 0) || z <= 1));
               lowCtx.fillStyle = foam
-                ? 'rgba(224, 242, 254, 0.92)'
-                : (isTop ? 'rgba(103, 232, 249, 0.88)' : 'rgba(56, 189, 248, 0.88)');
+                ? `rgba(224, 242, 254, ${alpha.toFixed(2)})`
+                : (isTop ? `rgba(103, 232, 249, ${alpha.toFixed(2)})` : `rgba(56, 189, 248, ${alpha.toFixed(2)})`);
               lowCtx.fillRect((WF_X0 + ix * WF_CELL) / VOX, (WF_Y0 + iy * WF_CELL) / VOX, wfCellVox, wfCellVox);
             }
           }
@@ -5454,6 +5736,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       sampleWind: (wx, wy, t = fluidTime) => sampleWind(wx, wy, t),
       sampleWaterFlow: (wx, wy) => sampleWaterFlow(wx, wy),
       getWaterfallSplitStats: () => getWaterfallSplitStats(),
+      getStreamlineStats: () => {
+        let total = 0;
+        let deflectedCount = 0;
+        for (let i = 0; i < flowStreaks.length; i++) {
+          const s = flowStreaks[i];
+          if (s.hLen > 0) {
+            total++;
+            if (s.deflect > 0.18) deflectedCount++;
+          }
+        }
+        return {
+          total,
+          deflectedCount,
+          obsCount: cachedWaterObstacles.length,
+          obsPositions: cachedWaterObstacles.map(o => ({ wx: o.wx, wy: o.wy, r: o.r, isCat: !!o.isCat }))
+        };
+      },
       getShallowState: () => {
         const c = getCellAt(cat.x, cat.y);
         const br = getBridgeAt(cat.x, cat.y);
