@@ -356,8 +356,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="controls-row">
         <button class="pill-btn" id="btnSkin">🐱 Mochi</button>
         <button class="pill-btn" id="btnHat">🎩 Sem Chapéu</button>
+        <button class="pill-btn" id="btnTool" title="Trocar Ferramenta">🐾 Patada</button>
+        <button class="pill-btn" id="btnAction" title="Patada / Usar Ferramenta (E)">⚡ E Ação</button>
         <button class="pill-btn" id="btnRotL" title="Girar Câmera (Q)">⟲ Q</button>
-        <button class="pill-btn" id="btnRotR" title="Girar Câmera (E)">E ⟳</button>
+        <button class="pill-btn" id="btnRotR" title="Girar Câmera (C)">C ⟳</button>
         <button class="pill-btn travel" id="btnTravel" title="Viajar pelos Biomas">🧭 Viagem</button>
         <button class="pill-btn primary" id="btnReset" title="Voltar ao Spawn (R)">🏠 Spawn</button>
       </div>
@@ -388,7 +390,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Mover •
         <kbd>Shift</kbd> Correr •
         <kbd>Espaço</kbd> Pular •
-        <kbd>Q</kbd>/<kbd>E</kbd> Girar •
+        <kbd>E</kbd> Ação •
+        <kbd>Q</kbd>/<kbd>C</kbd> Girar •
         <kbd>M</kbd> Miar •
         <kbd>R</kbd> Spawn
       </span>
@@ -514,6 +517,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       setTimeout(() => playTone(659.25, 880, 0.16, 'sine', 0.07), 85);
     };
     const sfxMeow = () => playTone(660, 490, 0.16, 'sine', 0.07);
+    const sfxChop = () => {
+      playTone(210, 75, 0.09, 'triangle', 0.10);
+      setTimeout(() => playTone(140, 55, 0.07, 'square', 0.05), 20);
+    };
+    const sfxCrumble = () => {
+      playTone(135, 48, 0.18, 'sawtooth', 0.09);
+      setTimeout(() => playTone(95, 40, 0.22, 'triangle', 0.08), 55);
+    };
 
     // =========================================================================
     // 4. HEIGHTFIELD MICRO-VOXEL 1080×1080 & ESCULTURA ORGÂNICA "PULL-CHAIN"
@@ -1800,12 +1811,40 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       pumpkin_patch: { isFoliage: true, rigidity: 0.72, windScale: 1.0, pushRadius: 12, pushStrength: 2.5, leafColors: ['#EA580C', '#65B85B'] }
     };
 
+    const TOOLS_META = {
+      none:         { label: '🐾 Patada',   modelKey: null },
+      tool_axe:     { label: '🪓 Machado',  modelKey: 'tool_axe' },
+      tool_pickaxe: { label: '⛏️ Picareta', modelKey: 'tool_pickaxe' },
+      tool_hoe:     { label: '🌾 Enxada',   modelKey: 'tool_hoe' }
+    };
+    const TOOL_ORDER = ['none', 'tool_axe', 'tool_pickaxe', 'tool_hoe'];
+
+    const DESTRUCTIBLE_META = {
+      pine_tree:     { mode: 'chop',    hp: 3, zCut: 8,  drops: 3, dropKey: 'wood_log',    bestTool: 'tool_axe',     colors: ['#2D6A4F', '#40916C', '#6B4226', '#8C5A37'] },
+      sakura_oak:    { mode: 'chop',    hp: 4, zCut: 10, drops: 4, dropKey: 'wood_log',    bestTool: 'tool_axe',     colors: ['#F9A8D4', '#F472B6', '#FBCFE8', '#6B4226'] },
+      ruin_pillar:   { mode: 'crumble', hp: 3, zCut: 9,  drops: 3, dropKey: 'stone_chunk', bestTool: 'tool_pickaxe', colors: ['#847F77', '#ADA79E', '#CFC9BE', '#68A352'] },
+      boulder_large: { mode: 'crumble', hp: 3, zCut: 5,  drops: 3, dropKey: 'stone_chunk', bestTool: 'tool_pickaxe', colors: ['#5C5852', '#847F77', '#ADA79E'] },
+      stone_lantern: { mode: 'crumble', hp: 2, zCut: 7,  drops: 2, dropKey: 'stone_chunk', bestTool: 'tool_pickaxe', colors: ['#847F77', '#FDE68A', '#CFC9BE'] },
+      bush_berry:    { mode: 'trim',    hp: 2, drops: 0, bestTool: 'tool_hoe', colors: ['#3A7D44', '#65B85B', '#EF4444'] },
+      sunflower:     { mode: 'trim',    hp: 1, drops: 0, bestTool: 'tool_hoe', colors: ['#FACC15', '#EAB308', '#4D7C0F'] },
+      pumpkin_patch: { mode: 'trim',    hp: 2, drops: 0, bestTool: 'tool_hoe', colors: ['#EA580C', '#F97316', '#65B85B'] }
+    };
+
     const props = [];
     const foliageProps = [];
     const propColliders = [];
     const platformColliders = [];
     const fishes = [];
     const npcs = [];
+    const toolPickups = [];
+    const fallingBodies = [];
+    const debrisDrops = [];
+    const destructStats = {
+      hits: 0,
+      choppedCount: 0,
+      crumbledCount: 0,
+      trimmedCount: 0
+    };
 
     function stampPropShadowAndClearGrass(wx, wy, shadowR, footprintR) {
       const rMax = Math.max(shadowR || 0, footprintR || 0);
@@ -1871,6 +1910,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         item.rustleCd = 0;
         foliageProps.push(item);
       }
+      const dMeta = DESTRUCTIBLE_META[modelKey];
+      if (dMeta) {
+        item.destr = { ...dMeta, maxHp: dMeta.hp, hp: dMeta.hp, hitFlash: 0, chopped: false };
+      }
       props.push(item);
 
       const footR = meta.mode === 'box'
@@ -1879,21 +1922,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       stampPropShadowAndClearGrass(wx, wy, (meta.shadowR || 0) * scale, meta.mode !== 'none' ? footR : 0);
 
       if (meta.mode === 'solid') {
-        propColliders.push({
+        const sc = {
           shape: 'circle', wx, wy,
-          r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey
-        });
+          r: meta.r * scale, baseZ: liftZ, colH: meta.h * scale, modelKey,
+          disabled: false
+        };
+        propColliders.push(sc);
+        item.solidCollider = sc;
       } else if (meta.mode === 'box') {
-        propColliders.push({
+        const sc = {
           shape: 'box', wx, wy,
           halfW: meta.halfW * scale, halfD: meta.halfD * scale,
-          angle, baseZ: liftZ, colH: meta.h * scale, modelKey
-        });
+          angle, baseZ: liftZ, colH: meta.h * scale, modelKey,
+          disabled: false
+        };
+        propColliders.push(sc);
+        item.solidCollider = sc;
       } else if (meta.mode === 'platform') {
-        platformColliders.push({
+        const pc = {
           wx, wy, r: meta.r * scale,
-          baseZ: liftZ, topZ: liftZ + meta.h * scale, modelKey
-        });
+          baseZ: liftZ, topZ: liftZ + meta.h * scale, modelKey,
+          disabled: false
+        };
+        platformColliders.push(pc);
+        item.platCollider = pc;
       } else if (meta.mode === 'arch') {
         const cosA = Math.cos(angle);
         const sinA = Math.sin(angle);
@@ -1945,9 +1997,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const meta = PROP_COLLIDER_META[modelKey] || { r: 5 };
       const minGap = (meta.r || 5) + 6;
       for (const sc of propColliders) {
+        if (sc.disabled) continue;
         if (isPointInPropCollider(wx, wy, sc, minGap)) return;
       }
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         if (Math.hypot(wx - pc.wx, wy - pc.wy) < pc.r + minGap) return;
       }
       addProp(modelKey, wx, wy, options);
@@ -2136,6 +2190,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           selfAngle: 0, walkPhase: 0, timer: 0.8 + Math.random(), moving: true, dirX: -1, dirY: 0.5,
           speech: null
         });
+      }
+
+      // Pickups das Ferramentas próximos ao Spawn da Vila
+      for (const [toolId, wx, wy] of [
+        ['tool_axe', -295, 62],
+        ['tool_pickaxe', -270, 62],
+        ['tool_hoe', -245, 62]
+      ]) {
+        const baseZ = getHeightAt(wx, wy) || 0;
+        toolPickups.push({ toolId, wx, wy, baseZ, inside: false });
       }
     }
     populateWorldObjects();
@@ -2718,6 +2782,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         const d = Math.hypot(wx - pc.wx, wy - pc.wy);
         const pClimb = onGround ? 4.0 : 1.5;
         if (d <= pc.r && pc.topZ <= currentZ + pClimb) {
@@ -2813,6 +2878,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const sc of propColliders) {
+        if (sc.disabled) continue;
         if (catZ >= sc.baseZ - 2 && catZ < sc.baseZ + sc.colH - 1.5) {
           if (isPointInPropCollider(nx, ny, sc, 3.0)) {
             blocked = true;
@@ -2824,6 +2890,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         const d = Math.hypot(nx - pc.wx, ny - pc.wy);
         const curD = Math.hypot(cat.x - pc.wx, cat.y - pc.wy);
         if (d < pc.r + 1.2 && d <= curD + 0.05 && catZ < pc.topZ - 2.0 && catZ >= pc.baseZ - 4.0) {
@@ -2882,6 +2949,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
 
       for (const sc of propColliders) {
+        if (sc.disabled) continue;
         if (cat.groundZ < sc.baseZ + sc.colH - 1.5 && isPointInPropCollider(probeX, probeY, sc, 3.2)) {
           cat.obstacleHint = 'high';
           cat.obstacleLabel = sc.shape === 'box' ? '🏠 Parede / Estrutura' : '🌲 Obstáculo Sólido';
@@ -2893,6 +2961,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         ? getBridgeDeckZ(probeBr, probeX, probeY)
         : ((!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) ? Math.max(c.h, c.cliffTop) : c.h);
       for (const pc of platformColliders) {
+        if (pc.disabled) continue;
         if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 && pc.topZ > targetH) {
           targetH = pc.topZ;
         }
@@ -3185,6 +3254,203 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     window.addEventListener('resize', handleResize);
     handleResize();
 
+    let equippedTool = 'none';
+    let actionCooldown = 0;
+    let swingTimer = 0;
+    let shakeTimer = 0;
+    let shakeMag = 0;
+
+    function equipTool(toolId, quiet = false) {
+      if (!TOOLS_META[toolId]) return;
+      equippedTool = toolId;
+      const btnTool = document.getElementById('btnTool');
+      if (btnTool) btnTool.textContent = TOOLS_META[toolId].label;
+      if (!quiet) catSpeak('Equipado: ' + TOOLS_META[toolId].label, 95);
+    }
+
+    function spawnDebrisDrops(wx, wy, wz, modelKey, count, biasDx = 0, biasDy = 0, vzMin = 95, vzMax = 145) {
+      const model = propModels[modelKey];
+      if (!model || count <= 0) return;
+      for (let i = 0; i < count; i++) {
+        const ang = Math.atan2(biasDy, biasDx) + (Math.random() - 0.5) * 2.2;
+        const hSpd = 24 + Math.random() * 34;
+        debrisDrops.push({
+          modelKey,
+          model,
+          x: wx + Math.cos(ang) * 4,
+          y: wy + Math.sin(ang) * 4,
+          z: wz,
+          vx: Math.cos(ang) * hSpd,
+          vy: Math.sin(ang) * hSpd,
+          vz: vzMin + Math.random() * (vzMax - vzMin),
+          scale: 0.75,
+          selfAngle: Math.random() * Math.PI * 2,
+          spin: (Math.random() - 0.5) * 6,
+          bounces: 0,
+          inWater: false,
+          life: 18.0
+        });
+      }
+      if (debrisDrops.length > 64) {
+        debrisDrops.splice(0, debrisDrops.length - 64);
+      }
+    }
+
+    function triggerAction() {
+      if (actionCooldown > 0) return;
+      actionCooldown = 0.22;
+      swingTimer = 0.22;
+
+      const fx = -Math.sin(cat.selfAngle);
+      const fy = Math.cos(cat.selfAngle);
+      const hitX = cat.x + fx * 14;
+      const hitY = cat.y + fy * 14;
+
+      injectWindImpulse(hitX, hitY, fx * 2.4, fy * 2.4, 38, 0.45);
+      spawnParticles(hitX, hitY, cat.z + 6, 4, ['#FFFDF8', '#FDE68A', '#CBD5E1'], 22, { life: 0.25, grav: 80 });
+
+      // Shake nearby non-destructible foliage (e.g. flower_tuft)
+      for (let i = 0; i < foliageProps.length; i++) {
+        const fp = foliageProps[i];
+        if (fp.destroyed || fp.destr) continue;
+        if (Math.hypot(fp.wx - cat.x, fp.wy - cat.y) <= 34) {
+          fp.vx += fx * 45;
+          fp.vy += fy * 45;
+          spawnParticles(fp.wx, fp.wy, fp.wz + 6, 5, fp.foliage.leafColors, 24, {
+            isLeaf: true, grav: 32, vz: 14, life: 1.6
+          });
+        }
+      }
+
+      // Find nearest intact destructible prop within 34u (or 28u + colliderRadius)
+      let bestTarget = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < props.length; i++) {
+        const item = props[i];
+        if (item.destroyed || !item.destr || item.destr.chopped) continue;
+        if (Math.abs(cat.z - item.wz) > 28) continue;
+        const dx = item.wx - cat.x;
+        const dy = item.wy - cat.y;
+        const dist = Math.hypot(dx, dy);
+        const colR = ((PROP_COLLIDER_META[item.modelKey] && PROP_COLLIDER_META[item.modelKey].r) || 5) * (item.scale || 1);
+        const maxReach = Math.max(34, 28 + colR);
+        if (dist > maxReach) continue;
+        const dot = dist > 0.001 ? (dx * fx + dy * fy) / dist : 1;
+        const score = (dist - colR) - (dot > 0.1 ? 10 * dot : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          bestTarget = item;
+        }
+      }
+
+      if (!bestTarget) return;
+
+      const d = bestTarget.destr;
+      const dmg = (equippedTool === d.bestTool) ? 2 : 1;
+      d.hp -= dmg;
+      d.hitFlash = 0.14;
+      destructStats.hits++;
+      sfxChop();
+
+      const burstZ = bestTarget.wz + Math.min(20, Math.max(4, (bestTarget.topZ - bestTarget.baseZ) * 0.5));
+      spawnParticles(bestTarget.wx, bestTarget.wy, burstZ, 8, d.colors, 36);
+      if (bestTarget.foliage) {
+        bestTarget.vx += fx * 38;
+        bestTarget.vy += fy * 38;
+      }
+
+      if (d.hp <= 0) {
+        d.chopped = true;
+        if (bestTarget.solidCollider) bestTarget.solidCollider.disabled = true;
+        if (bestTarget.platCollider) bestTarget.platCollider.disabled = true;
+
+        let dirX = bestTarget.wx - cat.x;
+        let dirY = bestTarget.wy - cat.y;
+        const dLen = Math.hypot(dirX, dirY);
+        if (dLen < 0.001) {
+          dirX = fx;
+          dirY = fy;
+        } else {
+          dirX /= dLen;
+          dirY /= dLen;
+        }
+
+        if (d.mode === 'chop') {
+          const stumpH = d.zCut * bestTarget.scale;
+          bestTarget.renderMaxSlice = d.zCut;
+          bestTarget.topZ = bestTarget.baseZ + Math.ceil(stumpH);
+          bestTarget.foliage = null;
+          bestTarget.bx = 0;
+          bestTarget.by = 0;
+          bestTarget.vx = 0;
+          bestTarget.vy = 0;
+          const stumpCol = {
+            wx: bestTarget.wx,
+            wy: bestTarget.wy,
+            r: Math.max(8, ((PROP_COLLIDER_META[bestTarget.modelKey] && PROP_COLLIDER_META[bestTarget.modelKey].r) || 8) * bestTarget.scale),
+            baseZ: bestTarget.wz,
+            topZ: bestTarget.wz + stumpH,
+            modelKey: bestTarget.modelKey + '_stump',
+            disabled: false
+          };
+          platformColliders.push(stumpCol);
+          bestTarget.platCollider = stumpCol;
+          bestTarget.isPlatform = true;
+          bestTarget.platTopZ = stumpCol.topZ;
+
+          fallingBodies.push({
+            model: bestTarget.model,
+            wx: bestTarget.wx,
+            wy: bestTarget.wy,
+            baseZ: bestTarget.wz,
+            zCut: d.zCut,
+            selfAngle: bestTarget.selfAngle,
+            scale: bestTarget.scale,
+            dx: dirX,
+            dy: dirY,
+            phi: 0.08,
+            omega: 0.45,
+            colors: d.colors,
+            drops: d.drops,
+            dropKey: d.dropKey
+          });
+          destructStats.choppedCount++;
+        } else if (d.mode === 'crumble') {
+          const baseH = d.zCut * bestTarget.scale;
+          bestTarget.renderMaxSlice = d.zCut;
+          bestTarget.topZ = bestTarget.baseZ + Math.ceil(baseH);
+          bestTarget.isFire = false;
+          const ruinPlat = {
+            wx: bestTarget.wx,
+            wy: bestTarget.wy,
+            r: Math.max(6, ((PROP_COLLIDER_META[bestTarget.modelKey] && PROP_COLLIDER_META[bestTarget.modelKey].r) || 8) * bestTarget.scale),
+            baseZ: bestTarget.wz,
+            topZ: bestTarget.wz + baseH,
+            modelKey: bestTarget.modelKey + '_rubble',
+            disabled: false
+          };
+          platformColliders.push(ruinPlat);
+          bestTarget.platCollider = ruinPlat;
+          bestTarget.isPlatform = true;
+          bestTarget.platTopZ = ruinPlat.topZ;
+
+          shakeTimer = 0.16;
+          shakeMag = 2.5;
+          sfxCrumble();
+          spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 4, 22, d.colors, 52, { grav: 240, life: 0.75 });
+          spawnDebrisDrops(bestTarget.wx, bestTarget.wy, bestTarget.wz + baseH + 3, d.dropKey || 'stone_chunk', d.drops, dirX, dirY, 95, 145);
+          destructStats.crumbledCount++;
+        } else if (d.mode === 'trim') {
+          bestTarget.destroyed = true;
+          bestTarget.foliage = null;
+          spawnParticles(bestTarget.wx, bestTarget.wy, bestTarget.wz + 6, 14, d.colors, 36, {
+            isLeaf: true, grav: 32, vz: 18 + Math.random() * 14, life: 2.0
+          });
+          destructStats.trimmedCount++;
+        }
+      }
+    }
+
     window.addEventListener('keydown', (e) => {
       const code = e.code;
       keys[code] = true;
@@ -3193,6 +3459,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
       if (code === 'Space') {
         cat.jumpBuffer = 0.13;
+      } else if (code === 'KeyE') {
+        triggerAction();
       } else if (code === 'KeyR') {
         resetCatToSpawn();
       } else if (code === 'KeyM') {
@@ -3252,9 +3520,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     let isDraggingCam = false;
     let dragStartX = 0;
+    let pointerDownX = 0;
+    let pointerDownY = 0;
     canvas.addEventListener('pointerdown', (e) => {
       isDraggingCam = true;
       dragStartX = e.clientX;
+      pointerDownX = e.clientX;
+      pointerDownY = e.clientY;
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', (e) => {
@@ -3265,6 +3537,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       turn = targetTurn;
     });
     canvas.addEventListener('pointerup', (e) => {
+      if (isDraggingCam && Math.hypot(e.clientX - pointerDownX, e.clientY - pointerDownY) < 6) {
+        triggerAction();
+      }
       isDraggingCam = false;
       try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     });
@@ -3279,6 +3554,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     btnHat.addEventListener('click', () => {
       cat.hatIdx = (cat.hatIdx + 1) % HAT_PRESETS.length;
       btnHat.textContent = `🎩 ${HAT_PRESETS[cat.hatIdx].name}`;
+    });
+    document.getElementById('btnTool').addEventListener('click', () => {
+      const nextIdx = (TOOL_ORDER.indexOf(equippedTool) + 1) % TOOL_ORDER.length;
+      equipTool(TOOL_ORDER[nextIdx]);
+    });
+    document.getElementById('btnAction').addEventListener('click', () => {
+      triggerAction();
     });
     document.getElementById('btnRotL').addEventListener('click', () => { targetTurn += Math.PI / 4; });
     document.getElementById('btnRotR').addEventListener('click', () => { targetTurn -= Math.PI / 4; });
@@ -3317,6 +3599,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           if (c && c.mat !== MAT_WATER && Math.abs(c.h - npc.z) <= 5.5) {
             let hitProp = false;
             for (const sc of propColliders) {
+              if (sc.disabled) continue;
               if (isPointInPropCollider(nx, ny, sc, 3.5)) { hitProp = true; break; }
             }
             if (!hitProp) {
@@ -3457,6 +3740,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const h = Math.min(0.033, clampedDt / steps);
       for (let i = 0; i < foliageProps.length; i++) {
         const p = foliageProps[i];
+        if (p.destroyed || !p.foliage) continue;
         if (Math.hypot(p.wx - camX, p.wy - camY) >= 380) continue;
         for (let s = 0; s < steps; s++) {
           stepFoliageItem(p, h);
@@ -3474,9 +3758,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       cat.idleTimer += dt;
       if (cat.hurtTimer > 0) cat.hurtTimer = Math.max(0, cat.hurtTimer - dt);
       if (blockedCooldown > 0) blockedCooldown -= dt;
+      if (actionCooldown > 0) actionCooldown = Math.max(0, actionCooldown - dt);
+      if (swingTimer > 0) swingTimer = Math.max(0, swingTimer - dt);
+      if (shakeTimer > 0) shakeTimer = Math.max(0, shakeTimer - dt);
 
       if (keys['KeyQ']) targetTurn += 2.2 * dt;
-      if (keys['KeyE']) targetTurn -= 2.2 * dt;
+      if (keys['KeyC']) targetTurn -= 2.2 * dt;
       turn += (targetTurn - turn) * Math.min(1, dt * 14);
 
       updateNPCs(dt);
@@ -3766,6 +4053,142 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         if (p.life <= 0) particles.splice(i, 1);
       }
 
+      // Pickups de Ferramentas (14u)
+      for (let i = 0; i < toolPickups.length; i++) {
+        const pk = toolPickups[i];
+        const dist = Math.hypot(cat.x - pk.wx, cat.y - pk.wy);
+        const dz = Math.abs(cat.z - pk.baseZ);
+        if (dist < 14 && dz < 16) {
+          if (!pk.inside && equippedTool !== pk.toolId) {
+            equipTool(pk.toolId);
+            sfxBiome();
+            spawnParticles(pk.wx, pk.wy, pk.baseZ + 8, 10, ['#FDE68A', '#FFFFFF', '#94A3B8'], 28);
+          }
+          pk.inside = true;
+        } else {
+          pk.inside = false;
+        }
+      }
+
+      // HitFlash decay nos destrutíveis
+      for (let i = 0; i < props.length; i++) {
+        const d = props[i].destr;
+        if (d && d.hitFlash > 0) d.hitFlash = Math.max(0, d.hitFlash - dt);
+      }
+
+      // Corpos caindo: pêndulo invertido 3D ('chop')
+      for (let i = fallingBodies.length - 1; i >= 0; i--) {
+        const fb = fallingBodies[i];
+        const L = Math.max(20, (fb.model.count - fb.zCut) * fb.scale);
+        const alpha = (3 * GRAVITY / (2 * L * 18)) * Math.sin(fb.phi);
+        fb.omega += alpha * dt;
+        fb.phi += fb.omega * dt;
+
+        const sinP = Math.sin(fb.phi);
+        const cosP = Math.cos(fb.phi);
+        const tipX = fb.wx + L * sinP * fb.dx;
+        const tipY = fb.wy + L * sinP * fb.dy;
+        const tipZ = fb.baseZ + fb.zCut * fb.scale + L * cosP;
+        const groundH = getHeightAt(tipX, tipY);
+        const effGroundH = groundH !== null ? groundH : fb.baseZ;
+
+        if (fb.phi >= Math.PI * 0.48 || tipZ <= effGroundH) {
+          shakeTimer = 0.18;
+          shakeMag = 3.2;
+          sfxCrumble();
+          injectWindImpulse(tipX, tipY, fb.dx * 3.0, fb.dy * 3.0, 56, 0.8);
+
+          for (const frac of [0.35, 0.65, 0.9]) {
+            const bx = fb.wx + L * frac * sinP * fb.dx;
+            const by = fb.wy + L * frac * sinP * fb.dy;
+            const bz = Math.max(fb.baseZ + fb.zCut * fb.scale + L * frac * cosP, (getHeightAt(bx, by) || 0) + 2);
+            spawnParticles(bx, by, bz, 8, fb.colors, 42, { isLeaf: true, grav: 48, vz: 24, life: 1.8 });
+          }
+
+          for (const frac of [0.5, 0.85]) {
+            const ix = fb.wx + L * frac * sinP * fb.dx;
+            const iy = fb.wy + L * frac * sinP * fb.dy;
+            const ic = getCellAt(ix, iy);
+            if (ic && ic.mat === MAT_WATER) {
+              injectWaterRipple(ix, iy, 2.4, 3);
+              spawnParticles(ix, iy, waterSurfZ(ic) + 1, 10, ['#93C5FD', '#FFFFFF', '#E0F2FE'], 36);
+            }
+          }
+
+          for (let k = 0; k < fb.drops; k++) {
+            const frac = 0.25 + ((k + 0.5) / fb.drops) * 0.65;
+            const dxPos = fb.wx + L * frac * sinP * fb.dx;
+            const dyPos = fb.wy + L * frac * sinP * fb.dy;
+            const dzPos = fb.baseZ + fb.zCut * fb.scale + L * frac * cosP;
+            const dropZ = Math.max(dzPos, (getHeightAt(dxPos, dyPos) || 0) + 4);
+            spawnDebrisDrops(dxPos, dyPos, dropZ, fb.dropKey || 'wood_log', 1, fb.dx, fb.dy, 75, 120);
+          }
+
+          fallingBodies.splice(i, 1);
+        }
+      }
+
+      // Drops balísticos (toras & pedregulhos) + correnteza da água
+      for (let i = debrisDrops.length - 1; i >= 0; i--) {
+        const dr = debrisDrops[i];
+        dr.life -= dt;
+        if (dr.life <= 0) {
+          debrisDrops.splice(i, 1);
+          continue;
+        }
+        if (dr.inWater) {
+          const flow = sampleWaterFlow(dr.x, dr.y);
+          dr.vx = flow.vx;
+          dr.vy = flow.vy;
+          dr.x += dr.vx * dt;
+          dr.y += dr.vy * dt;
+          dr.selfAngle += dt * 0.6;
+          const dc = getCellAt(dr.x, dr.y);
+          if (dc && dc.mat === MAT_WATER) {
+            dr.z = waterSurfZ(dc) + Math.sin(fluidTime * 3.5 + dr.x * 0.1) * 0.35;
+          } else {
+            dr.inWater = false;
+          }
+          if (!dc || dr.y > 860) dr.life = Math.min(dr.life, 0.5);
+        } else {
+          dr.vz -= GRAVITY * 0.45 * dt;
+          dr.x += dr.vx * dt;
+          dr.y += dr.vy * dt;
+          dr.z += dr.vz * dt;
+          dr.selfAngle += dr.spin * dt;
+          const dc = getCellAt(dr.x, dr.y);
+          if (!dc) {
+            debrisDrops.splice(i, 1);
+            continue;
+          }
+          if (dc.mat === MAT_WATER && dr.z <= waterSurfZ(dc) + 0.5) {
+            dr.inWater = true;
+            dr.z = waterSurfZ(dc);
+            dr.vz = 0;
+            const flow = sampleWaterFlow(dr.x, dr.y);
+            dr.vx = flow.vx;
+            dr.vy = flow.vy;
+            injectWaterRipple(dr.x, dr.y, 1.4, 2);
+            spawnParticles(dr.x, dr.y, dr.z + 1, 6, ['#93C5FD', '#FFFFFF'], 24);
+          } else if (dc.mat !== MAT_WATER && dr.z <= dc.h) {
+            dr.z = dc.h;
+            if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
+              dr.vz = -dr.vz * 0.45;
+              dr.vx *= 0.65;
+              dr.vy *= 0.65;
+              dr.spin *= 0.6;
+              dr.bounces++;
+            } else {
+              dr.vz = 0;
+              const damp = Math.max(0, 1 - dt * 8);
+              dr.vx *= damp;
+              dr.vy *= damp;
+              dr.spin = 0;
+            }
+          }
+        }
+      }
+
       updateFoliage(dt);
 
       const lerpFactor = Math.min(1, dt * 9.0);
@@ -3911,6 +4334,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function renderScene() {
+      const prevCamX = camX;
+      const prevCamY = camY;
+      if (shakeTimer > 0) {
+        const sAmp = shakeMag * Math.min(1, shakeTimer / 0.16);
+        camX += (Math.random() - 0.5) * 2 * sAmp;
+        camY += (Math.random() - 0.5) * 2 * sAmp;
+      }
+      try {
       // 1. Céu + Nuvens
       const skyGrad = lowCtx.createLinearGradient(0, 0, 0, LOW_H);
       skyGrad.addColorStop(0, '#78C8F2');
@@ -3971,24 +4402,102 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
       // Props estáticos visíveis
       for (const p of props) {
+        if (p.destroyed) continue;
         if (p.wx < minVisWx || p.wx > maxVisWx || p.wy < minVisWy || p.wy > maxVisWy) continue;
+        const maxDrawZ = p.renderMaxSlice !== undefined
+          ? Math.min(p.topZ, p.baseZ + Math.ceil(p.renderMaxSlice * p.scale))
+          : p.topZ;
+        const maxSliceIdx = p.renderMaxSlice !== undefined
+          ? Math.min(p.model.count - 1, p.renderMaxSlice - 1)
+          : (p.model.count - 1);
         const dp = (p.wx - camX) * sinA + (p.wy - camY) * cosA;
         activeDrawables.push({
           baseZ: p.baseZ,
-          topZ: p.topZ,
+          topZ: maxDrawZ,
           depth: dp,
           drawSlice: (z) => {
-            const sz = Math.min(p.model.count - 1, Math.floor((z - p.baseZ) / p.scale));
-            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA, p.bx || 0, p.by || 0);
+            const sz = Math.min(maxSliceIdx, Math.floor((z - p.baseZ) / p.scale));
+            const flashOff = (p.destr && p.destr.hitFlash > 0) ? Math.sin(fluidTime * 75) * 1.4 : 0;
+            stampModelSlice(entityCtx, p.model, sz, p.wx, p.wy, z, p.selfAngle, p.scale, cosA, sinA, (p.bx || 0) + flashOff, p.by || 0);
           }
         });
-        if (p.topZ > maxEntityTopZ) maxEntityTopZ = p.topZ;
+        if (maxDrawZ > maxEntityTopZ) maxEntityTopZ = maxDrawZ;
         if (p.isFire) {
           const fz = p.baseZ + (p.modelKey === 'stone_lantern' ? 20 : 8);
           if (fz > maxEntityTopZ) maxEntityTopZ = fz;
           if (!firesByZ.has(fz)) firesByZ.set(fz, []);
           firesByZ.get(fz).push(p);
         }
+      }
+
+      // Pickups das Ferramentas visíveis
+      for (const pk of toolPickups) {
+        if (pk.wx < minVisWx || pk.wx > maxVisWx || pk.wy < minVisWy || pk.wy > maxVisWy) continue;
+        const tKey = TOOLS_META[pk.toolId].modelKey;
+        const tModel = tKey ? propModels[tKey] : null;
+        if (!tModel) continue;
+        const tScale = 0.78;
+        const bob = Math.sin(cat.idleTimer * 3.2 + pk.wx * 0.05) * 2.0;
+        const pBaseZ = Math.round(pk.baseZ + 4 + bob);
+        const pTopZ = pBaseZ + Math.ceil(tModel.count * tScale);
+        const spinAngle = cat.idleTimer * 1.8 + pk.wx * 0.04;
+        const dp = (pk.wx - camX) * sinA + (pk.wy - camY) * cosA;
+        registerShadow(pk.wx, pk.wy, pk.baseZ, pBaseZ, 4.5, 2.8, 0.24);
+        activeDrawables.push({
+          baseZ: pBaseZ,
+          topZ: pTopZ,
+          depth: dp,
+          drawSlice: (z) => {
+            const sz = Math.min(tModel.count - 1, Math.floor((z - pBaseZ) / tScale));
+            stampModelSlice(entityCtx, tModel, sz, pk.wx, pk.wy, z, spinAngle, tScale, cosA, sinA);
+          }
+        });
+        if (pTopZ > maxEntityTopZ) maxEntityTopZ = pTopZ;
+      }
+
+      // Corpos em queda (Pêndulo Invertido 3D)
+      for (const fb of fallingBodies) {
+        const sinP = Math.sin(fb.phi);
+        const cosP = Math.cos(fb.phi);
+        for (let sz = fb.zCut; sz < fb.model.count; sz++) {
+          const dz = (sz - fb.zCut) * fb.scale;
+          const sx = fb.wx + dz * sinP * fb.dx;
+          const sy = fb.wy + dz * sinP * fb.dy;
+          const szWorld = Math.round(fb.baseZ + fb.zCut * fb.scale + dz * cosP);
+          const dp = (sx - camX) * sinA + (sy - camY) * cosA;
+          activeDrawables.push({
+            baseZ: szWorld,
+            topZ: szWorld + 1,
+            depth: dp + 0.15,
+            drawSlice: (z) => {
+              stampModelSlice(entityCtx, fb.model, sz, sx, sy, z, fb.selfAngle, fb.scale, cosA, sinA);
+            }
+          });
+          if (szWorld + 1 > maxEntityTopZ) maxEntityTopZ = szWorld + 1;
+        }
+      }
+
+      // Drops balísticos (wood_log / stone_chunk)
+      for (const dr of debrisDrops) {
+        if (!dr.model) continue;
+        if (dr.x < minVisWx || dr.x > maxVisWx || dr.y < minVisWy || dr.y > maxVisWy) continue;
+        const dBaseZ = Math.round(dr.z);
+        const dTopZ = dBaseZ + Math.ceil(dr.model.count * dr.scale);
+        const dp = (dr.x - camX) * sinA + (dr.y - camY) * cosA;
+        const gH = getHeightAt(dr.x, dr.y);
+        if (gH !== null && !dr.inWater) {
+          registerShadow(dr.x, dr.y, gH, dr.z, 3.8, 2.4, 0.22);
+        }
+        activeDrawables.push({
+          baseZ: dBaseZ,
+          topZ: dTopZ,
+          depth: dp + 0.1,
+          drawSlice: (z) => {
+            const sz = Math.min(dr.model.count - 1, Math.floor((z - dBaseZ) / dr.scale));
+            stampModelSlice(entityCtx, dr.model, sz, dr.x, dr.y, z, dr.selfAngle, dr.scale, cosA, sinA);
+          }
+        });
+        if (dTopZ > maxEntityTopZ) maxEntityTopZ = dTopZ;
       }
 
       // Peixes dourados visíveis
@@ -4104,6 +4613,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               }
             });
             if (hatTopZ > maxEntityTopZ) maxEntityTopZ = hatTopZ;
+          }
+
+          if (swingTimer > 0 && equippedTool !== 'none') {
+            const tKey = TOOLS_META[equippedTool].modelKey;
+            const tModel = tKey ? propModels[tKey] : null;
+            if (tModel) {
+              const prog = 1 - Math.max(0, Math.min(1, swingTimer / 0.22));
+              const arcAngle = (prog - 0.5) * 2.1;
+              const swAngle = cat.selfAngle + arcAngle;
+              const fxC = -Math.sin(swAngle);
+              const fyC = Math.cos(swAngle);
+              const tx = cat.x + fxC * 10;
+              const ty = cat.y + fyC * 10;
+              const tScale = 0.68;
+              const tBaseZ = Math.round(cat.z + 3 + Math.sin(prog * Math.PI) * 3);
+              const tTopZ = tBaseZ + Math.ceil(tModel.count * tScale);
+              const tDp = (tx - camX) * sinA + (ty - camY) * cosA;
+              activeDrawables.push({
+                baseZ: tBaseZ,
+                topZ: tTopZ,
+                depth: tDp + 0.65,
+                drawSlice: (z) => {
+                  const sz = Math.min(tModel.count - 1, Math.floor((z - tBaseZ) / tScale));
+                  stampModelSlice(entityCtx, tModel, sz, tx, ty, z, swAngle, tScale, cosA, sinA);
+                }
+              });
+              if (tTopZ > maxEntityTopZ) maxEntityTopZ = tTopZ;
+            }
           }
         }
 
@@ -4288,6 +4825,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       ctx.drawImage(lowCanvas, 0, 0, LOW_W * pixelScale, LOW_H * pixelScale);
 
       drawSpeechOverlaysHiRes(speechQueue);
+      } finally {
+        camX = prevCamX;
+        camY = prevCamY;
+      }
     }
 
     // =========================================================================
@@ -4476,13 +5017,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         updatePhysics(dt);
       },
       getPropsByType: (key) => props.filter(p => p.modelKey === key).map(p => ({
-        id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ
+        id: p.id, modelKey: p.modelKey, wx: p.wx, wy: p.wy, wz: p.wz, topZ: p.topZ,
+        destroyed: !!p.destroyed,
+        renderMaxSlice: p.renderMaxSlice !== undefined ? p.renderMaxSlice : null,
+        destr: p.destr ? { hp: p.destr.hp, maxHp: p.destr.maxHp, chopped: p.destr.chopped, mode: p.destr.mode } : null
       })),
-      getFoliageState: () => foliageProps.map(p => ({
+      getFoliageState: () => foliageProps.filter(p => !p.destroyed && p.foliage).map(p => ({
         id: p.id, key: p.modelKey, wx: p.wx, wy: p.wy,
         bx: +(p.bx || 0).toFixed(3), by: +(p.by || 0).toFixed(3),
         r: p.foliage.pushRadius
-      }))
+      })),
+      triggerAction: () => triggerAction(),
+      equipTool: (toolId, quiet = true) => equipTool(toolId, quiet),
+      getDestructionStats: () => ({
+        ...destructStats,
+        fallingCount: fallingBodies.length,
+        dropCount: debrisDrops.length,
+        equippedTool
+      })
     };
   </script>
 </body>

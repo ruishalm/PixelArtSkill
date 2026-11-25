@@ -189,6 +189,19 @@ $$\mathbf{a} = k_{\text{stiff}}\big(\mathbf{W}(x,y,t)\cdot \text{windScale}\cdot
 
 3. **Acoplamento Fluido ↔ Folhagem**: personagens abrindo caminho desprendem folhas/pétalas (`leafColors`) para `particlesByZ` (conduzidas pelo vento `WindField`), e pétalas que tocam `MAT_WATER` viram `floatingItems` levados pela correnteza `WaterFlow` até o ponto de escoamento (*Drain Sink*).
 
+### 12. Destruição Procedural de Componentes (`zCut`, Pêndulo Invertido & Fratura)
+- **Divisão por Fatia de Corte (`zCut`)**: sem duplicar *slice sheets*, o mesmo modelo é particionado em base/toco fixo (**`0 .. zCut - 1`**, convertido dinamicamente em collider `'platform'`) e parte superior dinâmica (**`zCut .. count - 1`**).
+- **Modo `'chop'` (Árvores — Pêndulo Invertido 3D)**:
+
+$$\ddot{\phi} = \frac{3g}{2L}\sin(\phi) \quad (\phi_0 = 0.08 \to \pi/2), \qquad \Delta z = s_z - z_{\text{cut}}$$
+
+$$x(s_z) = x_0 + \Delta z\sin(\phi)\hat{d}_x, \qquad y(s_z) = y_0 + \Delta z\sin(\phi)\hat{d}_y, \qquad z(s_z) = z_{\text{cut}} + \Delta z\cos(\phi)$$
+
+  Cada fatia $s_z$ é projetada e desenhada **dentro do loop *slice-by-slice*** (oclusão 3D real); ao atingir o solo, dispara folhas da própria paleta (`particlesByZ`), gera onda no `WaveBuffer` caso caia na água e solta `wood_log` quicando com gravidade e correnteza.
+- **Modo `'crumble'` (Estruturas/Ruínas/Pedras)**: preserva a base lascada `0 .. zCut - 1` como `'platform'` e fratura o topo em fragmentos balísticos (`stone_chunk`) e poeira amostrada da própria paleta.
+- **Modo `'trim'` (Folhagem Baixa)**: aplica vibração elástica forte na mola da `Foliage` e colhe a copa em nuvem de pétalas/folhas conduzidas pelo `WindField`.
+- **Ação & Multiplicadores de Ferramenta (`KeyE` = Ação / `KeyQ` & `KeyC` = Girar)**: `tool_axe` (`2×` em `'chop'`), `tool_pickaxe` (`2×` em `'crumble'`), `tool_hoe` (`2×` em `'trim'`) e interação padrão sem ferramenta (`1×` em todos os modos).
+
 ---
 
 ## 🎮 Exemplos Gerados com a Skill (Live Demos)
