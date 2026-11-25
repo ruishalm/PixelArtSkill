@@ -889,16 +889,21 @@
     }
 
     // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 1080×1080
+    const _rSwing = (base, amp) => (
+      WORLD_SEED === DEFAULT_WORLD_SEED
+        ? base
+        : Math.round(base + (worldRand() - 0.5) * 2 * amp)
+    );
     const RIVER_WAYPOINTS = [
-      [120, -1078],
-      [WORLD_SEED === DEFAULT_WORLD_SEED ? 156 : Math.round(156 + (worldRand() - 0.5) * 80), -795],
+      [_rSwing(120, 220), -1078],
+      [_rSwing(156, 210), -795],
       [144, -495],
       [148, -345],
-      [WORLD_SEED === DEFAULT_WORLD_SEED ? 102 : Math.round(102 + (worldRand() - 0.5) * 76), -165],
+      [_rSwing(102, 210), -165],
       [134, 108],
-      [WORLD_SEED === DEFAULT_WORLD_SEED ? 144 : Math.round(144 + (worldRand() - 0.5) * 84), 435],
-      [WORLD_SEED === DEFAULT_WORLD_SEED ? 120 : Math.round(120 + (worldRand() - 0.5) * 76), 665],
-      [120, 770]
+      [_rSwing(144, 230), 435],
+      [120, 665],
+      [_rSwing(120, 140), 820]
     ];
     const RIVER_SEGMENTS = [];
     for (let i = 0; i < RIVER_WAYPOINTS.length - 1; i++) {
@@ -1121,14 +1126,15 @@
       // ---------------------------------------------------------------------
       const shoreYByCol = new Float32Array(mw);
       const sandStartByCol = new Float32Array(mw);
-      const shoreAmp = WORLD_SEED === DEFAULT_WORLD_SEED ? 34 : (28 + worldRand() * 28);
-      const shoreFreq = WORLD_SEED === DEFAULT_WORLD_SEED ? 0.005 : (0.004 + worldRand() * 0.005);
-      const shorePhase = WORLD_SEED === DEFAULT_WORLD_SEED ? 2.5 : (worldRand() * 12.0);
+      const shoreAmp = WORLD_SEED === DEFAULT_WORLD_SEED ? 34 : (105 + worldRand() * 65);
+      const shoreFreq = WORLD_SEED === DEFAULT_WORLD_SEED ? 0.005 : (0.0028 + worldRand() * 0.0035);
+      const shorePhase = WORLD_SEED === DEFAULT_WORLD_SEED ? 2.5 : (worldRand() * 20.0);
       for (let mx = 0; mx < mw; mx++) {
         const wx = (mx - HALF_GRID + 0.5) * VOX;
         const wave = fbm2dFast(wx * shoreFreq + shorePhase, 1.2) * shoreAmp;
-        shoreYByCol[mx] = 756 + wave;
-        sandStartByCol[mx] = 636 + wave * 0.7;
+        const rawShore = 756 + wave;
+        shoreYByCol[mx] = WORLD_SEED === DEFAULT_WORLD_SEED ? rawShore : Math.max(625, Math.min(895, rawShore));
+        sandStartByCol[mx] = shoreYByCol[mx] - 115;
       }
       const beachMy0 = Math.max(0, Math.floor(615 / VOX + HALF_GRID));
       for (let my = beachMy0; my < mh; my++) {
@@ -1298,43 +1304,65 @@
         }
       }
 
-      // Macro-variação procedural por Seed (colinas, lagoas e ilhotas extras)
+      // Macro-variação procedural por Seed (cordilheiras, lagoas grandes, estradas curvas e ilhotas)
       if (WORLD_SEED !== DEFAULT_WORLD_SEED) {
-        const safeHillZones = [
-          [-560, -80], [-140, -60], [-610, 310], [-80, -180],
-          [360, 220], [720, 180], [420, 560], [780, 580],
-          [-760, -30], [-280, -210], [280, -40], [540, 380]
+        // 1. 4 grandes cadeias de montanhas / platôs rochosos com cumes variados
+        const ridgeSpots = [
+          [-680, -80], [-120, -180], [540, 120], [720, 480],
+          [-680, 260], [360, 460], [-180, -780], [780, -240]
         ];
-        for (let i = 0; i < safeHillZones.length; i++) {
-          if (worldRand() < 0.25) continue;
-          const [bx, by] = safeHillZones[i];
-          const hx = bx + (worldRand() - 0.5) * 90;
-          const hy = by + (worldRand() - 0.5) * 90;
-          if (Math.hypot(hx + 330, hy - 90) < 95) continue; // protege spawn
-          if (Math.hypot(hx - 134, hy - 108) < 110) continue; // protege rio/ponte
-          const rad = 52 + worldRand() * 52;
-          const ht = 6 + Math.round(worldRand() * 12);
-          pullHill(hx, hy, rad, ht, 1.3 + worldRand() * 0.5, 0.22, null, null);
+        let ridgesAdded = 0;
+        for (let i = 0; i < ridgeSpots.length && ridgesAdded < 4; i++) {
+          if (worldRand() < 0.35 && ridgeSpots.length - i > 4 - ridgesAdded) continue;
+          const [bx, by] = ridgeSpots[i];
+          const cx = bx + (worldRand() - 0.5) * 140;
+          const cy = by + (worldRand() - 0.5) * 140;
+          if (Math.hypot(cx + 330, cy - 90) < 130) continue; // protege spawn
+          if (Math.hypot(cx - 134, cy - 108) < 130) continue; // protege rio/ponte
+          const ang = worldRand() * Math.PI;
+          const span = 120 + worldRand() * 90;
+          const p0 = [cx - Math.cos(ang) * span, cy - Math.sin(ang) * span];
+          const p1 = [cx + (worldRand() - 0.5) * 60, cy + (worldRand() - 0.5) * 60];
+          const p2 = [cx + Math.cos(ang) * span, cy + Math.sin(ang) * span];
+          const peakH = 22 + Math.round(worldRand() * 28);
+          const matTop = peakH >= 38 ? MAT_PEAK : (peakH >= 28 ? MAT_STONE : MAT_GRASS);
+          pullRidge([p0, p1, p2], 95 + worldRand() * 45, [10, peakH, 12], {
+            warpAmp: 36, smoothK: 9, ridgeAmp: 0.28, terraceStep: 12, terraceStrength: 0.35, mat: matTop, biome: null
+          });
+          ridgesAdded++;
         }
 
-        // 2 lagoas orgânicas extras em planícies seguras
-        for (const [px, py] of [[-580, -140], [410, 110]]) {
-          if (worldRand() < 0.65) {
-            const lx = px + (worldRand() - 0.5) * 80;
-            const ly = py + (worldRand() - 0.5) * 80;
-            carveOrganicPond(lx, ly, 38 + worldRand() * 20, 28 + worldRand() * 16, 12, -3, 0, 0, null);
-          }
+        // 2. 3 grandes lagos orgânicos (visíveis no minimapa!) em planícies seguras
+        const lakeZones = [[-620, -160], [450, 140], [-720, 220], [640, 420], [-180, -160]];
+        let lakesAdded = 0;
+        for (let i = 0; i < lakeZones.length && lakesAdded < 3; i++) {
+          if (worldRand() < 0.35 && lakeZones.length - i > 3 - lakesAdded) continue;
+          const [px, py] = lakeZones[i];
+          const lx = px + (worldRand() - 0.5) * 120;
+          const ly = py + (worldRand() - 0.5) * 120;
+          if (Math.hypot(lx + 330, ly - 90) < 140) continue;
+          carveOrganicPond(lx, ly, 62 + worldRand() * 38, 48 + worldRand() * 32, 22, -4, 10, 2, null);
+          lakesAdded++;
         }
 
-        // Ilhotas arenosas extras no mar sul
+        // 3. Ilhotas arenosas extras no mar sul
+        for (let k = 0; k < 3; k++) {
+          const ix = (worldRand() < 0.5 ? -1 : 1) * (280 + worldRand() * 540);
+          const iy = 865 + worldRand() * 90;
+          pullPlateau(ix, iy, 52 + worldRand() * 42, 38 + worldRand() * 32, 2, 10, 0.20, true, MAT_SAND, 3, true);
+        }
+
+        // 4. Estradas secundárias curvas conectando os novos marcos
         for (let k = 0; k < 2; k++) {
-          const ix = (worldRand() < 0.5 ? -1 : 1) * (320 + worldRand() * 480);
-          const iy = 870 + worldRand() * 75;
-          pullPlateau(ix, iy, 42 + worldRand() * 34, 32 + worldRand() * 26, 2, 10, 0.18, true, MAT_SAND, 3, true);
+          const tx = (worldRand() < 0.5 ? -1 : 1) * (350 + worldRand() * 400);
+          const ty = -250 + worldRand() * 600;
+          const mx = (-330 + tx) * 0.5 + (worldRand() - 0.5) * 160;
+          const my = (90 + ty) * 0.5 + (worldRand() - 0.5) * 160;
+          paintOrganicPath([[-330, 90], [mx, my], [tx, ty]], 16, MAT_PATH, null, null);
         }
 
-        // Re-garante Spawn (-330, 90) e cabanas planos após macro-variação
-        pullPlateau(-330, 90, 32, 32, 0, 8, 0.02, false, MAT_PATH, 0, true, false);
+        // Re-garante Spawn (-330, 90) plano e seguro após macro-variação
+        pullPlateau(-330, 90, 36, 36, 0, 8, 0.02, false, MAT_PATH, 0, true, false);
       }
 
       // Erosão térmica + hidráulica determinística, seguida por relaxamento elástico final
