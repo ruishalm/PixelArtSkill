@@ -384,6 +384,18 @@
         addForestProp('bush_berry', bx, by);
       }
 
+      // Props procedurais extras por Seed (visíveis ao redor da Vila, Campos e Bosque)
+      if (WORLD_SEED !== DEFAULT_WORLD_SEED) {
+        const extraKeys = ['pine_tree', 'sakura_oak', 'boulder_large', 'bush_berry', 'flower_tuft', 'sunflower', 'tree_stump'];
+        for (let i = 0; i < 36; i++) {
+          const wx = Math.round(-920 + worldRand() * 1840);
+          const wy = Math.round(-880 + worldRand() * 1500);
+          if (Math.hypot(wx + 330, wy - 90) < 62) continue; // não bloquear spawn
+          const key = extraKeys[Math.floor(worldRand() * extraKeys.length)];
+          addForestProp(key, wx, wy, { angle: (worldRand() - 0.5) * Math.PI * 2 });
+        }
+      }
+
       // 20 PEIXES DOURADOS COLECIONÁVEIS (distribuídos pelos 8 biomas)
       addFish(-285, -66,  'Rampa da Vila');                  // #1  Vila (Z=6)
       addFish(-262, 153,  'Toco da Vila', 14);               // #2  Vila (Z=14)

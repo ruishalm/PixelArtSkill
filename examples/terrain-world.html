@@ -1392,8 +1392,15 @@
 
     // 4.1. Construção dos 8 Biomas no Heightfield Contínuo 1080×1080
     const RIVER_WAYPOINTS = [
-      [120, -1078], [156, -795], [144, -495], [148, -345],
-      [102, -165], [134, 108], [144, 435], [120, 665], [120, 770]
+      [120, -1078],
+      [WORLD_SEED === DEFAULT_WORLD_SEED ? 156 : Math.round(156 + (worldRand() - 0.5) * 80), -795],
+      [144, -495],
+      [148, -345],
+      [WORLD_SEED === DEFAULT_WORLD_SEED ? 102 : Math.round(102 + (worldRand() - 0.5) * 76), -165],
+      [134, 108],
+      [WORLD_SEED === DEFAULT_WORLD_SEED ? 144 : Math.round(144 + (worldRand() - 0.5) * 84), 435],
+      [WORLD_SEED === DEFAULT_WORLD_SEED ? 120 : Math.round(120 + (worldRand() - 0.5) * 76), 665],
+      [120, 770]
     ];
     const RIVER_SEGMENTS = [];
     for (let i = 0; i < RIVER_WAYPOINTS.length - 1; i++) {
@@ -1616,9 +1623,12 @@
       // ---------------------------------------------------------------------
       const shoreYByCol = new Float32Array(mw);
       const sandStartByCol = new Float32Array(mw);
+      const shoreAmp = WORLD_SEED === DEFAULT_WORLD_SEED ? 34 : (28 + worldRand() * 28);
+      const shoreFreq = WORLD_SEED === DEFAULT_WORLD_SEED ? 0.005 : (0.004 + worldRand() * 0.005);
+      const shorePhase = WORLD_SEED === DEFAULT_WORLD_SEED ? 2.5 : (worldRand() * 12.0);
       for (let mx = 0; mx < mw; mx++) {
         const wx = (mx - HALF_GRID + 0.5) * VOX;
-        const wave = fbm2dFast(wx * 0.005 + 2.5, 1.2) * 34;
+        const wave = fbm2dFast(wx * shoreFreq + shorePhase, 1.2) * shoreAmp;
         shoreYByCol[mx] = 756 + wave;
         sandStartByCol[mx] = 636 + wave * 0.7;
       }
@@ -1788,6 +1798,45 @@
             cliffMask[idx] = 1;
           }
         }
+      }
+
+      // Macro-variação procedural por Seed (colinas, lagoas e ilhotas extras)
+      if (WORLD_SEED !== DEFAULT_WORLD_SEED) {
+        const safeHillZones = [
+          [-560, -80], [-140, -60], [-610, 310], [-80, -180],
+          [360, 220], [720, 180], [420, 560], [780, 580],
+          [-760, -30], [-280, -210], [280, -40], [540, 380]
+        ];
+        for (let i = 0; i < safeHillZones.length; i++) {
+          if (worldRand() < 0.25) continue;
+          const [bx, by] = safeHillZones[i];
+          const hx = bx + (worldRand() - 0.5) * 90;
+          const hy = by + (worldRand() - 0.5) * 90;
+          if (Math.hypot(hx + 330, hy - 90) < 95) continue; // protege spawn
+          if (Math.hypot(hx - 134, hy - 108) < 110) continue; // protege rio/ponte
+          const rad = 52 + worldRand() * 52;
+          const ht = 6 + Math.round(worldRand() * 12);
+          pullHill(hx, hy, rad, ht, 1.3 + worldRand() * 0.5, 0.22, null, null);
+        }
+
+        // 2 lagoas orgânicas extras em planícies seguras
+        for (const [px, py] of [[-580, -140], [410, 110]]) {
+          if (worldRand() < 0.65) {
+            const lx = px + (worldRand() - 0.5) * 80;
+            const ly = py + (worldRand() - 0.5) * 80;
+            carveOrganicPond(lx, ly, 38 + worldRand() * 20, 28 + worldRand() * 16, 12, -3, 0, 0, null);
+          }
+        }
+
+        // Ilhotas arenosas extras no mar sul
+        for (let k = 0; k < 2; k++) {
+          const ix = (worldRand() < 0.5 ? -1 : 1) * (320 + worldRand() * 480);
+          const iy = 870 + worldRand() * 75;
+          pullPlateau(ix, iy, 42 + worldRand() * 34, 32 + worldRand() * 26, 2, 10, 0.18, true, MAT_SAND, 3, true);
+        }
+
+        // Re-garante Spawn (-330, 90) e cabanas planos após macro-variação
+        pullPlateau(-330, 90, 32, 32, 0, 8, 0.02, false, MAT_PATH, 0, true, false);
       }
 
       // Erosão térmica + hidráulica determinística, seguida por relaxamento elástico final
@@ -2207,6 +2256,18 @@
         [-900, -810], [-540, -930], [345, -870], [870, -585], [900, 210], [-915, 435]
       ]) {
         addForestProp('bush_berry', bx, by);
+      }
+
+      // Props procedurais extras por Seed (visíveis ao redor da Vila, Campos e Bosque)
+      if (WORLD_SEED !== DEFAULT_WORLD_SEED) {
+        const extraKeys = ['pine_tree', 'sakura_oak', 'boulder_large', 'bush_berry', 'flower_tuft', 'sunflower', 'tree_stump'];
+        for (let i = 0; i < 36; i++) {
+          const wx = Math.round(-920 + worldRand() * 1840);
+          const wy = Math.round(-880 + worldRand() * 1500);
+          if (Math.hypot(wx + 330, wy - 90) < 62) continue; // não bloquear spawn
+          const key = extraKeys[Math.floor(worldRand() * extraKeys.length)];
+          addForestProp(key, wx, wy, { angle: (worldRand() - 0.5) * Math.PI * 2 });
+        }
       }
 
       // 20 PEIXES DOURADOS COLECIONÁVEIS (distribuídos pelos 8 biomas)
