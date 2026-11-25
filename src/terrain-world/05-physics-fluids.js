@@ -2295,13 +2295,21 @@
         const p = props[i];
         if (p.destroyed || p.modelKey !== 'campfire') continue;
         const dCat = Math.hypot(cat.x - p.wx, cat.y - p.wy);
-        if (dCat < 10 && cat.z <= p.wz + 8 && cat.hurtTimer <= 0) {
-          cat.hurtTimer = 1.0;
-          cat.vz = 130;
-          cat.onGround = false;
-          sfxHurt();
-          catSpeak('Ai! Quente! 🔥', 110);
-        } else if (dCat >= 10 && dCat < 26) {
+        if (dCat < 10.5 && cat.z <= p.wz + 14) {
+          // Empurra radialmente para fora do colisor sólido (r=7.2 + pad=3.0) para nunca travar em cima
+          const nx = dCat > 0.1 ? (cat.x - p.wx) / dCat : 0;
+          const ny = dCat > 0.1 ? (cat.y - p.wy) / dCat : 1;
+          const safeDist = 12.0;
+          cat.x = p.wx + nx * safeDist;
+          cat.y = p.wy + ny * safeDist;
+          if (cat.hurtTimer <= 0) {
+            cat.hurtTimer = 1.0;
+            cat.vz = 145;
+            cat.onGround = false;
+            sfxHurt();
+            catSpeak('Ai! Quente! 🔥', 110);
+          }
+        } else if (dCat >= 10.5 && dCat < 26) {
           if (!guideSpeak('warm_near', 'Quentinho! 🔥', 100) && warmthSpeakCd <= 0 && !cat.speech) {
             warmthSpeakCd = 14;
             catSpeak('Quentinho! 🔥', 90);
