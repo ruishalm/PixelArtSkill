@@ -3,7 +3,6 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
-EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 def make_grid(w, h, fill=0):
     return [[fill for _ in range(w)] for _ in range(h)]
@@ -228,7 +227,7 @@ pack = {
     'mug': to_strings(mug_slices)
 }
 
-with open(os.path.join(VOXELS_DIR, 'modular_desk_pack.json'), 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'modular_desk_pack.json'), 'w', encoding='utf-8', newline='\n') as f:
     json.dump(pack, f, indent=2)
 
 print("SUCCESS: modular_desk_pack.json rebuilt with 64x34 desk!")

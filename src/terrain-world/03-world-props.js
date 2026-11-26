@@ -412,7 +412,7 @@
         topZ,
         selfAngle: angle,
         scale,
-        isFire: modelKey === 'campfire' || modelKey === 'stone_lantern',
+        isFire: modelKey === 'campfire' || modelKey === 'stone_lantern' || !!meta.isFire,
         isDamBoulder: !!options.isDamBoulder,
         isPlatform: meta.mode === 'platform',
         platTopZ: meta.mode === 'platform' ? liftZ + meta.h * scale : liftZ
@@ -738,5 +738,5 @@
         toolPickups.push({ toolId, wx, wy, baseZ, inside: false });
       }
     }
-    populateWorldObjects();
+    if (!window.__IS_STUDIO__) populateWorldObjects();
 
