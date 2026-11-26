@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="icon" href="data:," />
+  <title>Mega Quartinho 3D Modular - PurrModoro Diorama</title>
+  <link rel="stylesheet" href="__ROOM_CSS__" />
+</head>
+<body>
+
+  <div class="badge">
+    <h1 id="roomTitle">🛏️ Mega Quartinho 3D (Tudo Modular & Movível!)</h1>
+    <p id="roomSubtitle">Explore os cômodos da casinha com seus bichinhos através da Planta Baixa!</p>
+  </div>
+
+  <div id="bannerInfo" class="banner-info" style="display: none;">
+    <span>🛠️ <b>Modo Decoração:</b> Arraste móveis, prateleira, quadros, relógio ou o gatinho!</span>
+    <button id="btnRotateSelected" class="btn btn-action" style="padding: 4px 12px; font-size: 11px;">↻ Girar Item (Tecla R)</button>
+  </div>
+
+
+  <!-- Modal do Mural de Cortiça / Post-its -->
+  <div id="corkboardModal" class="corkboard-overlay">
+    <div class="corkboard-frame">
+      <div class="corkboard-header">
+        <span>📌 Mural de Lembretes & Ideias</span>
+        <button id="btnCloseCorkboard" class="btn-close" style="color:#FAF7F2;">✕</button>
+      </div>
+      <div id="corkboardSurface" class="corkboard-surface">
+        <!-- Post-its gerados dinamicamente via JS -->
+      </div>
+      <div id="corkboardPadBtn" class="corkboard-pad-container" title="Clique para escrever um novo post-it!">
+        <div class="corkboard-pen">✏️</div>
+        <div class="corkboard-pad">📝</div>
+        <span class="corkboard-pad-label">+ Post-it</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Editor de Post-it Individual -->
+  <div id="noteEditorModal" class="corkboard-overlay">
+    <div id="noteEditorCard" class="note-editor-card" style="background: #FEF08A;">
+      <div class="postit-pin"></div>
+      <textarea id="noteTextarea" class="note-editor-textarea" placeholder="Escreva seu recado ou lembrete aqui..."></textarea>
+      
+      <div class="color-swatches">
+        <div class="color-dot active" data-color="#FEF08A" style="background:#FEF08A;"></div>
+        <div class="color-dot" data-color="#FBCFE8" style="background:#FBCFE8;"></div>
+        <div class="color-dot" data-color="#BBF7D0" style="background:#BBF7D0;"></div>
+        <div class="color-dot" data-color="#BAE6FD" style="background:#BAE6FD;"></div>
+        <div class="color-dot" data-color="#E9D5FF" style="background:#E9D5FF;"></div>
+        <div class="color-dot" data-color="#FED7AA" style="background:#FED7AA;"></div>
+      </div>
+
+      <div class="note-editor-actions">
+        <button id="btnDeleteNote" class="btn" style="background:#FEE2E2; color:#DC2626; border-color:#FCA5A5; display:none;">🗑️ Excluir</button>
+        <div style="flex:1;"></div>
+        <button id="btnCancelNote" class="btn btn-secondary">Cancelar</button>
+        <button id="btnSaveNote" class="btn" style="background:#10B981; color:#fff; border-color:#059669;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Modal Retrô da Porta da Geladeira (Lista de Compras Funcional) -->
+  <div id="fridgeModal" class="fridge-overlay">
+    <div class="fridge-door-frame">
+      <div class="fridge-handle-chrome"></div>
+      <div class="fridge-header-bar">
+        <span>🥦 Geladeira Retrô • Lista de Compras</span>
+        <button id="btnCloseFridge" class="btn-close" style="color:#FFFFFF; background:none; border:none; font-size:18px; cursor:pointer;">✕</button>
+      </div>
+      <div class="fridge-seal-divider"></div>
+      <div class="fridge-surface-body">
+        <div class="fridge-notepad">
+          <div class="fridge-magnet-top">🍓</div>
+          <div style="font-weight:800; font-size:14px; color:#92400E; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <span>📋 Itens da Semana:</span>
+            <span id="fridgeItemCount" style="font-size:11px; color:#B45309; background:#FEF3C7; padding:2px 8px; border-radius:12px;">0 comprados</span>
+          </div>
+          <ul id="shoppingListContainer" class="shopping-checklist">
+            <!-- Itens inseridos dinamicamente -->
+          </ul>
+        </div>
+        <div class="fridge-add-input-row">
+          <input type="text" id="fridgeInput" class="fridge-input-box" placeholder="Ex: Peixinho pro Mochi, Milho dourado...">
+          <button id="btnFridgeAdd" class="fridge-btn-submit">+ Adicionar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modalzinho da Planta Baixa da Casa (Blueprint) -->
+  <div id="housePlanModal" class="corkboard-overlay">
+    <div class="houseplan-frame">
+      <div class="houseplan-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:22px;">🗺️</span>
+          <div>
+            <div style="font-size:15px; font-weight:bold; color:#2D2118;">Planta Baixa da Casa</div>
+            <div style="font-size:11px; color:#856B59;">Clique em um cômodo para explorar com seus pets</div>
+          </div>
+        </div>
+        <button id="btnCloseHousePlan" class="btn-close" style="color:#2D2118;">✕</button>
+      </div>
+
+      <div class="blueprint-container">
+        <!-- Linha 1: Cozinha, Sala de Estar Central, Jardim -->
+        <div class="blueprint-row">
+          <!-- Cozinha (Oeste) -->
+          <div class="blueprint-room" id="roomCardKitchen" title="Bancada, Fogão, Pia & Geladeira Retrô!">
+            <div class="room-status-badge" id="badgeKitchen" style="display:none;">📍 Você está aqui</div>
+            <div class="room-icon">🍽️</div>
+            <div class="room-name">Cozinha</div>
+            <div class="room-desc">Bancada, Fogão & Mesa</div>
+            <div class="room-pets" id="petsKitchen"></div>
+          </div>
+
+          <!-- Sala de Estar (Centro / Hub) -->
+          <div class="blueprint-room" id="roomCardLiving">
+            <div class="room-status-badge" id="badgeLiving" style="display:none;">📍 Você está aqui</div>
+            <div class="room-icon">🛋️</div>
+            <div class="room-name">Sala de Estar</div>
+            <div class="room-desc">Sofá, TV & Jardim</div>
+            <div class="room-pets" id="petsLiving"></div>
+          </div>
+
+          <!-- Jardim (Leste) -->
+          <div class="blueprint-room" id="roomCardGarden" title="Varandinha, Carvalho & Balanço de Pneu!">
+            <div class="room-status-badge" id="badgeGarden" style="display:none;">📍 Você está aqui</div>
+            <div class="room-icon">🌳</div>
+            <div class="room-name">Jardim</div>
+            <div class="room-desc">Árvore, Balanço & Flores</div>
+            <div class="room-pets" id="petsGarden"></div>
+          </div>
+        </div>
+
+        <!-- Linha 2: Quarto (Sul, conectado à Sala) -->
+        <div class="blueprint-row" style="justify-content: center;">
+          <div class="blueprint-room active-room" id="roomCardBedroom">
+            <div class="room-status-badge" id="badgeBedroom">📍 Você está aqui</div>
+            <div class="room-icon">🛏️</div>
+            <div class="room-name">Quarto</div>
+            <div class="room-desc">Mesa & Caminha</div>
+            <div class="room-pets" id="petsBedroom">🐱 🐔 🐥</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay de transição suave entre cômodos -->
+  <div id="roomFadeOverlay" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#1A1412; opacity:0; pointer-events:none; transition:opacity 0.28s ease; z-index:9999;"></div>
+
+  <!-- Catálogo de Assets Drawer -->
+  <div id="assetDrawer" class="asset-drawer" style="display: none;">
+    <div class="drawer-header">
+      <h3>📦 Catálogo de Assets</h3>
+      <button id="btnCloseDrawer" class="btn-close">✕</button>
+    </div>
+    <div class="drawer-tabs">
+      <button class="drawer-tab active" data-cat="furniture">🛋️ Móveis</button>
+      <button class="drawer-tab" data-cat="decor">🧸 Objetos</button>
+      <button class="drawer-tab" data-cat="pets">🐾 Pets</button>
+      <button class="drawer-tab" data-cat="hats">🎩 Chapéus</button>
+    </div>
+    <div id="drawerActions" class="drawer-actions">
+      <button id="btnShowAll" class="btn-pill">Mostrar Todos</button>
+      <button id="btnHideAll" class="btn-pill btn-pill-alt">Limpar Sala</button>
+    </div>
+    <div id="assetList" class="asset-list">
+      <!-- Gerado dinamicamente em JS -->
+    </div>
+  </div>
+
+  <div class="canvas-container">
+    <canvas id="viewport" width="800" height="800"></canvas>
+    <button id="btnHousePlan" class="btn-house-plan-square" title="Planta Baixa da Casinha">
+      <span class="plan-icon">🗺️</span>
+      <span class="plan-txt">Planta</span>
+    </button>
+  </div>
+
+  <div class="hud">
+    <button id="btnCatalog" class="btn btn-secondary">📦 Catálogo</button>
+    <button id="btnDecorMode" class="btn btn-secondary">🛠️ Mover Itens</button>
+    <button id="btnRotateMob" class="btn btn-secondary" style="display: none;">↻ Girar (R)</button>
+    <button id="btnAutoSpin" class="btn active">🔄 Giro Auto</button>
+    <button id="btnHat" class="btn btn-secondary">🎩 Chapéu: Nenhum</button>
+    <button id="btnPosture" class="btn btn-secondary">🐾 Modo: Auto</button>
+    <button id="btnPet" class="btn btn-secondary">💕 Carinho</button>
+    <div class="label">
+      <span>Inclinação:</span>
+      <input type="range" id="squashSlider" min="0.60" max="0.85" step="0.01" value="0.72">
+    </div>
+  </div>
+
+__ROOM_SCRIPTS__
+</body>
+</html>

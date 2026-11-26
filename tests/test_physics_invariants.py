@@ -43,8 +43,10 @@ class TestPixelArtSkill(unittest.TestCase):
             with open(out_html, 'r', encoding='utf-8') as f:
                 html = f.read()
 
+            self.assertLess(len(html.encode('utf-8')), 15 * 1024, 'terrain-world.html must stay < 15 KB')
             # Zero unresolved placeholders
             for token in (
+                '__TERRAIN_SCRIPTS__',
                 '__TERRAIN_JS_BUNDLE__',
                 '__CAT_SLICES__',
                 '__HATS_PACK__',
@@ -53,15 +55,29 @@ class TestPixelArtSkill(unittest.TestCase):
             ):
                 self.assertNotIn(token, html)
 
-            # Extract <script> block and validate full bundle syntax with Node
-            m = re.search(r'<script>\n(.*?)\n  </script>', html, re.S)
-            self.assertIsNotNone(m, 'Missing <script> block in bundled HTML')
-            js_path = os.path.join(tmpdir, 'bundle.js')
-            with open(js_path, 'w', encoding='utf-8') as f:
-                f.write(m.group(1))
+            self.assertIn('<link rel="stylesheet" href="terrain-world.css"', html)
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, 'examples', 'terrain-world.css')))
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, 'assets', 'voxels', 'voxel-data.js')))
 
-            res = subprocess.run(['node', '--check', js_path], capture_output=True, text=True)
-            self.assertEqual(res.returncode, 0, f'Bundled JS syntax error:\n{res.stderr}')
+            # Every <script src="..."> must exist relative to examples/ and pass node --check
+            srcs = re.findall(r'<script\s+src="([^"]+)"', html)
+            self.assertGreaterEqual(len(srcs), 15)
+            examples_dir = os.path.join(ROOT, 'examples')
+            combined_parts = []
+            for rel_src in srcs:
+                resolved = os.path.normpath(os.path.join(examples_dir, rel_src))
+                self.assertTrue(os.path.isfile(resolved), f'Missing script target: {rel_src} -> {resolved}')
+                res = subprocess.run(['node', '--check', resolved], capture_output=True, text=True)
+                self.assertEqual(res.returncode, 0, f'Syntax error in {resolved}:\n{res.stderr}')
+                with open(resolved, 'r', encoding='utf-8') as sf:
+                    combined_parts.append(sf.read())
+
+            # Combined cross-module syntax check (catches duplicate top-level const/let)
+            combined_js = os.path.join(tmpdir, 'combined_terrain.js')
+            with open(combined_js, 'w', encoding='utf-8', newline='\n') as cf:
+                cf.write('\n'.join(combined_parts))
+            res = subprocess.run(['node', '--check', combined_js], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f'Combined Terrain JS syntax error:\n{res.stderr}')
 
         # Also check every individual module in src/engine/*.js and src/terrain-world/*.js
         engine_modules = sorted(glob.glob(os.path.join(ROOT, 'src', 'engine', '*.js')))
@@ -365,6 +381,60 @@ console.log('SEED_OK');
         for mod in studio_modules:
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
+
+    def test_07_modular_examples_and_index_build(self):
+        import generate_html as gcat
+        import generate_chicken_html as gchk
+        import generate_mega_room as groom
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cat_html = os.path.join(tmpdir, 'cat-3d.html')
+            chk_html = os.path.join(tmpdir, 'chicken-3d.html')
+            room_html = os.path.join(tmpdir, 'room-3d.html')
+            idx_html = os.path.join(tmpdir, 'index.html')
+
+            gcat.build_cat_html(cat_html)
+            gchk.build_chicken_html(chk_html)
+            groom.build_mega_room(room_html, idx_html)
+
+            specs = [
+                (cat_html, os.path.join(ROOT, 'examples'), 'cat-3d.css', 2),
+                (chk_html, os.path.join(ROOT, 'examples'), 'chicken-3d.css', 2),
+                (room_html, os.path.join(ROOT, 'examples'), 'room-3d.css', 7),
+                (idx_html, ROOT, 'examples/room-3d.css', 7),
+            ]
+
+            for html_path, base_dir, expected_css, min_scripts in specs:
+                with open(html_path, 'rb') as bf:
+                    raw = bf.read()
+                self.assertFalse(raw.startswith(b'\xef\xbb\xbf'), f'UTF-8 BOM found in {html_path}')
+                self.assertNotIn(b'\r\n', raw, f'CRLF found in {html_path}')
+                html_text = raw.decode('utf-8')
+                self.assertLess(len(raw), 15 * 1024, f'{html_path} must stay < 15 KB')
+                self.assertEqual(re.findall(r'__[A-Z0-9_]+__', html_text), [])
+                self.assertIn(f'<link rel="stylesheet" href="{expected_css}"', html_text)
+                css_resolved = os.path.normpath(os.path.join(base_dir, expected_css))
+                self.assertTrue(os.path.isfile(css_resolved), f'Missing CSS: {css_resolved}')
+
+                srcs = re.findall(r'<script\s+src="([^"]+)"', html_text)
+                self.assertGreaterEqual(len(srcs), min_scripts, f'Too few scripts in {html_path}')
+                parts = []
+                for rel_src in srcs:
+                    resolved = os.path.normpath(os.path.join(base_dir, rel_src))
+                    self.assertTrue(os.path.isfile(resolved), f'Missing script target: {rel_src} -> {resolved}')
+                    with open(resolved, 'rb') as jsbf:
+                        js_raw = jsbf.read()
+                    self.assertFalse(js_raw.startswith(b'\xef\xbb\xbf'), f'UTF-8 BOM in {resolved}')
+                    self.assertNotIn(b'\r\n', js_raw, f'CRLF in {resolved}')
+                    res = subprocess.run(['node', '--check', resolved], capture_output=True, text=True)
+                    self.assertEqual(res.returncode, 0, f'Syntax error in {resolved}:\n{res.stderr}')
+                    parts.append(js_raw.decode('utf-8'))
+
+                combined_path = os.path.join(tmpdir, f'{os.path.basename(html_path)}.combined.js')
+                with open(combined_path, 'w', encoding='utf-8', newline='\n') as cf:
+                    cf.write('\n'.join(parts))
+                res = subprocess.run(['node', '--check', combined_path], capture_output=True, text=True)
+                self.assertEqual(res.returncode, 0, f'Combined syntax error for {html_path}:\n{res.stderr}')
 
 
 if __name__ == '__main__':
