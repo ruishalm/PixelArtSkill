@@ -269,13 +269,20 @@
         <option value="512">512 · Médio</option>
         <option value="1080">1080 · Grande</option>
       </select>
+      <span style="font-size:11px;color:#A8A29E;">Base:</span>
+      <select id="baseKindSelect" class="seed-input" style="width:126px;" title="Base inicial ao regenerar">
+        <option value="island" selected>🏝️ Ilha Procedural</option>
+        <option value="continental">🏔️ Continental</option>
+        <option value="flat">🟩 Plano Vazio</option>
+      </select>
       <span style="font-size:11px;color:#A8A29E;">Seed:</span>
       <input id="seedInput" class="seed-input" type="number" value="1337" />
       <button id="btnRandSeed" class="btn" title="Nova seed aleatória">🎲 Nova</button>
-      <button id="btnNewFlat" class="btn" title="Começar mapa plano vazio do zero">🆕 Novo Plano</button>
-      <button id="btnRegenAll" class="btn accent" title="Regenerar mundo inteiro">🔄 Regenerar Tudo</button>
-      <button id="btnRegenUnpinned" class="btn pin" title="Mantém terreno e props fixos e regenera o resto">📌 Regenerar Resto</button>
+      <button id="btnNewFlat" class="btn" title="Começar mapa plano vazio do zero">🆕 Plano</button>
+      <button id="btnRegenAll" class="btn accent" title="Regenerar mundo inteiro">🔄 Regenerar</button>
+      <button id="btnRegenUnpinned" class="btn pin" title="Mantém terreno e props fixos e regenera o resto">📌 Resto</button>
       <button id="btnUndo" class="btn" title="Desfazer última pincelada (Ctrl+Z)">↩️ Desfazer</button>
+      <button id="btnRedo" class="btn" title="Refazer última ação (Ctrl+Y)">↪️ Refazer</button>
     </div>
     <div class="top-group">
       <button id="btnExportJson" class="btn">💾 Exportar .json</button>
@@ -322,11 +329,18 @@
       <div>
         <div class="sec-title">Camada Híbrida (Fixo vs Procedural)</div>
         <div class="tool-grid">
+          <select id="genModeSelect" class="seed-input" style="width:100%;grid-column:span 2;" title="Modo de geração">
+            <option value="procedural">🎲 Tudo Procedural</option>
+            <option value="hybrid" selected>🔀 Híbrido (Fixo + Proc.)</option>
+            <option value="manual">📌 Tudo Fixo (Manual)</option>
+          </select>
           <button class="tool-btn" data-tool="select_box" style="grid-column: span 2;">⬚ Selecionar Retângulo</button>
           <button class="tool-btn" data-tool="pin">📌 Fixar Pincel</button>
           <button class="tool-btn" data-tool="unpin">🔓 Destravar</button>
           <button id="btnPinSel" class="btn pin" style="font-size:10px;">📌 Travar Seleção</button>
           <button id="btnUnpinSel" class="btn" style="font-size:10px;">🔓 Destravar Sel.</button>
+          <button id="btnPinAll" class="btn pin" style="font-size:10px;">🔒 Travar Tudo</button>
+          <button id="btnUnpinAll" class="btn" style="font-size:10px;">🔓 Destravar Tudo</button>
           <button id="btnClearSel" class="btn" style="grid-column: span 2; font-size:10px;">🧹 Limpar Seleção / Área</button>
         </div>
       </div>
@@ -401,7 +415,7 @@
     <main class="stage">
       <canvas id="viewport"></canvas>
       <canvas id="studioOverlay"></canvas>
-      <div class="help-pill" id="helpPill">Editar: Clique/Arraste aplica pincel • Botão Direito orbita • WASD move câmera • Q/E gira</div>
+      <div class="help-pill" id="helpPill">Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira</div>
       <div class="coord-pill" id="coordPill">wx: 0, wy: 0, z: 0</div>
       <div class="biome-toast" id="biomeToast"></div>
       <div class="minimap-wrap">
@@ -485,6 +499,7 @@
     <button id="btnTouchJump"></button>
   </div>
 
+  <script>window.__IS_STUDIO__ = true;</script>
   <script>
 __STUDIO_JS_BUNDLE__
   </script>

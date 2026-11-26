@@ -540,7 +540,7 @@
       elasticChainRelax(1);
       buildStandableMap();
     }
-    initOrganicWorld();
+    if (!window.__IS_STUDIO__) initOrganicWorld();
 
     function getCellAt(wx, wy) {
       const mx = Math.floor(wx / VOX + HALF_GRID);

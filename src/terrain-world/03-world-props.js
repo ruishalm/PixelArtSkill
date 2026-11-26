@@ -738,5 +738,5 @@
         toolPickups.push({ toolId, wx, wy, baseZ, inside: false });
       }
     }
-    populateWorldObjects();
+    if (!window.__IS_STUDIO__) populateWorldObjects();
 
