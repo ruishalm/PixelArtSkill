@@ -254,6 +254,7 @@ Milestone tracker for the **mathematical voxel physics** lab in Pure HTML5 Canva
 - [x] **Granular Matter & Incremental Dirty-Rect Re-Bake**: sand (`MAT_SAND`) and snow (`MAT_PEAK`) with dynamic angle-of-repose relaxation (`talus = 2`/`3` in `relaxGranularBox`), impact footprints, and digging (`KeyR` / `tool_hoe`), updating only the dirty rectangle in `terrainSlices[z]` via `rebakeTerrainDirtyRect`.
 - [x] **Cloth, Ropes & Hanging Bridges (Verlet Integration)**: 3D node chains (`verletChains` — Village festive garland, Torii ribbons, Lighthouse pennant, and Sakura vine) coupled to `WindField` and `Character` push, rendered per Z-slice with real 3D occlusion.
 - [ ] **Chunk Streaming (`Web Worker` + `OffscreenCanvas`)**: optional for continuous open worlds larger than `1080×1080`, keeping only a `3×3` window of pre-baked chunks in RAM at 60 FPS.
+- [ ] **Modular Engine (`src/engine/`) & Browser Visual Studio (`studio.html`)**: complete separation of pure engine modules (`math-noise`, `voxel-sheets`, `slice-baker`, `fluids`, `materials`, `renderer`) + a zero-dependency in-browser visual editor (terrain/sand/water brushes, drag-and-drop procedural trees/Verlet/campfires, live physics sliders, and one-click self-contained `.html` export).
 
 ---
 

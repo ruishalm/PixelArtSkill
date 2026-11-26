@@ -72,11 +72,13 @@ class TestPixelArtSkill(unittest.TestCase):
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
 
-        # Verify all sfx*() calls across modules are defined in 01-assets-audio.js
-        assets_js = open(os.path.join(ROOT, 'src', 'terrain-world', '01-assets-audio.js'), 'r', encoding='utf-8').read()
+        # Verify all sfx*() calls across modules are defined in engine/01-voxel-audio.js
+        with open(os.path.join(ROOT, 'src', 'engine', '01-voxel-audio.js'), 'r', encoding='utf-8') as f:
+            assets_js = f.read()
         defined_sfx = set(re.findall(r'const\s+(sfx[A-Za-z0-9_]+)\s*=', assets_js))
-        for mod in modules:
-            code = open(mod, 'r', encoding='utf-8').read()
+        for mod in engine_modules + modules:
+            with open(mod, 'r', encoding='utf-8') as f:
+                code = f.read()
             for called in set(re.findall(r'\b(sfx[A-Za-z0-9_]+)\s*\(', code)):
                 self.assertIn(called, defined_sfx, f'Undefined SFX call {called}() in {mod}')
 
