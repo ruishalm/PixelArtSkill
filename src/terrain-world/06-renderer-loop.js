@@ -12,15 +12,19 @@
     function bakeMinimapBase() {
       const img = mmBaseCtx.createImageData(MM_RES, MM_RES);
       const buf = new Uint32Array(img.data.buffer);
+      const mmStepX = mw / MM_RES;
+      const mmStepY = mh / MM_RES;
+      const mmDx = Math.max(1, Math.round(mmStepX));
+      const mmDy = Math.max(1, Math.round(mmStepY));
       for (let gy = 0; gy < MM_RES; gy++) {
-        const my = gy * 9;
+        const my = Math.min(mh - 1, Math.floor(gy * mmStepY));
         for (let gx = 0; gx < MM_RES; gx++) {
-          const mx = gx * 9;
+          const mx = Math.min(mw - 1, Math.floor(gx * mmStepX));
           const idx = my * mw + mx;
           const h = hmap[idx];
           const mat = matMap[idx];
-          const hL = mx >= 9 ? hmap[my * mw + (mx - 9)] : h;
-          const hU = my >= 9 ? hmap[(my - 9) * mw + mx] : h;
+          const hL = mx >= mmDx ? hmap[my * mw + (mx - mmDx)] : h;
+          const hU = my >= mmDy ? hmap[(my - mmDy) * mw + mx] : h;
           const isContour = !isWetMat(mat) && mat !== MAT_BRIDGE &&
             (Math.floor(h / 10) !== Math.floor(hL / 10) || Math.floor(h / 10) !== Math.floor(hU / 10));
 

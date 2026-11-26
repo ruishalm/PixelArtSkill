@@ -22,6 +22,30 @@
       let selStartWorld = null;
       const undoStack = [];
 
+      // Remoção segura de props: desativa colisores ligados ao prop e tira das listas da engine
+      function removePropObj(p) {
+        const i = props.indexOf(p);
+        if (i >= 0) props.splice(i, 1);
+        const fi = foliageProps.indexOf(p);
+        if (fi >= 0) foliageProps.splice(fi, 1);
+        if (p.solidCollider) p.solidCollider.disabled = true;
+        if (p.platCollider) p.platCollider.disabled = true;
+      }
+      function clearAllProps() {
+        props.length = 0;
+        foliageProps.length = 0;
+        propColliders.length = 0;
+        platformColliders.length = 0;
+        fallingBodies.length = 0;
+        debrisDrops.length = 0;
+      }
+      function resetTerrainLayers() {
+        shadowMask.fill(0);
+        noGrassMask.fill(0);
+        biomeMap.fill(0);
+        cliffMask.fill(0);
+      }
+
       function pushUndoSnapshot() {
         if (undoStack.length >= 12) undoStack.shift();
         undoStack.push({
@@ -162,18 +186,11 @@
               }
             }
           }
-          let removedProp = false;
           for (let i = props.length - 1; i >= 0; i--) {
             if (Math.hypot(props[i].wx - wx, props[i].wy - wy) <= brushRadius) {
-              const rem = props.splice(i, 1)[0];
-              const fi = foliageProps.indexOf(rem);
-              if (fi >= 0) foliageProps.splice(fi, 1);
-              const si = fireProps.indexOf(rem);
-              if (si >= 0) fireProps.splice(si, 1);
-              removedProp = true;
+              removePropObj(props[i]);
             }
           }
-          if (removedProp && typeof rebuildPropSpatialBuckets === 'function') rebuildPropSpatialBuckets();
         }
 
         if (terrainDirty) {
@@ -246,23 +263,7 @@
             const d = Math.hypot(props[i].wx - wx, props[i].wy - wy);
             if (d < bestD) { bestD = d; bestIdx = i; }
           }
-          if (bestIdx >= 0) {
-            const removed = props.splice(bestIdx, 1)[0];
-            const fi = foliageProps.indexOf(removed);
-            if (fi >= 0) foliageProps.splice(fi, 1);
-            const si = fireProps.indexOf(removed);
-            if (si >= 0) fireProps.splice(si, 1);
-            if (typeof rebuildPropSpatialBuckets === 'function') rebuildPropSpatialBuckets();
-          }
-          return;
-        }
-
-        if (activeTool === 'prop_banner') {
-          if (typeof addBanner === 'function') {
-            const c = getCellAt(wx, wy);
-            addBanner(wx, wy, c ? c.h : 0, '#EF4444');
-            if (banners.length > 0) banners[banners.length - 1].pinned = true;
-          }
+          if (bestIdx >= 0) removePropObj(props[bestIdx]);
           return;
         }
 
@@ -501,13 +502,14 @@
         if (typeof npcs !== 'undefined') npcs.length = 0;
         if (typeof fishes !== 'undefined') fishes.length = 0;
 
+        const fs = 1080 / mw; // mantém o "tamanho" das feições: diorama pequeno mostra o relevo inteiro
         for (let my = 0; my < mh; my++) {
           const wy = (my - HALF_GRID) * VOX;
           for (let mx = 0; mx < mw; mx++) {
             const wx = (mx - HALF_GRID) * VOX;
             const idx = my * mw + mx;
-            const nBase = fbm2d(wx * 0.0022, wy * 0.0022, 4);
-            const nRidge = ridgedFbm(wx * 0.0018 + 19.3, wy * 0.0018 - 7.1, 3);
+            const nBase = fbm2d(wx * 0.0022 * fs, wy * 0.0022 * fs, 4);
+            const nRidge = ridgedFbm(wx * 0.0018 * fs + 19.3, wy * 0.0018 * fs - 7.1, 3);
             const distEdge = Math.max(Math.abs(wx), Math.abs(wy)) / HALF_WORLD;
             const islandMask = Math.max(0, 1 - Math.pow(distEdge, 3.2));
             let h = (nBase * 24 + nRidge * 28 - 4) * islandMask - (1 - islandMask) * 6;
@@ -568,15 +570,16 @@
 
         if (typeof buildStandableMap === 'function') buildStandableMap();
 
-        props.length = 0;
-        foliageProps.length = 0;
-        fireProps.length = 0;
+        clearAllProps();
+        resetTerrainLayers();
 
         // Espalha natureza procedural leve fora das áreas travadas
         const rng = mulberry32((WORLD_SEED ^ 0x9E3779B9) >>> 0);
-        for (let i = 0; i < 140; i++) {
-          const wx = (rng() * 2 - 1) * 780;
-          const wy = (rng() * 2 - 1) * 780;
+        const propCount = Math.max(8, Math.round(140 * (mw / 1080) * (mh / 1080)));
+        const spread = HALF_WORLD * 0.72;
+        for (let i = 0; i < propCount; i++) {
+          const wx = (rng() * 2 - 1) * spread;
+          const wy = (rng() * 2 - 1) * spread;
           const mx = Math.floor(wx / VOX + HALF_GRID);
           const my = Math.floor(wy / VOX + HALF_GRID);
           if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
@@ -596,7 +599,7 @@
             if (props.length > before) props[props.length - 1].pinned = true;
           }
         }
-        if (typeof rebuildPropSpatialBuckets === 'function') rebuildPropSpatialBuckets();
+        if (typeof buildStandableMap === 'function') buildStandableMap();
 
         bakeTerrainSlices();
         bakeMinimapBase();
@@ -653,6 +656,17 @@
         const s = 1000 + Math.floor(Math.random() * 90000);
         document.getElementById('seedInput').value = s;
       });
+      const gridSel = document.getElementById('gridSizeSelect');
+      gridSel.value = String(WORLD_CFG.gridW);
+      gridSel.addEventListener('change', () => {
+        if (!confirm('Trocar o tamanho do mapa recarrega o Studio e descarta a cena atual. Continuar?')) {
+          gridSel.value = String(WORLD_CFG.gridW);
+          return;
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.set('grid', gridSel.value);
+        window.location.href = url.toString();
+      });
       document.getElementById('btnNewFlat').addEventListener('click', () => {
         pushUndoSnapshot();
         hmap.fill(0);
@@ -660,11 +674,9 @@
         pinnedMask.fill(0);
         customWindVx.fill(0); customWindVy.fill(0);
         customFlowVx.fill(0); customFlowVy.fill(0);
-        props.length = 0;
-        foliageProps.length = 0;
-        fireProps.length = 0;
+        clearAllProps();
+        resetTerrainLayers();
         if (typeof bridges !== 'undefined') bridges.length = 0;
-        if (typeof rebuildPropSpatialBuckets === 'function') rebuildPropSpatialBuckets();
         if (typeof buildStandableMap === 'function') buildStandableMap();
         camX = 0; camY = 0;
         bakeTerrainSlices();
@@ -716,14 +728,9 @@
         for (let i = props.length - 1; i >= 0; i--) {
           const p = props[i];
           if (p.wx >= selectionBox.x0 && p.wx <= selectionBox.x1 && p.wy >= selectionBox.y0 && p.wy <= selectionBox.y1) {
-            const rem = props.splice(i, 1)[0];
-            const fi = foliageProps.indexOf(rem);
-            if (fi >= 0) foliageProps.splice(fi, 1);
-            const si = fireProps.indexOf(rem);
-            if (si >= 0) fireProps.splice(si, 1);
+            removePropObj(p);
           }
         }
-        if (typeof rebuildPropSpatialBuckets === 'function') rebuildPropSpatialBuckets();
         rebakeTerrainDirtyRect(mx0 - 1, my0 - 1, mx1 + 1, my1 + 1);
         bakeMinimapBase();
         selectionBox = null;

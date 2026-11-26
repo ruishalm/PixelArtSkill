@@ -1,4 +1,4 @@
-"""Zero-dependency bundler for Voxel 3D Studio (examples/studio.html).
+﻿"""Zero-dependency bundler for Voxel 3D Studio (studio/index.html).
 
 Combines src/engine/*.js + src/terrain-world/*.js + src/studio/studio.js into
 src/studio/shell.html with embedded Base-36 / RLE voxel packs.
@@ -14,7 +14,7 @@ VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
 ENGINE_DIR = os.path.join(ROOT, 'src', 'engine')
 WORLD_DIR = os.path.join(ROOT, 'src', 'terrain-world')
 STUDIO_DIR = os.path.join(ROOT, 'src', 'studio')
-EXAMPLES_DIR = os.path.join(ROOT, 'examples')
+STUDIO_OUT_DIR = os.path.join(ROOT, 'studio')
 _RLE_RE = re.compile(r'(.)\1{2,}')
 
 
@@ -71,7 +71,8 @@ def build_studio(out_path=None):
         raise RuntimeError(f'Unresolved template placeholders: {unresolved}')
 
     if out_path is None:
-        out_path = os.path.join(EXAMPLES_DIR, 'studio.html')
+        os.makedirs(STUDIO_OUT_DIR, exist_ok=True)
+        out_path = os.path.join(STUDIO_OUT_DIR, 'index.html')
     with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
         f.write(html_out)
 

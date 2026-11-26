@@ -2,13 +2,13 @@
     // 4. HEIGHTFIELD MICRO-VOXEL 1080×1080 & ESCULTURA ORGÂNICA "PULL-CHAIN"
     // =========================================================================
     const STARTUP_T0 = performance.now();
-    const mw = 1080;
-    const mh = 1080;
-    const VOX = 2;
-    const HALF_GRID = 540;
-    const HALF_WORLD = 1080;
-    const WORLD_MIN = -1080;
-    const WORLD_MAX = 1080;
+    const mw = WORLD_CFG.gridW;
+    const mh = WORLD_CFG.gridH;
+    const VOX = WORLD_CFG.vox;
+    const HALF_GRID = mw / 2;
+    const HALF_WORLD = HALF_GRID * VOX;
+    const WORLD_MIN = -HALF_WORLD;
+    const WORLD_MAX = HALF_WORLD;
 
     const Z_MIN = -6;
     const TERRAIN_Z_MAX = 66;

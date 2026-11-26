@@ -244,6 +244,13 @@
         <button id="btnModeEdit" class="mode-btn active-edit">✏️ Editar</button>
         <button id="btnModeTest" class="mode-btn">🐱 Testar</button>
       </div>
+      <span style="font-size:11px;color:#A8A29E;">Mapa:</span>
+      <select id="gridSizeSelect" class="seed-input" style="width:128px;" title="Tamanho do mapa (recarrega o Studio)">
+        <option value="128">128 · Micro Diorama</option>
+        <option value="256">256 · Diorama</option>
+        <option value="512">512 · Médio</option>
+        <option value="1080">1080 · Grande</option>
+      </select>
       <span style="font-size:11px;color:#A8A29E;">Seed:</span>
       <input id="seedInput" class="seed-input" type="number" value="1337" />
       <button id="btnRandSeed" class="btn" title="Nova seed aleatória">🎲 Nova</button>
@@ -314,7 +321,6 @@
           <button class="tool-btn" data-tool="prop_wood_log">🪵 Tora</button>
           <button class="tool-btn" data-tool="prop_boulder_large">🪨 Pedregulho</button>
           <button class="tool-btn" data-tool="prop_cozy_cabin">🏡 Cabana</button>
-          <button class="tool-btn" data-tool="prop_banner">🚩 Bandeira</button>
           <button class="tool-btn" data-tool="prop_erase">🗑️ Apagar Prop</button>
         </div>
       </div>

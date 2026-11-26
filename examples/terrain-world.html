@@ -490,6 +490,26 @@
     }
 
     // =========================================================================
+    // ENGINE: CONFIGURAÇÃO DO MUNDO (TAMANHO DO GRID CONFIGURÁVEL)
+    // Presets: 128 (micro diorama), 256 (diorama), 512 (médio), 1080 (mundo aberto)
+    // Prioridade: window.__WORLD_CFG__  >  ?grid=N na URL  >  padrão 1080
+    // =========================================================================
+    const WORLD_SIZE_PRESETS = [128, 256, 512, 1080];
+    const WORLD_CFG = (function () {
+      const user = window.__WORLD_CFG__ || {};
+      const urlGrid = parseInt(new URLSearchParams(window.location.search).get('grid'), 10);
+      let gridW = Number.isFinite(user.gridW) ? user.gridW : (Number.isFinite(urlGrid) ? urlGrid : 1080);
+      gridW = Math.max(64, Math.min(2048, Math.round(gridW / 2) * 2));
+      const gridH = Number.isFinite(user.gridH) ? Math.max(64, Math.min(2048, Math.round(user.gridH / 2) * 2)) : gridW;
+      return {
+        gridW,
+        gridH,
+        vox: Number.isFinite(user.vox) ? user.vox : 2,
+        isDefault: gridW === 1080 && gridH === 1080
+      };
+    })();
+
+    // =========================================================================
     // ENGINE: CONSTRUTOR DE SLICE SHEETS (Base-36 / RLE) & ÁUDIO RETRO
     // =========================================================================
     function decodeRLERow(row) {
@@ -2626,13 +2646,13 @@
     // 4. HEIGHTFIELD MICRO-VOXEL 1080×1080 & ESCULTURA ORGÂNICA "PULL-CHAIN"
     // =========================================================================
     const STARTUP_T0 = performance.now();
-    const mw = 1080;
-    const mh = 1080;
-    const VOX = 2;
-    const HALF_GRID = 540;
-    const HALF_WORLD = 1080;
-    const WORLD_MIN = -1080;
-    const WORLD_MAX = 1080;
+    const mw = WORLD_CFG.gridW;
+    const mh = WORLD_CFG.gridH;
+    const VOX = WORLD_CFG.vox;
+    const HALF_GRID = mw / 2;
+    const HALF_WORLD = HALF_GRID * VOX;
+    const WORLD_MIN = -HALF_WORLD;
+    const WORLD_MAX = HALF_WORLD;
 
     const Z_MIN = -6;
     const TERRAIN_Z_MAX = 66;
@@ -6587,15 +6607,19 @@
     function bakeMinimapBase() {
       const img = mmBaseCtx.createImageData(MM_RES, MM_RES);
       const buf = new Uint32Array(img.data.buffer);
+      const mmStepX = mw / MM_RES;
+      const mmStepY = mh / MM_RES;
+      const mmDx = Math.max(1, Math.round(mmStepX));
+      const mmDy = Math.max(1, Math.round(mmStepY));
       for (let gy = 0; gy < MM_RES; gy++) {
-        const my = gy * 9;
+        const my = Math.min(mh - 1, Math.floor(gy * mmStepY));
         for (let gx = 0; gx < MM_RES; gx++) {
-          const mx = gx * 9;
+          const mx = Math.min(mw - 1, Math.floor(gx * mmStepX));
           const idx = my * mw + mx;
           const h = hmap[idx];
           const mat = matMap[idx];
-          const hL = mx >= 9 ? hmap[my * mw + (mx - 9)] : h;
-          const hU = my >= 9 ? hmap[(my - 9) * mw + mx] : h;
+          const hL = mx >= mmDx ? hmap[my * mw + (mx - mmDx)] : h;
+          const hU = my >= mmDy ? hmap[(my - mmDy) * mw + mx] : h;
           const isContour = !isWetMat(mat) && mat !== MAT_BRIDGE &&
             (Math.floor(h / 10) !== Math.floor(hL / 10) || Math.floor(h / 10) !== Math.floor(hU / 10));
 
