@@ -178,13 +178,6 @@
       const c = getCellAt(wx, wy);
       if (!c || !isWetMat(c.mat)) return { vx: 0, vy: 0, speed: 0 };
 
-      let drainFactor = 1.0;
-      if (wy >= 740) {
-        const t = Math.max(0, Math.min(1, (wy - 740) / 220));
-        drainFactor = 1 - t * t * (3 - 2 * t);
-        if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
-      }
-
       const shallowScale = c.mat === MAT_SHALLOW ? 0.55 : 1.0;
 
       const paintedFlow = samplePaintedVector(customFlowVx, customFlowVy, wx, wy);
@@ -195,6 +188,13 @@
       }
       if (window.__IS_STUDIO__) {
         return { vx: 0, vy: 0, speed: 0 };
+      }
+
+      let drainFactor = 1.0;
+      if (wy >= 740) {
+        const t = Math.max(0, Math.min(1, (wy - 740) / 220));
+        drainFactor = 1 - t * t * (3 - 2 * t);
+        if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
       }
 
       if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
@@ -293,7 +293,7 @@
         }
       }
 
-      if (!found) {
+      if (!found && !window.__IS_STUDIO__) {
         const tx = 128 + (Math.random() * 2 - 1) * 44;
         const ty = 200 + (Math.random() * 2 - 1) * 140;
         const c = getCellAt(tx, ty);
@@ -999,12 +999,14 @@
         const pMeta = PROP_COLLIDER_META[p.modelKey];
         if (p.destroyed || (p.modelKey !== 'campfire' && !(pMeta && pMeta.isFire))) continue;
         const S = cat.scale || 1;
+        const fireR = ((pMeta && pMeta.r) || 7.2) * (p.scale || 1);
+        const fireH = ((pMeta && pMeta.h) || 13) * (p.scale || 1) + 1;
         const dCat = Math.hypot(cat.x - p.wx, cat.y - p.wy);
-        if (dCat < 7.2 + 3.0 * S + 0.3 && cat.z <= p.wz + 14) {
+        if (dCat < fireR + 3.0 * S + 0.3 && cat.z <= p.wz + fireH) {
           // Empurra radialmente para fora do colisor sólido para nunca travar em cima
           const nx = dCat > 0.1 ? (cat.x - p.wx) / dCat : 0;
           const ny = dCat > 0.1 ? (cat.y - p.wy) / dCat : 1;
-          const safeDist = 7.2 + 3.0 * S + 1.8;
+          const safeDist = fireR + 3.0 * S + 1.8;
           cat.x = p.wx + nx * safeDist;
           cat.y = p.wy + ny * safeDist;
           if (cat.hurtTimer <= 0) {

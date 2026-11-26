@@ -415,7 +415,9 @@
       }
 
       function slug(name) {
-        return String(name || 'modelo').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'modelo';
+        return String(name || 'modelo')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'modelo';
       }
 
       const KIND_ICONS = {
@@ -556,7 +558,8 @@
             pal = (d.palette || d.pal || DEFAULT_PAL).slice(0, 36);
             for (let z = 0; z < Math.min(N, slices.length); z++)
               for (let y = 0; y < N; y++) {
-                const row = typeof decodeRLERow === 'function' ? decodeRLERow(slices[z][y]) : slices[z][y];
+                const rawRow = (slices[z] && slices[z][y]) || '';
+                const row = typeof decodeRLERow === 'function' ? decodeRLERow(rawRow) : rawRow;
                 for (let x = 0; x < N; x++) vol[z][y * N + x] = parseInt(row[x], 36) || 0;
               }
             if (d.name) document.getElementById('mName').value = d.name;
@@ -574,6 +577,7 @@
           }
         };
         reader.readAsText(f);
+        e.target.value = '';
       });
 
       // ---------- Abas Mundo <-> Modelador ----------

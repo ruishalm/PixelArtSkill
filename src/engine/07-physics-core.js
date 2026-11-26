@@ -639,52 +639,53 @@
         dr.vz = 10;
         return;
       }
-      let best = null;
+      let bestDrop = null;
+      let bestProp = null;
       let bestD = 24;
       for (let i = 0; i < debrisDrops.length; i++) {
         const dr = debrisDrops[i];
         if (dr.carried) continue;
         const d = Math.hypot(dr.x - cat.x, dr.y - cat.y);
-        if (d < bestD && Math.abs(dr.z - cat.z) < 20) { bestD = d; best = dr; }
+        if (d < bestD && Math.abs(dr.z - cat.z) < 20) { bestD = d; bestDrop = dr; }
       }
-      if (!best) {
-        // Toras e itens pegáveis plantados no mapa viram drop pegável
-        for (let i = 0; i < props.length; i++) {
-          const p = props[i];
-          const pm = PROP_COLLIDER_META[p.modelKey];
-          if (p.destroyed || (p.modelKey !== 'wood_log' && !(pm && pm.pickable))) continue;
-          const d = Math.hypot(p.wx - cat.x, p.wy - cat.y);
-          if (d < bestD && Math.abs(p.wz - cat.z) < 20) {
-            bestD = d;
-            best = p;
-          }
+      // Toras e itens pegáveis plantados no mapa viram drop pegável (compete por distância real)
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        const pm = PROP_COLLIDER_META[p.modelKey];
+        if (p.destroyed || (p.modelKey !== 'wood_log' && !(pm && pm.pickable))) continue;
+        const d = Math.hypot(p.wx - cat.x, p.wy - cat.y);
+        if (d < bestD && Math.abs(p.wz - cat.z) < 20) {
+          bestD = d;
+          bestDrop = null;
+          bestProp = p;
         }
-        if (best) {
-          best.destroyed = true;
-          if (best.solidCollider) best.solidCollider.disabled = true;
-          if (best.platCollider) best.platCollider.disabled = true;
-          if (best.modelKey === 'wood_log') {
-            spawnPushableLog(best.wx, best.wy, best.selfAngle || 0);
-          } else {
-            const pc = getCellAt(best.wx, best.wy);
-            debrisDrops.push({
-              modelKey: best.modelKey,
-              model: best.model,
-              x: best.wx,
-              y: best.wy,
-              z: best.wz,
-              vx: 0, vy: 0, vz: 0,
-              scale: best.scale || 0.85,
-              selfAngle: best.selfAngle || 0,
-              spin: 0,
-              bounces: 0,
-              inWater: !!(pc && isWetMat(pc.mat)),
-              persistent: true,
-              life: 999999
-            });
-          }
-          best = debrisDrops[debrisDrops.length - 1];
+      }
+      let best = bestDrop;
+      if (bestProp) {
+        bestProp.destroyed = true;
+        if (bestProp.solidCollider) bestProp.solidCollider.disabled = true;
+        if (bestProp.platCollider) bestProp.platCollider.disabled = true;
+        if (bestProp.modelKey === 'wood_log') {
+          spawnPushableLog(bestProp.wx, bestProp.wy, bestProp.selfAngle || 0);
+        } else {
+          const pc = getCellAt(bestProp.wx, bestProp.wy);
+          debrisDrops.push({
+            modelKey: bestProp.modelKey,
+            model: bestProp.model,
+            x: bestProp.wx,
+            y: bestProp.wy,
+            z: bestProp.wz,
+            vx: 0, vy: 0, vz: 0,
+            scale: bestProp.scale || 0.85,
+            selfAngle: bestProp.selfAngle || 0,
+            spin: 0,
+            bounces: 0,
+            inWater: !!(pc && isWetMat(pc.mat)),
+            persistent: true,
+            life: 999999
+          });
         }
+        best = debrisDrops[debrisDrops.length - 1];
       }
       if (!best) return;
       best.carried = true;
@@ -713,23 +714,29 @@
     }
 
     window.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      const modelerEl = document.getElementById('modelerView');
+      if (modelerEl && modelerEl.classList && modelerEl.classList.contains('show')) return;
+
       const code = e.code;
       keys[code] = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
         e.preventDefault();
       }
+      if (window.__STUDIO_EDIT_MODE__) return;
       if (code === 'Space') {
         cat.jumpBuffer = 0.13;
       } else if (code === 'KeyR') {
         triggerAction();
-      } else if (code === 'KeyF' && !window.__STUDIO_EDIT_MODE__) {
+      } else if (code === 'KeyF') {
         if (!throwCarriedItem()) triggerAction();
-      } else if (code === 'KeyG' && !window.__STUDIO_EDIT_MODE__) {
+      } else if (code === 'KeyG') {
         pickOrDropItem();
       } else if (code === 'KeyC') {
         resetCatToSpawn();
       } else if (code === 'KeyM') {
-        triggerMeow();
+        if (typeof triggerMeow === 'function') triggerMeow();
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -1265,24 +1272,26 @@
 
       refreshWaterObstaclesCache();
 
-      // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul
-      floatingSpawnAccum += dt;
-      const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
-      const spawnInterval = nearWaterfall ? 0.28 : 0.55;
-      if (floatingSpawnAccum >= spawnInterval) {
-        floatingSpawnAccum = 0;
-        if (floatingItems.length < 64) {
-          spawnFloatingPetal(
-            232 + (Math.random() - 0.5) * 14,
-            -495 + (Math.random() - 0.5) * 14,
-            null,
-            -2
-          );
-          if (Math.hypot(camX - 118, camY - 220) < 420) {
-            spawnFloatingPetal(134 + (Math.random() - 0.5) * 32, 165 + (Math.random() - 0.5) * 14, null, -2);
-          }
-          if (Math.hypot(camX - 132, camY + 80) < 420) {
-            spawnFloatingPetal(126 + (Math.random() - 0.5) * 32, -130 + (Math.random() - 0.5) * 14, null, -2);
+      // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul (Vale Felino)
+      if (!window.__IS_STUDIO__) {
+        floatingSpawnAccum += dt;
+        const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
+        const spawnInterval = nearWaterfall ? 0.28 : 0.55;
+        if (floatingSpawnAccum >= spawnInterval) {
+          floatingSpawnAccum = 0;
+          if (floatingItems.length < 64) {
+            spawnFloatingPetal(
+              232 + (Math.random() - 0.5) * 14,
+              -495 + (Math.random() - 0.5) * 14,
+              null,
+              -2
+            );
+            if (Math.hypot(camX - 118, camY - 220) < 420) {
+              spawnFloatingPetal(134 + (Math.random() - 0.5) * 32, 165 + (Math.random() - 0.5) * 14, null, -2);
+            }
+            if (Math.hypot(camX - 132, camY + 80) < 420) {
+              spawnFloatingPetal(126 + (Math.random() - 0.5) * 32, -130 + (Math.random() - 0.5) * 14, null, -2);
+            }
           }
         }
       }
@@ -1470,7 +1479,7 @@
             }
             dr.inWater = false;
           }
-          if (!dc || dr.y > 860) dr.life = Math.min(dr.life, 0.5);
+          if (!dc || (!window.__IS_STUDIO__ && dr.y > 860)) dr.life = Math.min(dr.life, 0.5);
         } else {
           // Gatinho empurra troncos/pedras na margem para dentro da água!
           const dCatDr = Math.hypot(dr.x - cat.x, dr.y - cat.y);
@@ -1565,7 +1574,7 @@
             }
           }
         }
-        stepWaterfallSim(1 / 30, true);
+        if (!window.__IS_STUDIO__) stepWaterfallSim(1 / 30, true);
         stepWaveBuffer();
       }
       stepThermodynamics(dt);
