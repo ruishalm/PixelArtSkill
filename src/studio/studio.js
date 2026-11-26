@@ -1,5 +1,5 @@
     // =========================================================================
-    // VOXEL 3D STUDIO CONTROLLER (EDITAR <-> TESTAR, PINCÃ‰IS, VETORES, HÃBRIDO)
+    // VOXEL 3D STUDIO CONTROLLER (EDITAR <-> TESTAR, PINCÉIS, VETORES, HÍBRIDO)
     // =========================================================================
     (function initStudio() {
       if (!document.getElementById('studioOverlay')) return;
@@ -22,7 +22,7 @@
       let selStartWorld = null;
       const undoStack = [];
 
-      // RemoÃ§Ã£o segura de props: desativa colisores ligados ao prop e tira das listas da engine
+      // Remoção segura de props: desativa colisores ligados ao prop e tira das listas da engine
       function removePropObj(p) {
         const i = props.indexOf(p);
         if (i >= 0) props.splice(i, 1);
@@ -67,7 +67,7 @@
         bakeMinimapBase();
       }
 
-      // Garante que props iniciais possam ser diferenciados de props fixos do usuÃ¡rio
+      // Garante que props iniciais possam ser diferenciados de props fixos do usuário
       for (let i = 0; i < props.length; i++) {
         props[i].pinned = false;
       }
@@ -101,7 +101,7 @@
         };
       }
 
-      // 2. AplicaÃ§Ã£o dos pincÃ©is de terreno, material, vento, correnteza e pin
+      // 2. Aplicação dos pincéis de terreno, material, vento, correnteza e pin
       function applyTerrainBrush(wx, wy, isInitialClick) {
         const cx = Math.floor(wx / VOX + HALF_GRID);
         const cy = Math.floor(wy / VOX + HALF_GRID);
@@ -353,7 +353,7 @@
         try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
       });
 
-      // 4. Tick de EdiÃ§Ã£o (cÃ¢mera livre WASD + vento/Ã¡gua vivos) & Overlay 2D
+      // 4. Tick de Edição (câmera livre WASD + vento/água vivos) & Overlay 2D
       window.__STUDIO_TICK__ = function(dt) {
         fluidTime += dt;
         const speed = 220 * dt;
@@ -388,7 +388,7 @@
         octx.clearRect(0, 0, w, h);
         if (!window.__STUDIO_EDIT_MODE__) return;
 
-        // Desenha setas de vento e correnteza pintados na regiÃ£o visÃ­vel
+        // Desenha setas de vento e correnteza pintados na região visível
         const stepDraw = 2;
         for (let gy = 0; gy < FLOW_GRID_W; gy += stepDraw) {
           for (let gx = 0; gx < FLOW_GRID_W; gx += stepDraw) {
@@ -424,7 +424,7 @@
           }
         }
 
-        // VisualizaÃ§Ã£o sutil das cÃ©lulas travadas (pinnedMask) prÃ³ximas Ã  cÃ¢mera
+        // Visualização sutil das células travadas (pinnedMask) próximas à câmera
         const cMinMx = Math.max(0, Math.floor((camX - 240) / VOX + HALF_GRID));
         const cMaxMx = Math.min(mw - 1, Math.ceil((camX + 240) / VOX + HALF_GRID));
         const cMinMy = Math.max(0, Math.floor((camY - 240) / VOX + HALF_GRID));
@@ -452,7 +452,7 @@
           octx.stroke();
         }
 
-        // RetÃ¢ngulo de seleÃ§Ã£o 3D
+        // Retângulo de seleção 3D
         if (selectionBox) {
           const corners = [
             [selectionBox.x0, selectionBox.y0],
@@ -495,7 +495,7 @@
         }
       };
 
-      // 5. Terreno Procedural GenÃ©rico do Studio (sem mapa hardcodado do Vale Felino)
+      // 5. Terreno Procedural Genérico do Studio (sem mapa hardcodado do Vale Felino)
       function generateProceduralStudioTerrain(seed) {
         setWorldSeed(seed);
         document.getElementById('seedInput').value = WORLD_SEED;
@@ -503,7 +503,7 @@
         if (typeof npcs !== 'undefined') npcs.length = 0;
         if (typeof fishes !== 'undefined') fishes.length = 0;
 
-        const fs = 1080 / mw; // mantÃ©m o "tamanho" das feiÃ§Ãµes: diorama pequeno mostra o relevo inteiro
+        const fs = 1080 / mw; // mantém o "tamanho" das feições: diorama pequeno mostra o relevo inteiro
         for (let my = 0; my < mh; my++) {
           const wy = (my - HALF_GRID) * VOX;
           for (let mx = 0; mx < mw; mx++) {
@@ -525,7 +525,7 @@
         }
       }
 
-      // 6. RegeneraÃ§Ã£o Total vs HÃ­brida (preserva Ã¡reas e props fixos)
+      // 6. Regeneração Total vs Híbrida (preserva áreas e props fixos)
       function regenWorld(newSeed, preservePinned) {
         let savedH = null, savedM = null, savedProps = null;
         if (preservePinned) {
@@ -549,7 +549,7 @@
               matMap[i] = savedM[i];
             }
           }
-          // TransiÃ§Ã£o suave de 3 cÃ©lulas na borda das Ã¡reas fixas
+          // Transição suave de 3 células na borda das áreas fixas
           const copyH = new Float32Array(hmap);
           for (let y = 2; y < mh - 2; y++) {
             for (let x = 2; x < mw - 2; x++) {
@@ -574,7 +574,7 @@
         clearAllProps();
         resetTerrainLayers();
 
-        // Espalha natureza procedural leve fora das Ã¡reas travadas
+        // Espalha natureza procedural leve fora das áreas travadas
         const rng = mulberry32((WORLD_SEED ^ 0x9E3779B9) >>> 0);
         const propCount = Math.max(8, Math.round(140 * (mw / 1080) * (mh / 1080)));
         const spread = HALF_WORLD * 0.72;
@@ -615,23 +615,23 @@
         window.__STUDIO_EDIT_MODE__ = true;
         document.getElementById('btnModeEdit').className = 'mode-btn active-edit';
         document.getElementById('btnModeTest').className = 'mode-btn';
-        document.getElementById('helpPill').textContent = 'Editar: Clique/Arraste aplica pincel â€¢ BotÃ£o Direito orbita â€¢ WASD move cÃ¢mera â€¢ Q/E gira';
+        document.getElementById('helpPill').textContent = 'Editar: Clique/Arraste aplica pincel • Botão Direito orbita • WASD move câmera • Q/E gira';
       });
       document.getElementById('btnModeTest').addEventListener('click', () => {
         window.__STUDIO_EDIT_MODE__ = false;
         document.getElementById('btnModeEdit').className = 'mode-btn';
         document.getElementById('btnModeTest').className = 'mode-btn active-test';
         const c = getCellAt(camX, camY);
-        teleportToWorld(camX, camY, 'Testando cena! ðŸ±', c ? c.h : 0);
-        document.getElementById('helpPill').textContent = 'Testar: WASD anda â€¢ EspaÃ§o pula â€¢ Clique usa ferramenta â€¢ Volte para Editar quando quiser';
+        teleportToWorld(camX, camY, 'Testando cena! 🐱', c ? c.h : 0);
+        document.getElementById('helpPill').textContent = 'Testar: WASD anda • Espaço pula • Clique usa ferramenta • Volte para Editar quando quiser';
       });
 
-      document.querySelectorAll('.tool-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          activeTool = btn.dataset.tool;
-        });
+      document.querySelector('.sidebar').addEventListener('click', (e) => {
+        const btn = e.target.closest('.tool-btn');
+        if (!btn || !btn.dataset.tool) return;
+        document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeTool = btn.dataset.tool;
       });
 
       const bindSlider = (id, valId, fmt, fn) => {
@@ -784,6 +784,7 @@
           avatar: cat.avatar || 'cat',
           avatarScale: cat.scale,
           tuning: { ...ENGINE_TUNING, gravity: GRAVITY },
+          customAssets: window.StudioModeler ? window.StudioModeler.exportAssets() : [],
           pinnedCells,
           windSparse,
           flowSparse,
@@ -806,6 +807,9 @@
             GRAVITY = data.tuning.gravity;
             JUMP_VEL = Math.sqrt(2 * GRAVITY * 35.0);
           }
+        }
+        if (window.StudioModeler && Array.isArray(data.customAssets)) {
+          window.StudioModeler.importAssets(data.customAssets);
         }
         regenWorld(data.seed || DEFAULT_WORLD_SEED, false);
         if (Array.isArray(data.pinnedCells)) {

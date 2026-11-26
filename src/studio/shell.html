@@ -235,11 +235,28 @@
     .biome-toast.show { opacity: 1; }
     .hidden-compat { display: none; }
     .play-only .topbar, .play-only .sidebar, .play-only .coord-pill { display: none; }
+
+    /* Modelador Voxel */
+    .modeler { flex: 1; display: none; min-height: 0; background: #1C1917; overflow: auto; padding: 12px; gap: 14px; flex-wrap: wrap; align-content: flex-start; }
+    .modeler.show { display: flex; }
+    .mpanel { background: #292524; border: 1px solid #44403C; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .mrow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    #mEditCanvas, #mPreviewCanvas { background: #0C0A09; border: 1px solid #57534E; border-radius: 6px; image-rendering: pixelated; touch-action: none; }
+    #mEditCanvas { cursor: crosshair; }
+    #mPreviewCanvas { cursor: grab; }
+    .swatch { width: 22px; height: 22px; border-radius: 5px; border: 2px solid #44403C; cursor: pointer; padding: 0; }
+    .swatch.sel { border-color: #FBBF24; box-shadow: 0 0 0 2px #78350F; }
+    .swatch.clear { background: repeating-conic-gradient(#57534E 0% 25%, #292524 0% 50%) 50% / 8px 8px; }
+    .mtxt { background: #1C1917; border: 1px solid #57534E; color: #F5F5F4; border-radius: 6px; padding: 4px 7px; font-size: 12px; }
   </style>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">🧱 Voxel 3D Studio</div>
+    <div class="mode-switch">
+      <button id="btnTabWorld" class="mode-btn active-edit">🌍 Mundo</button>
+      <button id="btnTabModeler" class="mode-btn">🧱 Modelador</button>
+    </div>
     <div class="top-group">
       <div class="mode-switch">
         <button id="btnModeEdit" class="mode-btn active-edit">✏️ Editar</button>
@@ -328,6 +345,12 @@
       </div>
 
       <div>
+        <div class="sec-title">Meus Modelos (do Modelador)</div>
+        <div class="tool-grid" id="customAssetGrid"></div>
+        <div id="customAssetEmpty" style="font-size:10px;color:#78716C;">Nenhum ainda — crie na aba 🧱 Modelador.</div>
+      </div>
+
+      <div>
         <div class="sec-title">Pincel</div>
         <div class="slider-row">
           <div class="slider-head"><span>Raio</span><span id="valRadius">16</span></div>
@@ -387,6 +410,71 @@
       </div>
     </main>
   </div>
+
+  <section id="modelerView" class="modeler">
+    <div class="mpanel">
+      <div class="sec-title">Editor de Fatias (camada Z)</div>
+      <div class="mrow">
+        <span style="font-size:11px;color:#A8A29E;">Tamanho:</span>
+        <select id="mSize" class="mtxt"><option>16</option><option selected>24</option><option>32</option></select>
+        <button class="btn" id="mBtnNew">🆕 Novo</button>
+        <button class="btn" id="mBtnClearLayer">🧹 Limpar camada</button>
+      </div>
+      <canvas id="mEditCanvas" width="480" height="480"></canvas>
+      <div class="mrow">
+        <button class="btn" id="mZDown">▼</button>
+        <input id="mZ" type="range" min="0" max="23" value="0" style="flex:1;min-width:140px;" />
+        <button class="btn" id="mZUp">▲</button>
+        <span id="mZLabel" style="font-size:11px;color:#FDE68A;font-weight:700;">Z 0 / 23</span>
+      </div>
+      <div class="mrow">
+        <button class="btn" id="mCopyDown">📋 Copiar da camada abaixo</button>
+        <button class="btn" id="mCopyUp">⬆️ Duplicar p/ cima</button>
+      </div>
+    </div>
+
+    <div class="mpanel" style="min-width:250px;">
+      <div class="sec-title">Ferramentas</div>
+      <div class="tool-grid" id="mTools">
+        <button class="tool-btn active" data-mtool="pencil">✏️ Lápis</button>
+        <button class="tool-btn" data-mtool="eraser">🧽 Borracha</button>
+        <button class="tool-btn" data-mtool="fill">🪣 Balde</button>
+        <button class="tool-btn" data-mtool="pick">💉 Conta-gotas</button>
+      </div>
+      <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mMirror" checked /> 🪞 Espelho X (simetria)</label>
+      <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mOnion" checked /> 🧅 Onion skin (camada abaixo)</label>
+      <div class="sec-title">Paleta</div>
+      <div class="mrow" id="mPalette"></div>
+      <div class="mrow">
+        <span style="font-size:11px;color:#A8A29E;">Editar cor:</span>
+        <input type="color" id="mColor" value="#ffffff" />
+      </div>
+    </div>
+
+    <div class="mpanel">
+      <div class="sec-title">Preview 3D ao vivo</div>
+      <canvas id="mPreviewCanvas" width="300" height="300"></canvas>
+      <div class="mrow">
+        <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mAutoSpin" checked /> Auto-girar</label>
+        <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mRefHuman" /> 🧍 Referência (humanoide 28u)</label>
+      </div>
+      <div class="sec-title">Salvar na biblioteca do mundo</div>
+      <div class="mrow">
+        <input id="mName" class="mtxt" type="text" placeholder="Nome do modelo" value="meu_modelo" style="width:150px;" />
+        <select id="mKind" class="mtxt">
+          <option value="decor">Decoração (sem colisão)</option>
+          <option value="solid">Sólido (colide)</option>
+        </select>
+      </div>
+      <div class="mrow">
+        <button class="btn accent" id="mBtnSave">➕ Salvar na Biblioteca</button>
+        <button class="btn" id="mBtnExport">💾 Exportar modelo .json</button>
+        <button class="btn" id="mBtnImport">📂 Importar modelo</button>
+        <input id="mFileImport" type="file" accept=".json" style="display:none" />
+      </div>
+      <div id="mMsg" style="font-size:11px;color:#86EFAC;min-height:14px;"></div>
+    </div>
+  </section>
 
   <!-- Compat stubs para HUD de jogo quando no modo Testar -->
   <div class="hidden-compat">
