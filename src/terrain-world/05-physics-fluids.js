@@ -2260,7 +2260,7 @@
           const S = cat.scale || 1;
           dr.x = cat.x - Math.sin(cat.selfAngle) * 4 * S;
           dr.y = cat.y + Math.cos(cat.selfAngle) * 4 * S;
-          dr.z = cat.z + 17 * S;
+          dr.z = cat.z + (cat.avatar === 'human' ? 31 : 17) * S;
           dr.vx = 0; dr.vy = 0; dr.vz = 0;
           dr.selfAngle = cat.selfAngle;
           dr.inWater = false;
