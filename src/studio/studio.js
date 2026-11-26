@@ -38,6 +38,7 @@
         platformColliders.length = 0;
         fallingBodies.length = 0;
         debrisDrops.length = 0;
+        carriedDrop = null;
       }
       function resetTerrainLayers() {
         shadowMask.fill(0);
