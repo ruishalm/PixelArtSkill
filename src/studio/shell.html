@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Voxel 3D Studio — Editor de Mundo & Física</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #1C1917;
+      color: #F5F5F4;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar {
+      height: 46px;
+      background: #292524;
+      border-bottom: 1px solid #44403C;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      gap: 10px;
+      z-index: 30;
+    }
+    .brand {
+      font-weight: 800;
+      font-size: 14px;
+      color: #FDE68A;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+    }
+    .top-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+    .mode-switch {
+      display: flex;
+      background: #1C1917;
+      border: 1px solid #57534E;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: #D6D3D1;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .mode-btn.active-edit { background: #D97706; color: #FFFBEB; }
+    .mode-btn.active-test { background: #16A34A; color: #F0FDF4; }
+    .seed-input {
+      width: 78px;
+      background: #1C1917;
+      border: 1px solid #57534E;
+      color: #FDE68A;
+      border-radius: 6px;
+      padding: 4px 7px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .btn {
+      background: #44403C;
+      color: #F5F5F4;
+      border: 1px solid #57534E;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #57534E; }
+    .btn.accent { background: #B45309; border-color: #D97706; color: #FFFBEB; }
+    .btn.accent:hover { background: #D97706; }
+    .btn.pin { background: #0369A1; border-color: #0EA5E9; color: #F0F9FF; }
+    .btn.pin:hover { background: #0284C7; }
+
+    .workspace {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      position: relative;
+    }
+    .sidebar {
+      width: 268px;
+      background: #292524;
+      border-right: 1px solid #44403C;
+      padding: 10px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      z-index: 20;
+    }
+    .sec-title {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #A8A29E;
+      margin-bottom: 5px;
+    }
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 5px;
+    }
+    .tool-btn {
+      background: #1C1917;
+      color: #E7E5E4;
+      border: 1px solid #44403C;
+      border-radius: 7px;
+      padding: 6px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+    }
+    .tool-btn:hover { border-color: #78716C; }
+    .tool-btn.active {
+      background: #78350F;
+      border-color: #F59E0B;
+      color: #FEF3C7;
+    }
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-bottom: 6px;
+    }
+    .slider-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #D6D3D1;
+    }
+    .slider-head span:last-child { color: #FDE68A; font-weight: 700; }
+    input[type="range"] { width: 100%; accent-color: #F59E0B; cursor: pointer; }
+
+    .stage {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #86CFF4 0%, #CBEBFA 55%, #F4E9D7 100%);
+    }
+    #viewport {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+      cursor: crosshair;
+    }
+    #studioOverlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: block;
+      z-index: 5;
+    }
+    .coord-pill {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      background: rgba(28, 25, 23, 0.86);
+      color: #FDE68A;
+      border: 1px solid #57534E;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      z-index: 15;
+      pointer-events: none;
+    }
+    .help-pill {
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      background: rgba(28, 25, 23, 0.78);
+      color: #E7E5E4;
+      border: 1px solid #57534E;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 11px;
+      z-index: 15;
+      pointer-events: none;
+    }
+    .minimap-wrap {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      background: rgba(28, 25, 23, 0.88);
+      border: 2px solid #57534E;
+      border-radius: 10px;
+      padding: 5px;
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    #minimapCanvas { width: 112px; height: 112px; border-radius: 6px; image-rendering: pixelated; }
+    .mm-label { font-size: 10px; color: #D6D3D1; font-weight: 700; }
+    .biome-toast {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(28, 25, 23, 0.9);
+      color: #FEF3C7;
+      border: 1px solid #F59E0B;
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      z-index: 25;
+    }
+    .biome-toast.show { opacity: 1; }
+    .hidden-compat { display: none; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🧱 Voxel 3D Studio</div>
+    <div class="top-group">
+      <div class="mode-switch">
+        <button id="btnModeEdit" class="mode-btn active-edit">✏️ Editar</button>
+        <button id="btnModeTest" class="mode-btn">🐱 Testar</button>
+      </div>
+      <span style="font-size:11px;color:#A8A29E;">Seed:</span>
+      <input id="seedInput" class="seed-input" type="number" value="1337" />
+      <button id="btnRandSeed" class="btn" title="Nova seed aleatória">🎲 Nova</button>
+      <button id="btnRegenAll" class="btn accent" title="Regenerar mundo inteiro">🔄 Regenerar Tudo</button>
+      <button id="btnRegenUnpinned" class="btn pin" title="Mantém terreno e props fixos e regenera o resto">📌 Regenerar Resto</button>
+    </div>
+    <div class="top-group">
+      <button id="btnExportJson" class="btn">💾 Exportar .json</button>
+      <button id="btnImportJson" class="btn">📂 Importar .json</button>
+      <input id="fileImportInput" type="file" accept=".json" style="display:none" />
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div>
+        <div class="sec-title">Relevo</div>
+        <div class="tool-grid">
+          <button class="tool-btn active" data-tool="raise">⛰️ Subir</button>
+          <button class="tool-btn" data-tool="lower">🕳️ Descer</button>
+          <button class="tool-btn" data-tool="flatten">📐 Aplainar</button>
+          <button class="tool-btn" data-tool="smooth">〰️ Suavizar</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-title">Materiais</div>
+        <div class="tool-grid">
+          <button class="tool-btn" data-tool="mat_grass">🌿 Grama</button>
+          <button class="tool-btn" data-tool="mat_sand">🏖️ Areia</button>
+          <button class="tool-btn" data-tool="mat_peak">❄️ Neve/Pico</button>
+          <button class="tool-btn" data-tool="mat_path">🪨 Caminho</button>
+          <button class="tool-btn" data-tool="mat_water">💧 Água</button>
+          <button class="tool-btn" data-tool="mat_shallow">🌊 Raso</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-title">Vento &amp; Correnteza</div>
+        <div class="tool-grid">
+          <button class="tool-btn" data-tool="wind">💨 Vento</button>
+          <button class="tool-btn" data-tool="flow">🌀 Correnteza</button>
+          <button class="tool-btn" data-tool="vec_erase" style="grid-column: span 2;">🧹 Limpar Vetores na Área</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-title">Camada Híbrida (Fixo vs Procedural)</div>
+        <div class="tool-grid">
+          <button class="tool-btn" data-tool="pin">📌 Fixar Área</button>
+          <button class="tool-btn" data-tool="unpin">🔓 Destravar</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-title">Props (Nascem Fixos)</div>
+        <div class="tool-grid">
+          <button class="tool-btn" data-tool="prop_pine_tree">🌲 Pinheiro</button>
+          <button class="tool-btn" data-tool="prop_sakura_oak">🌸 Cerejeira</button>
+          <button class="tool-btn" data-tool="prop_campfire">🔥 Fogueira</button>
+          <button class="tool-btn" data-tool="prop_wood_log">🪵 Tora</button>
+          <button class="tool-btn" data-tool="prop_boulder_large">🪨 Pedregulho</button>
+          <button class="tool-btn" data-tool="prop_cozy_cabin">🏡 Cabana</button>
+          <button class="tool-btn" data-tool="prop_banner">🚩 Bandeira</button>
+          <button class="tool-btn" data-tool="prop_erase">🗑️ Apagar Prop</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-title">Pincel</div>
+        <div class="slider-row">
+          <div class="slider-head"><span>Raio</span><span id="valRadius">16</span></div>
+          <input id="slRadius" type="range" min="4" max="48" step="2" value="16" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-head"><span>Força</span><span id="valStrength">1.2</span></div>
+          <input id="slStrength" type="range" min="0.2" max="3.0" step="0.1" value="1.2" />
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-title">Física ao Vivo</div>
+        <div class="slider-row">
+          <div class="slider-head"><span>Vento Global</span><span id="valWind">1.0x</span></div>
+          <input id="slWind" type="range" min="0" max="2.5" step="0.1" value="1.0" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-head"><span>Gravidade</span><span id="valGravity">1200</span></div>
+          <input id="slGravity" type="range" min="400" max="2000" step="50" value="1200" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-head"><span>Resfriamento Fogo</span><span id="valCool">0.22</span></div>
+          <input id="slCool" type="range" min="0.05" max="0.80" step="0.01" value="0.22" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-head"><span>Talus Areia</span><span id="valTalus">2</span></div>
+          <input id="slTalus" type="range" min="1" max="5" step="1" value="2" />
+        </div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <canvas id="viewport"></canvas>
+      <canvas id="studioOverlay"></canvas>
+      <div class="help-pill" id="helpPill">Editar: Clique/Arraste aplica pincel • Botão Direito orbita • WASD move câmera • Q/E gira</div>
+      <div class="coord-pill" id="coordPill">wx: 0, wy: 0, z: 0</div>
+      <div class="biome-toast" id="biomeToast"></div>
+      <div class="minimap-wrap">
+        <canvas id="minimapCanvas" width="120" height="120"></canvas>
+        <div class="mm-label" id="biomeLabel">Vila da Clareira</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Compat stubs para HUD de jogo quando no modo Testar -->
+  <div class="hidden-compat">
+    <span id="fishCounter"></span>
+    <span id="biomeCounter"></span>
+    <span id="statElev"></span>
+    <span id="statObstacle"></span>
+    <button id="btnTouchJump"></button>
+  </div>
+
+  <script>
+    const CAT_SLICES_DATA = __CAT_SLICES__;
+    const HATS_PACK_DATA = __HATS_PACK__;
+    const CHICKEN_DATA = __CHICKEN_DATA__;
+    const PROPS_PACK_DATA = __PROPS_PACK__;
+  </script>
+  <script>
+__STUDIO_JS_BUNDLE__
+  </script>
+</body>
+</html>
+

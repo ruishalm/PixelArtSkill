@@ -4,8 +4,8 @@
     const DEFAULT_WORLD_SEED = 1337;
     const _rawSeedParam = new URLSearchParams(window.location.search).get('seed');
     const _parsedSeed = _rawSeedParam !== null ? parseInt(_rawSeedParam, 10) : NaN;
-    const WORLD_SEED = Number.isFinite(_parsedSeed) ? (_parsedSeed >>> 0) : DEFAULT_WORLD_SEED;
-    const SEED_HASH_MIX = WORLD_SEED === DEFAULT_WORLD_SEED
+    let WORLD_SEED = Number.isFinite(_parsedSeed) ? (_parsedSeed >>> 0) : DEFAULT_WORLD_SEED;
+    let SEED_HASH_MIX = WORLD_SEED === DEFAULT_WORLD_SEED
       ? 0
       : (Math.imul(WORLD_SEED ^ (WORLD_SEED >>> 16), 2246822519) | 0);
 
@@ -18,7 +18,15 @@
         return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
       };
     }
-    const worldRand = mulberry32(WORLD_SEED);
+    let worldRand = mulberry32(WORLD_SEED);
+
+    function setWorldSeed(seed) {
+      WORLD_SEED = Number.isFinite(seed) ? (seed >>> 0) : DEFAULT_WORLD_SEED;
+      SEED_HASH_MIX = WORLD_SEED === DEFAULT_WORLD_SEED
+        ? 0
+        : (Math.imul(WORLD_SEED ^ (WORLD_SEED >>> 16), 2246822519) | 0);
+      worldRand = mulberry32(WORLD_SEED);
+    }
 
     function hash2i(ix, iy) {
       let n = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + SEED_HASH_MIX) | 0;

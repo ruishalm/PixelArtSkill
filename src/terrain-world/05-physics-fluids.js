@@ -339,6 +339,36 @@
     // =========================================================================
     // 8B. FLUIDOS 2.5D: WINDFIELD + WATERFLOW (DRAIN SINK) + WAVEBUFFER
     // =========================================================================
+    const ENGINE_TUNING = {
+      windMul: 1.0,
+      fireCool: 0.22,
+      sandTalus: 2,
+      rockTalus: 3
+    };
+    const FLOW_GRID_STEP = 8;
+    const FLOW_GRID_W = Math.ceil(mw / FLOW_GRID_STEP); // 135x135 sobre 1080x1080
+    const customWindVx = new Float32Array(FLOW_GRID_W * FLOW_GRID_W);
+    const customWindVy = new Float32Array(FLOW_GRID_W * FLOW_GRID_W);
+    const customFlowVx = new Float32Array(FLOW_GRID_W * FLOW_GRID_W);
+    const customFlowVy = new Float32Array(FLOW_GRID_W * FLOW_GRID_W);
+
+    function samplePaintedVector(arrVx, arrVy, wx, wy) {
+      const gx = (wx / VOX + HALF_GRID) / FLOW_GRID_STEP;
+      const gy = (wy / VOX + HALF_GRID) / FLOW_GRID_STEP;
+      if (gx < 0 || gy < 0 || gx >= FLOW_GRID_W - 1 || gy >= FLOW_GRID_W - 1) return null;
+      const ix = gx | 0;
+      const iy = gy | 0;
+      const fx = gx - ix;
+      const fy = gy - iy;
+      const i00 = iy * FLOW_GRID_W + ix;
+      const i10 = i00 + 1;
+      const i01 = i00 + FLOW_GRID_W;
+      const i11 = i01 + 1;
+      const vx = (arrVx[i00] * (1 - fx) + arrVx[i10] * fx) * (1 - fy) + (arrVx[i01] * (1 - fx) + arrVx[i11] * fx) * fy;
+      const vy = (arrVy[i00] * (1 - fx) + arrVy[i10] * fx) * (1 - fy) + (arrVy[i01] * (1 - fx) + arrVy[i11] * fx) * fy;
+      return { vx, vy };
+    }
+
     let fluidTime = 0;
     const windImpulses = [];
     function injectWindImpulse(wx, wy, vx, vy, r = 42, life = 0.75) {
@@ -375,6 +405,13 @@
           vy += imp.vy * w;
         }
       }
+      const paintedWind = samplePaintedVector(customWindVx, customWindVy, wx, wy);
+      if (paintedWind) {
+        vx += paintedWind.vx;
+        vy += paintedWind.vy;
+      }
+      vx *= ENGINE_TUNING.windMul;
+      vy *= ENGINE_TUNING.windMul;
       return { wx: vx, wy: vy, mag: Math.hypot(vx, vy) };
     }
 
@@ -507,7 +544,13 @@
           bestTy = seg.ty;
         }
       }
-      // Lagos isolados e áreas fora do leito do rio (~64u) são água parada (sem correnteza)
+      // Lagos isolados e áreas fora do leito do rio (~64u) são água parada (sem correnteza), salvo correnteza pintada no Studio
+      const paintedFlow = samplePaintedVector(customFlowVx, customFlowVy, wx, wy);
+      if (paintedFlow && (paintedFlow.vx * paintedFlow.vx + paintedFlow.vy * paintedFlow.vy) > 0.04) {
+        const pvx = paintedFlow.vx * shallowScale;
+        const pvy = paintedFlow.vy * shallowScale;
+        return { vx: pvx, vy: pvy, speed: Math.hypot(pvx, pvy) };
+      }
       if (bestD2 > 64 * 64) {
         return { vx: 0, vy: 0, speed: 0 };
       }
@@ -1453,6 +1496,7 @@
     let pointerDownX = 0;
     let pointerDownY = 0;
     canvas.addEventListener('pointerdown', (e) => {
+      if (window.__STUDIO_EDIT_MODE__) return;
       isDraggingCam = true;
       dragStartX = e.clientX;
       pointerDownX = e.clientX;
@@ -1460,6 +1504,7 @@
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', (e) => {
+      if (window.__STUDIO_EDIT_MODE__) return;
       if (!isDraggingCam) return;
       const dx = e.clientX - dragStartX;
       dragStartX = e.clientX;
@@ -1467,6 +1512,7 @@
       turn = targetTurn;
     });
     canvas.addEventListener('pointerup', (e) => {
+      if (window.__STUDIO_EDIT_MODE__) return;
       if (isDraggingCam && Math.hypot(e.clientX - pointerDownX, e.clientY - pointerDownY) < 6) {
         triggerAction();
       }
@@ -1476,25 +1522,30 @@
 
     const btnSkin = document.getElementById('btnSkin');
     const btnHat = document.getElementById('btnHat');
-    btnSkin.addEventListener('click', () => {
+    if (btnSkin) btnSkin.addEventListener('click', () => {
       cat.skinIdx = (cat.skinIdx + 1) % CAT_SKINS.length;
       btnSkin.textContent = `🐱 ${CAT_SKINS[cat.skinIdx].name}`;
       sfxMeow();
     });
-    btnHat.addEventListener('click', () => {
+    if (btnHat) btnHat.addEventListener('click', () => {
       cat.hatIdx = (cat.hatIdx + 1) % HAT_PRESETS.length;
       btnHat.textContent = `🎩 ${HAT_PRESETS[cat.hatIdx].name}`;
     });
-    document.getElementById('btnTool').addEventListener('click', () => {
+    const btnToolEl = document.getElementById('btnTool');
+    if (btnToolEl) btnToolEl.addEventListener('click', () => {
       const nextIdx = (TOOL_ORDER.indexOf(equippedTool) + 1) % TOOL_ORDER.length;
       equipTool(TOOL_ORDER[nextIdx]);
     });
-    document.getElementById('btnAction').addEventListener('click', () => {
+    const btnActionEl = document.getElementById('btnAction');
+    if (btnActionEl) btnActionEl.addEventListener('click', () => {
       triggerAction();
     });
-    document.getElementById('btnRotL').addEventListener('click', () => { targetTurn += Math.PI / 4; });
-    document.getElementById('btnRotR').addEventListener('click', () => { targetTurn -= Math.PI / 4; });
-    document.getElementById('btnReset').addEventListener('click', resetCatToSpawn);
+    const btnRotLEl = document.getElementById('btnRotL');
+    if (btnRotLEl) btnRotLEl.addEventListener('click', () => { targetTurn += Math.PI / 4; });
+    const btnRotREl = document.getElementById('btnRotR');
+    if (btnRotREl) btnRotREl.addEventListener('click', () => { targetTurn -= Math.PI / 4; });
+    const btnResetEl = document.getElementById('btnReset');
+    if (btnResetEl) btnResetEl.addEventListener('click', resetCatToSpawn);
     const btnSeedEl = document.getElementById('btnSeed');
     if (btnSeedEl) {
       btnSeedEl.textContent = `🎲 Seed: ${WORLD_SEED}`;
@@ -1505,7 +1556,8 @@
         window.location.href = url.toString();
       });
     }
-    document.getElementById('btnTravel').addEventListener('click', () => {
+    const btnTravelEl = document.getElementById('btnTravel');
+    if (btnTravelEl) btnTravelEl.addEventListener('click', () => {
       travelIdx = (travelIdx + 1) % TRAVEL_SPOTS.length;
       const spot = TRAVEL_SPOTS[travelIdx];
       teleportToWorld(spot.wx, spot.wy, spot.label);
@@ -2286,7 +2338,7 @@
             const idx = row + mx;
             const mat = matMap[idx];
             if (mat !== MAT_SAND && mat !== MAT_PEAK) continue;
-            const talus = mat === MAT_SAND ? 2 : 3;
+            const talus = mat === MAT_SAND ? ENGINE_TUNING.sandTalus : ENGINE_TUNING.rockTalus;
             const h = hmap[idx];
             let lowestNb = -1;
             let lowestH = h - talus;
@@ -2540,7 +2592,7 @@
       while (thermAccum >= stepDt) {
         thermAccum -= stepDt;
         const alpha = 0.14;
-        const cool = 0.22;
+        const cool = ENGINE_TUNING.fireCool;
         const T_IGN = 42;
         for (let iy = 1; iy < THERM_H - 1; iy++) {
           const wy = thermOriginY + (iy + 0.5) * THERM_CELL;

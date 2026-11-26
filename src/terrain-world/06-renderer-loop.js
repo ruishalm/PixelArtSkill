@@ -112,9 +112,16 @@
       }
 
       const dt = Math.min(0.05, rawDt);
-      updatePhysics(dt);
+      if (!window.__STUDIO_EDIT_MODE__) {
+        updatePhysics(dt);
+      } else if (typeof window.__STUDIO_TICK__ === 'function') {
+        window.__STUDIO_TICK__(dt);
+      }
       renderScene();
       drawMinimap();
+      if (typeof window.__STUDIO_OVERLAY__ === 'function') {
+        window.__STUDIO_OVERLAY__();
+      }
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
