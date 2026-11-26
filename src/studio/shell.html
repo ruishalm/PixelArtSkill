@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <link rel="icon" href="data:," />
+ <title>Voxel 3D Studio — Editor de Mundo & Física</title>
+ <link rel="stylesheet" href="studio.css" />
+</head>
+<body>
+ <header class="topbar">
+  <div class="brand">🧱 Voxel 3D Studio</div>
+  <div class="mode-switch">
+   <button id="btnTabWorld" class="mode-btn active-edit">🌍 Mundo</button>
+   <button id="btnTabModeler" class="mode-btn">🧱 Modelador</button>
+  </div>
+  <div class="top-group">
+   <div class="mode-switch">
+    <button id="btnModeEdit" class="mode-btn active-edit">✏️ Editar</button>
+    <button id="btnModeTest" class="mode-btn">🐱 Testar</button>
+   </div>
+   <span style="font-size:11px;color:#A8A29E;">Mapa:</span>
+   <select id="gridSizeSelect" class="seed-input" style="width:128px;" title="Tamanho do mapa (recarrega o Studio)">
+    <option value="128">128 · Micro Diorama</option>
+    <option value="256">256 · Diorama</option>
+    <option value="512">512 · Médio</option>
+    <option value="1080">1080 · Grande</option>
+   </select>
+   <span style="font-size:11px;color:#A8A29E;">Base:</span>
+   <select id="baseKindSelect" class="seed-input" style="width:126px;" title="Base inicial ao regenerar">
+    <option value="island" selected>🏝️ Ilha Procedural</option>
+    <option value="continental">🏔️ Continental</option>
+    <option value="flat">🟩 Plano Vazio</option>
+   </select>
+   <span style="font-size:11px;color:#A8A29E;">Seed:</span>
+   <input id="seedInput" class="seed-input" type="number" value="1337" />
+   <button id="btnRandSeed" class="btn" title="Nova seed aleatória">🎲 Nova</button>
+   <button id="btnNewFlat" class="btn" title="Começar mapa plano vazio do zero">🆕 Plano</button>
+   <button id="btnRegenAll" class="btn accent" title="Regenerar mundo inteiro">🔄 Regenerar</button>
+   <button id="btnRegenUnpinned" class="btn pin" title="Mantém terreno e props fixos e regenera o resto">📌 Resto</button>
+   <button id="btnUndo" class="btn" title="Desfazer última pincelada (Ctrl+Z)">↩️ Desfazer</button>
+   <button id="btnRedo" class="btn" title="Refazer última ação (Ctrl+Y)">↪️ Refazer</button>
+  </div>
+  <div class="top-group">
+   <button id="btnExportJson" class="btn">💾 Exportar .json</button>
+   <button id="btnPublishHtml" class="btn accent" title="Gera um .html autocontido que abre direto em modo Testar">🚀 Publicar .html</button>
+   <button id="btnImportJson" class="btn">📂 Importar .json</button>
+   <input id="fileImportInput" type="file" accept=".json" style="display:none" />
+  </div>
+ </header>
+ <div class="workspace">
+  <aside class="sidebar">
+   <div>
+    <div class="sec-title">Relevo &amp; Borracha</div>
+    <div class="tool-grid">
+     <button class="tool-btn active" data-tool="raise">⛰️ Subir</button>
+     <button class="tool-btn" data-tool="lower">🕳️ Descer</button>
+     <button class="tool-btn" data-tool="flatten">📐 Aplainar</button>
+     <button class="tool-btn" data-tool="smooth">〰️ Suavizar</button>
+     <button class="tool-btn" data-tool="eraser" style="grid-column: span 2;">🧽 Borracha (Zera Relevo/Props/Pin)</button>
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Materiais</div>
+    <div class="tool-grid">
+     <button class="tool-btn" data-tool="mat_grass">🌿 Grama</button>
+     <button class="tool-btn" data-tool="mat_sand">🏖️ Areia</button>
+     <button class="tool-btn" data-tool="mat_peak">❄️ Neve/Pico</button>
+     <button class="tool-btn" data-tool="mat_path">🪨 Caminho</button>
+     <button class="tool-btn" data-tool="mat_water">💧 Água</button>
+     <button class="tool-btn" data-tool="mat_shallow">🌊 Raso</button>
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Vento &amp; Correnteza</div>
+    <div class="tool-grid">
+     <button class="tool-btn" data-tool="wind">💨 Vento</button>
+     <button class="tool-btn" data-tool="flow">🌀 Correnteza</button>
+     <button class="tool-btn" data-tool="vec_erase" style="grid-column: span 2;">🧹 Limpar Vetores na Área</button>
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Camada Híbrida (Fixo vs Procedural)</div>
+    <div class="tool-grid">
+     <select id="genModeSelect" class="seed-input" style="width:100%;grid-column:span 2;" title="Modo de geração">
+      <option value="procedural">🎲 Tudo Procedural</option>
+      <option value="hybrid" selected>🔀 Híbrido (Fixo + Proc.)</option>
+      <option value="manual">📌 Tudo Fixo (Manual)</option>
+     </select>
+     <button class="tool-btn" data-tool="select_box" style="grid-column: span 2;">⬚ Selecionar Retângulo</button>
+     <button class="tool-btn" data-tool="pin">📌 Fixar Pincel</button>
+     <button class="tool-btn" data-tool="unpin">🔓 Destravar</button>
+     <button id="btnPinSel" class="btn pin" style="font-size:10px;">📌 Travar Seleção</button>
+     <button id="btnUnpinSel" class="btn" style="font-size:10px;">🔓 Destravar Sel.</button>
+     <button id="btnPinAll" class="btn pin" style="font-size:10px;">🔒 Travar Tudo</button>
+     <button id="btnUnpinAll" class="btn" style="font-size:10px;">🔓 Destravar Tudo</button>
+     <button id="btnClearSel" class="btn" style="grid-column: span 2; font-size:10px;">🧹 Limpar Seleção / Área</button>
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Props (Nascem Fixos)</div>
+    <div class="tool-grid">
+     <button class="tool-btn" data-tool="prop_pine_tree">🌲 Pinheiro</button>
+     <button class="tool-btn" data-tool="prop_sakura_oak">🌸 Cerejeira</button>
+     <button class="tool-btn" data-tool="prop_campfire">🔥 Fogueira</button>
+     <button class="tool-btn" data-tool="prop_wood_log">🪵 Tora</button>
+     <button class="tool-btn" data-tool="prop_boulder_large">🪨 Pedregulho</button>
+     <button class="tool-btn" data-tool="prop_cozy_cabin">🏡 Cabana</button>
+     <button class="tool-btn" data-tool="prop_erase">🗑️ Apagar Prop</button>
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Meus Modelos (do Modelador)</div>
+    <div class="tool-grid" id="customAssetGrid"></div>
+    <div id="customAssetEmpty" style="font-size:10px;color:#78716C;">Nenhum ainda — crie na aba 🧱 Modelador.</div>
+   </div>
+   <div>
+    <div class="sec-title">Pincel</div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Raio</span><span id="valRadius">16</span></div>
+     <input id="slRadius" type="range" min="4" max="48" step="2" value="16" />
+    </div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Força</span><span id="valStrength">1.2</span></div>
+     <input id="slStrength" type="range" min="0.2" max="3.0" step="0.1" value="1.2" />
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Avatar de Teste</div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Personagem</span></div>
+     <select id="avatarSelect" class="seed-input" style="width:100%;">
+      <option value="human">🧍 Humanoide Cru</option>
+      <option value="cat">🐱 Gato</option>
+     </select>
+    </div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Escala</span><span id="valAvatarScale">0.45x</span></div>
+     <input id="slAvatarScale" type="range" min="0.35" max="1.2" step="0.05" value="0.45" />
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Física ao Vivo</div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Vento Global</span><span id="valWind">1.0x</span></div>
+     <input id="slWind" type="range" min="0" max="2.5" step="0.1" value="1.0" />
+    </div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Gravidade</span><span id="valGravity">1200</span></div>
+     <input id="slGravity" type="range" min="400" max="2000" step="50" value="1200" />
+    </div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Resfriamento Fogo</span><span id="valCool">0.22</span></div>
+     <input id="slCool" type="range" min="0.05" max="0.80" step="0.01" value="0.22" />
+    </div>
+    <div class="slider-row">
+     <div class="slider-head"><span>Talus Areia</span><span id="valTalus">2</span></div>
+     <input id="slTalus" type="range" min="1" max="5" step="1" value="2" />
+    </div>
+   </div>
+  </aside>
+  <main class="stage">
+   <canvas id="viewport"></canvas>
+   <canvas id="studioOverlay"></canvas>
+   <div class="help-pill" id="helpPill">Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira</div>
+   <div class="coord-pill" id="coordPill">wx: 0, wy: 0, z: 0</div>
+   <div class="biome-toast" id="biomeToast"></div>
+   <div class="minimap-wrap">
+    <canvas id="minimapCanvas" width="120" height="120"></canvas>
+    <div class="mm-label" id="biomeLabel">Vila da Clareira</div>
+   </div>
+  </main>
+ </div>
+ <section id="modelerView" class="modeler">
+  <div class="mpanel">
+   <div class="sec-title">Editor de Fatias (camada Z)</div>
+   <div class="mrow">
+    <span style="font-size:11px;color:#A8A29E;">Tamanho:</span>
+    <select id="mSize" class="mtxt"><option>16</option><option selected>24</option><option>32</option></select>
+    <button class="btn" id="mBtnNew">🆕 Novo</button>
+    <button class="btn" id="mBtnClearLayer">🧹 Limpar camada</button>
+   </div>
+   <canvas id="mEditCanvas" width="480" height="480"></canvas>
+   <div class="mrow">
+    <button class="btn" id="mZDown">▼</button>
+    <input id="mZ" type="range" min="0" max="23" value="0" style="flex:1;min-width:140px;" />
+    <button class="btn" id="mZUp">▲</button>
+    <span id="mZLabel" style="font-size:11px;color:#FDE68A;font-weight:700;">Z 0 / 23</span>
+   </div>
+   <div class="mrow">
+    <button class="btn" id="mCopyDown">📋 Copiar da camada abaixo</button>
+    <button class="btn" id="mCopyUp">⬆️ Duplicar p/ cima</button>
+   </div>
+  </div>
+  <div class="mpanel" style="min-width:250px;">
+   <div class="sec-title">Ferramentas</div>
+   <div class="tool-grid" id="mTools">
+    <button class="tool-btn active" data-mtool="pencil">✏️ Lápis</button>
+    <button class="tool-btn" data-mtool="eraser">🧽 Borracha</button>
+    <button class="tool-btn" data-mtool="fill">🪣 Balde</button>
+    <button class="tool-btn" data-mtool="pick">💉 Conta-gotas</button>
+   </div>
+   <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mMirror" checked /> 🪞 Espelho X (simetria)</label>
+   <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mOnion" checked /> 🧅 Onion skin (camada abaixo)</label>
+   <div class="sec-title">Paleta</div>
+   <div class="mrow">
+    <span style="font-size:11px;color:#A8A29E;">Preset:</span>
+    <select id="mPalPreset" class="mtxt" style="flex:1;">
+     <option value="default">🎨 Padrão</option>
+     <option value="wood">🪵 Madeira</option>
+     <option value="foliage">🌿 Folhagem</option>
+     <option value="stone">🪨 Pedra</option>
+     <option value="character">🧍 Personagem</option>
+     <option value="pastel">🌸 Cozy Pastel</option>
+    </select>
+   </div>
+   <div class="mrow" id="mPalette"></div>
+   <div class="mrow">
+    <span style="font-size:11px;color:#A8A29E;">Editar cor:</span>
+    <input type="color" id="mColor" value="#ffffff" />
+    <button class="btn" id="mBtnAutoShade" title="Escurece a base e clareia o topo por altura Z">✨ Auto-Shading (Z)</button>
+   </div>
+  </div>
+  <div class="mpanel">
+   <div class="sec-title">Preview 3D ao vivo</div>
+   <canvas id="mPreviewCanvas" width="300" height="300"></canvas>
+   <div class="mrow">
+    <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mAutoSpin" checked /> Auto-girar</label>
+    <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mRefHuman" /> 🧍 Referência (humanoide 28u)</label>
+   </div>
+   <div class="sec-title">Salvar na biblioteca do mundo</div>
+   <div class="mrow">
+    <input id="mName" class="mtxt" type="text" placeholder="Nome do modelo" value="meu_modelo" style="width:140px;" />
+    <select id="mKind" class="mtxt">
+     <option value="decor">Decoração (sem colisão)</option>
+     <option value="solid">Sólido (colide)</option>
+     <option value="destructible">Destrutível (HP + drop)</option>
+     <option value="pickable">Item Pegável (G/F)</option>
+     <option value="foliage">Folhagem (balança no vento)</option>
+     <option value="fire">Fogo/Luz (calor + brilho)</option>
+    </select>
+   </div>
+   <div class="mrow" id="mDestrOpts" style="display:none;">
+    <span style="font-size:11px;color:#A8A29E;">HP:</span>
+    <input id="mHp" class="mtxt" type="number" min="1" max="10" value="3" style="width:48px;" />
+    <span style="font-size:11px;color:#A8A29E;">Drop:</span>
+    <select id="mDropKey" class="mtxt">
+     <option value="stone_chunk">🪨 Pedra</option>
+     <option value="wood_log">🪵 Tora</option>
+    </select>
+   </div>
+   <div class="mrow">
+    <button class="btn accent" id="mBtnSave">➕ Salvar na Biblioteca</button>
+    <button class="btn" id="mBtnExport">💾 Exportar modelo .json</button>
+    <button class="btn" id="mBtnImport">📂 Importar modelo</button>
+    <input id="mFileImport" type="file" accept=".json" style="display:none" />
+   </div>
+   <div id="mMsg" style="font-size:11px;color:#86EFAC;min-height:14px;"></div>
+  </div>
+ </section>
+ <!-- Compat stubs para HUD de jogo quando no modo Testar -->
+ <div class="hidden-compat">
+  <span id="fishCounter"></span>
+  <span id="biomeCounter"></span>
+  <span id="statElev"></span>
+  <span id="statObstacle"></span>
+  <button id="btnTouchJump"></button>
+ </div>
+ <script>window.__IS_STUDIO__ = true;</script>
+__STUDIO_SCRIPTS__
+</body>
+</html>

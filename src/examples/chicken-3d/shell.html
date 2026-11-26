@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Galinha Cocoricó 3D 🐔 — Sprite Stacking Pixel Art</title>
+  <link rel="stylesheet" href="chicken-3d.css" />
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="canvas-card">
+      <div class="header">
+        <div class="title-group">
+          <h1>🐔 Galinha Cocoricó 3D</h1>
+          <span class="tag">Sprite Stacking (16 Slices)</span>
+        </div>
+        <a href="../index.html" class="nav-btn">🏠 Voltar ao Quarto</a>
+      </div>
+
+      <canvas id="viewCanvas" width="480" height="420"></canvas>
+
+      <div class="controls">
+        <button id="btnWalk" class="btn active">🚶 Andando</button>
+        <button id="btnPeck" class="btn">🌾 Ciscando</button>
+        <button id="btnFlap" class="btn">🪽 Bater Asas</button>
+        <button id="btnLoaf" class="btn">🥚 Chocando</button>
+        <button id="btnAutoSpin" class="btn active">🔄 Girar</button>
+        <button id="btnSound" class="btn btn-sound">🔊 Có-có-ró-có!</button>
+      </div>
+
+      <div class="slider-row">
+        <span>🔍 Zoom:</span>
+        <input type="range" id="zoomSlider" min="1.2" max="3.8" step="0.1" value="2.5">
+        <span>📐 Inclinação:</span>
+        <input type="range" id="tiltSlider" min="0.4" max="0.9" step="0.05" value="0.65">
+      </div>
+
+      <div class="hint">
+        <span>🖱️ Arraste para orbitar 360° • 📜 Scroll para zoom • Clique na galinha para cocoricó!</span>
+      </div>
+    </div>
+  </div>
+
+__CHICKEN_SCRIPTS__
+</body>
+</html>

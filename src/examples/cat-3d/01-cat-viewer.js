@@ -1,0 +1,555 @@
+const PALETTE = [
+  'rgba(0,0,0,0)',       // 0: Vazio
+  '#FDFBF7',             // 1: Pelo Branco
+  '#DE864A',             // 2: Laranja (Manchas)
+  '#3B2219',             // 3: Olhos / Nariz / Boca
+  '#F2A2AB',             // 4: Rosa (Almofadinhas / Orelha interna / Marquinha Anime)
+  '#FFFFFF',             // 5: Brilho branco do olho (Olho O)
+  '#B85820',             // 6: Laranja escuro / Pontas das orelhas / Bigodes
+  '#E5E0D8',             // 7: Sombra suave
+];
+
+const OUTLINE_COLOR = '#3B2219';
+const _cvd = window.__CAT_VOXEL_DATA__ || {};
+const BODY_DATA = _cvd.BODY_SLICES;
+const PAW_DATA = _cvd.PAW_SLICES;
+
+const SLICE_W = 32;
+const SLICE_H = 32;
+const COUNT = BODY_DATA.length;
+
+function buildSliceSheet(data, w, h, pal = PALETTE) {
+  const cnt = data.length;
+  const cv = document.createElement('canvas');
+  cv.width = w * cnt;
+  cv.height = h;
+  const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+
+  for (let z = 0; z < cnt; z++) {
+    const offX = z * w;
+    const rows = data[z];
+    for (let y = 0; y < h; y++) {
+      const row = rows[y];
+      for (let x = 0; x < w; x++) {
+        const val = parseInt(row[x], 10);
+        if (val > 0 && val < pal.length) {
+          cx.fillStyle = pal[val];
+          cx.fillRect(offX + x, y, 1, 1);
+        }
+      }
+    }
+  }
+  return { sheet: cv, count: cnt, w, h };
+}
+
+const bodyModel = buildSliceSheet(BODY_DATA, 32, 32);
+const bellyModel = buildSliceSheet(_cvd.BELLY_SLICES, 32, 32);
+const pawModel = buildSliceSheet(PAW_DATA, 4, 4);
+
+const HATS = {
+  witch: buildSliceSheet(_cvd.HATS.witch, 16, 16, ['rgba(0,0,0,0)', '#221533', '#E5A93C', '#38244F']),
+  crown: buildSliceSheet(_cvd.HATS.crown, 12, 12, ['rgba(0,0,0,0)', '#F4B846', '#FFD166', '#E63946']),
+  beret: buildSliceSheet(_cvd.HATS.beret, 14, 14, ['rgba(0,0,0,0)', '#5E1428', '#B82D52', '#3D0C1A']),
+  flower: buildSliceSheet(_cvd.HATS.flower, 10, 10, ['rgba(0,0,0,0)', '#FFB7C5', '#FFD166']),
+};
+
+const canvas = document.getElementById('viewport');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// Buffer de baixa resolução (80x80)
+const LOW_W = 80;
+const LOW_H = 80;
+const lowCanvas = document.createElement('canvas');
+lowCanvas.width = LOW_W;
+lowCanvas.height = LOW_H;
+const lowCtx = lowCanvas.getContext('2d');
+lowCtx.imageSmoothingEnabled = false;
+
+const stackCanvas = document.createElement('canvas');
+stackCanvas.width = LOW_W;
+stackCanvas.height = LOW_H;
+const stackCtx = stackCanvas.getContext('2d');
+stackCtx.imageSmoothingEnabled = false;
+
+// Estado geral
+let turn = 0;
+let targetTurn = 0;
+let squash = 0.75;
+let spacing = 1.0;
+let targetSpacing = 1.0;
+let autoSpin = false;
+let walkCycle = 0;
+let idleTimer = 0;
+let currentHat = 'none';
+let currentPosture = 'walk';
+let bellyTimer = 0;
+let speech = null;
+const hearts = [];
+
+// --- ÁUDIO RETRO PROCEDURAL (Web Audio API) ---
+let audioCtx = null;
+function playMeowSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(460, now);
+    osc.frequency.exponentialRampToValueAtTime(760, now + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(540, now + 0.32);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.20, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.15, now + 0.22);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    const lfo = audioCtx.createOscillator();
+    const lfoGain = audioCtx.createGain();
+    lfo.frequency.value = 22;
+    lfoGain.gain.value = 16;
+    lfo.connect(osc.frequency);
+    lfo.start(now);
+    lfo.stop(now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.35);
+  } catch (e) {}
+}
+
+function triggerPetReactions() {
+  playMeowSound();
+  const cx = Math.floor(LOW_W / 2);
+  const cy = Math.floor(LOW_H / 2) + 14;
+
+  for (let i = 0; i < 8; i++) {
+    hearts.push({
+      x: cx + (Math.random() * 26 - 13),
+      y: cy - 10 - (Math.random() * 16),
+      alpha: 1.0
+    });
+  }
+
+  const phrases = ['Purrr... ♥', 'Miau! ♪', 'Nyaa~ ✨', 'Awnn! ♥', 'Meow~ 💕'];
+  speech = {
+    text: phrases[Math.floor(Math.random() * phrases.length)],
+    timer: 120
+  };
+
+  if (currentPosture !== 'walk') {
+    currentPosture = 'belly';
+    bellyTimer = 180;
+  } else {
+    if (Math.random() < 0.6) {
+      currentPosture = 'belly';
+      bellyTimer = 180;
+    }
+  }
+}
+
+function drawHearts() {
+  for (let i = hearts.length - 1; i >= 0; i--) {
+    const h = hearts[i];
+    h.y -= 0.6;
+    h.alpha -= 0.015;
+    if (h.alpha <= 0) {
+      hearts.splice(i, 1);
+      continue;
+    }
+    lowCtx.fillStyle = `rgba(235, 94, 120, ${h.alpha})`;
+    lowCtx.fillRect(Math.round(h.x), Math.round(h.y), 4, 4);
+    lowCtx.fillRect(Math.round(h.x - 1), Math.round(h.y - 1), 2, 2);
+    lowCtx.fillRect(Math.round(h.x + 3), Math.round(h.y - 1), 2, 2);
+  }
+}
+
+function drawLoafZzz(cx, cy) {
+  const zzzOffset = (idleTimer * 1.5) % 3;
+  const alpha = Math.max(0, 1 - (zzzOffset / 3));
+
+  lowCtx.save();
+  lowCtx.fillStyle = `rgba(100, 130, 180, ${alpha * 0.85})`;
+  lowCtx.font = 'bold 8px monospace';
+  lowCtx.fillText('Z', cx + 8 + zzzOffset * 2, cy - 20 - zzzOffset * 6);
+  if (zzzOffset > 0.8) {
+    lowCtx.fillText('z', cx + 13 + (zzzOffset - 0.8) * 3, cy - 24 - (zzzOffset - 0.8) * 8);
+  }
+  if (zzzOffset > 1.6) {
+    lowCtx.fillText('z', cx + 18 + (zzzOffset - 1.6) * 4, cy - 28 - (zzzOffset - 1.6) * 10);
+  }
+  lowCtx.restore();
+}
+
+function drawCatSpeech(cx, cy) {
+  if (!speech || speech.timer <= 0) return;
+  speech.timer--;
+
+  const text = speech.text;
+  lowCtx.save();
+  lowCtx.font = 'bold 9px sans-serif';
+  const tw = lowCtx.measureText(text).width;
+  const bw = tw + 10;
+  const bh = 14;
+  const bx = Math.round(cx - bw / 2);
+  const by = Math.round(cy - 40);
+
+  lowCtx.fillStyle = '#FFFFFF';
+  lowCtx.strokeStyle = '#3B2219';
+  lowCtx.lineWidth = 1;
+  lowCtx.fillRect(bx, by, bw, bh);
+  lowCtx.strokeRect(bx, by, bw, bh);
+
+  lowCtx.fillStyle = '#FFFFFF';
+  lowCtx.beginPath();
+  lowCtx.moveTo(cx - 3, by + bh);
+  lowCtx.lineTo(cx, by + bh + 4);
+  lowCtx.lineTo(cx + 3, by + bh);
+  lowCtx.fill();
+
+  lowCtx.fillStyle = '#E63946';
+  lowCtx.fillText(text, bx + 5, by + 10);
+  lowCtx.restore();
+}
+
+function draw() {
+  turn += (targetTurn - turn) * 0.12;
+  spacing += (targetSpacing - spacing) * 0.1;
+
+  if (autoSpin) {
+    targetTurn += 0.012;
+  }
+
+  const activePosture = (bellyTimer > 0) ? 'belly' : currentPosture;
+  if (bellyTimer > 0) bellyTimer--;
+
+  const isWalking = (activePosture === 'walk');
+  if (isWalking) {
+    walkCycle += 0.16;
+  } else {
+    idleTimer += 0.05;
+  }
+
+  stackCtx.clearRect(0, 0, LOW_W, LOW_H);
+
+  const cx = Math.floor(LOW_W / 2);
+  const cy = Math.floor(LOW_H / 2) + 14;
+  const originX = Math.floor(SLICE_W / 2);
+  const originY = Math.floor(SLICE_H / 2);
+
+  const t = walkCycle;
+  const cosA = Math.cos(turn);
+  const sinA = Math.sin(turn);
+
+  function renderPaw(lx, ly, lift, stride, pawZ = 0, angleOffset = 0) {
+    const px = cx + (lx * cosA - (ly + stride) * sinA);
+    const py = cy + (lx * sinA + (ly + stride) * cosA) * squash - (lift + pawZ) * spacing;
+    const originPaw = 2;
+
+    for (let z = 0; z < 2; z++) {
+      stackCtx.save();
+      stackCtx.translate(Math.round(px), Math.round(py - z * spacing));
+      stackCtx.scale(1, squash);
+      stackCtx.rotate(turn + angleOffset);
+      stackCtx.drawImage(
+        pawModel.sheet,
+        z * 4, 0, 4, 4,
+        -originPaw, -originPaw, 4, 4
+      );
+      stackCtx.restore();
+    }
+  }
+
+  function renderHat(headZ, headPitchOffset = 0, rollOffset = 0) {
+    if (!currentHat || currentHat === 'none') return;
+    const hm = HATS[currentHat];
+    if (!hm) return;
+
+    const hx = cx - (4.5 + headPitchOffset) * sinA;
+    const hy = cy + (4.5 + headPitchOffset) * cosA * squash - headZ * spacing;
+    const originH = Math.floor(hm.w / 2);
+
+    for (let z = 0; z < hm.count; z++) {
+      stackCtx.save();
+      stackCtx.translate(Math.round(hx), Math.round(hy - z * spacing));
+      stackCtx.scale(1, squash);
+      stackCtx.rotate(turn + rollOffset);
+      stackCtx.drawImage(
+        hm.sheet,
+        z * hm.w, 0, hm.w, hm.h,
+        -originH, -originH, hm.w, hm.h
+      );
+      stackCtx.restore();
+    }
+  }
+
+  if (activePosture === 'belly') {
+    // === BARRIGUINHA (BELLY ROLL) COM CABECINHA DOBRADA OLHANDO PRA BARRIGA ===
+    const bellyWiggle = Math.sin(idleTimer * 4) * 0.05;
+
+    for (let z = 0; z < bellyModel.count; z++) {
+      stackCtx.save();
+      stackCtx.translate(cx, Math.round(cy - (z * spacing + 0.5)));
+      stackCtx.scale(1, squash);
+      stackCtx.rotate(turn + bellyWiggle);
+      stackCtx.drawImage(
+        bellyModel.sheet,
+        z * SLICE_W, 0, SLICE_W, SLICE_H,
+        -originX, -originY, SLICE_W, SLICE_H
+      );
+      stackCtx.restore();
+    }
+
+    const pawTime = idleTimer * 5;
+    const pBL = Math.sin(pawTime) * 1.5;
+    const pBR = Math.sin(pawTime + 1.2) * 1.5;
+    const pFL = Math.sin(pawTime + 2.4) * 1.5;
+    const pFR = Math.sin(pawTime + 3.6) * 1.5;
+
+    renderPaw(-4.0, -4.0, 0, 0, 7.5 + pBL, 0.4);
+    renderPaw( 3.0, -4.0, 0, 0, 7.5 + pBR, -0.4);
+    renderPaw(-4.0,  2.5, 0, 0, 8.0 + pFL, 0.3);
+    renderPaw( 3.0,  2.5, 0, 0, 8.0 + pFR, -0.3);
+
+    renderHat(7.2, 3.5, 0.2);
+
+  } else if (activePosture === 'loaf') {
+    // === PÃOZINHO / DEITAR ===
+    const loafBreathe = Math.sin(idleTimer * 1.8) * 0.35;
+    for (let z = 0; z < COUNT; z++) {
+      stackCtx.save();
+      stackCtx.translate(cx, Math.round(cy - (z * spacing - 2.2 + loafBreathe)));
+      stackCtx.scale(1, squash);
+      stackCtx.rotate(turn);
+      stackCtx.drawImage(
+        bodyModel.sheet,
+        z * SLICE_W, 0, SLICE_W, SLICE_H,
+        -originX, -originY, SLICE_W, SLICE_H
+      );
+      stackCtx.restore();
+    }
+    renderHat(12.0 + loafBreathe);
+
+  } else if (activePosture === 'sit') {
+    // === SENTAR ===
+    renderPaw(-4.5, 3.5, 0, 0);
+    renderPaw( 3.5, 3.5, 0, 0);
+
+    const sitBreathe = Math.sin(idleTimer * 2.0) * 0.3;
+    for (let z = 0; z < COUNT; z++) {
+      stackCtx.save();
+      stackCtx.translate(cx, Math.round(cy - (z * spacing - 1.2 + sitBreathe)));
+      stackCtx.scale(1, squash);
+      stackCtx.rotate(turn);
+      stackCtx.drawImage(
+        bodyModel.sheet,
+        z * SLICE_W, 0, SLICE_W, SLICE_H,
+        -originX, -originY, SLICE_W, SLICE_H
+      );
+      stackCtx.restore();
+    }
+    renderHat(13.2 + sitBreathe);
+
+  } else {
+    // === ANDAR ===
+    const liftFL = Math.max(0, Math.sin(t) * 3.5);
+    const strideFL = -Math.cos(t) * 2.5;
+
+    const liftBR = Math.max(0, Math.sin(t + 0.3) * 3.5);
+    const strideBR = -Math.cos(t + 0.3) * 2.5;
+
+    const liftFR = Math.max(0, Math.sin(t + Math.PI) * 3.5);
+    const strideFR = -Math.cos(t + Math.PI) * 2.5;
+
+    const liftBL = Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.5);
+    const strideBL = -Math.cos(t + Math.PI + 0.3) * 2.5;
+
+    const bodyBob = Math.abs(Math.sin(t * 2)) * 0.8;
+    const bodyRoll = Math.sin(t) * 0.04;
+
+    renderPaw(-4.5, -7.5, liftBL, strideBL);
+    renderPaw( 3.5, -7.5, liftBR, strideBR);
+    renderPaw(-4.5,  3.5, liftFL, strideFL);
+    renderPaw( 3.5,  3.5, liftFR, strideFR);
+
+    for (let z = 0; z < COUNT; z++) {
+      stackCtx.save();
+      stackCtx.translate(cx, Math.round(cy - (z * spacing + bodyBob)));
+      stackCtx.scale(1, squash);
+      stackCtx.rotate(turn + bodyRoll);
+      stackCtx.drawImage(
+        bodyModel.sheet,
+        z * SLICE_W, 0, SLICE_W, SLICE_H,
+        -originX, -originY, SLICE_W, SLICE_H
+      );
+      stackCtx.restore();
+    }
+    renderHat(14.8 + bodyBob, 0, bodyRoll);
+  }
+
+  // Fundo suave
+  lowCtx.fillStyle = '#FAF7F2';
+  lowCtx.fillRect(0, 0, LOW_W, LOW_H);
+
+  // Sombra sob o gatinho
+  lowCtx.save();
+  lowCtx.translate(cx, cy + 2);
+  lowCtx.scale(1, 0.42);
+  lowCtx.beginPath();
+  lowCtx.arc(0, 0, 16, 0, Math.PI * 2);
+  lowCtx.fillStyle = 'rgba(74, 46, 27, 0.15)';
+  lowCtx.fill();
+  lowCtx.restore();
+
+  // Dilatação de contorno único
+  const offsets = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const outlineCanvas = document.createElement('canvas');
+  outlineCanvas.width = LOW_W;
+  outlineCanvas.height = LOW_H;
+  const outCtx = outlineCanvas.getContext('2d');
+  outCtx.imageSmoothingEnabled = false;
+
+  for (const [dx, dy] of offsets) {
+    outCtx.drawImage(stackCanvas, dx, dy);
+  }
+  outCtx.globalCompositeOperation = 'source-in';
+  outCtx.fillStyle = OUTLINE_COLOR;
+  outCtx.fillRect(0, 0, LOW_W, LOW_H);
+
+  lowCtx.drawImage(outlineCanvas, 0, 0);
+  lowCtx.drawImage(stackCanvas, 0, 0);
+
+  // Efeitos de Zzz, Corações e Balão
+  if (activePosture === 'loaf') drawLoafZzz(cx, cy);
+  drawHearts();
+  drawCatSpeech(cx, cy);
+
+  // Upscale nítido
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(lowCanvas, 0, 0, canvas.width, canvas.height);
+
+  requestAnimationFrame(draw);
+}
+
+draw();
+
+// Controles de rotação com mouse e touch
+let isDragging = false;
+let lastX = 0;
+let pointerDownPos = { x: 0, y: 0 };
+
+canvas.addEventListener('pointerdown', (e) => {
+  isDragging = true;
+  lastX = e.clientX;
+  pointerDownPos = { x: e.clientX, y: e.clientY };
+  autoSpin = false;
+  document.getElementById('btnAutoSpin').classList.remove('active');
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (!isDragging) return;
+  const dx = e.clientX - lastX;
+  lastX = e.clientX;
+  targetTurn += dx * 0.02;
+});
+
+window.addEventListener('pointerup', (e) => {
+  if (isDragging) {
+    const dMove = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+    if (dMove < 6) {
+      triggerPetReactions();
+    }
+  }
+  isDragging = false;
+});
+
+// Presets de visualização
+document.getElementById('btnFront').addEventListener('click', () => {
+  targetTurn = 0;
+  autoSpin = false;
+  btnAutoSpin.classList.remove('active');
+});
+
+document.getElementById('btnIso').addEventListener('click', () => {
+  targetTurn = Math.PI * 0.25;
+  autoSpin = false;
+  btnAutoSpin.classList.remove('active');
+});
+
+document.getElementById('btnSide').addEventListener('click', () => {
+  targetTurn = Math.PI * 0.5;
+  autoSpin = false;
+  btnAutoSpin.classList.remove('active');
+});
+
+document.getElementById('btnBack').addEventListener('click', () => {
+  targetTurn = Math.PI;
+  autoSpin = false;
+  btnAutoSpin.classList.remove('active');
+});
+
+const btnAutoSpin = document.getElementById('btnAutoSpin');
+btnAutoSpin.addEventListener('click', () => {
+  autoSpin = !autoSpin;
+  btnAutoSpin.classList.toggle('active', autoSpin);
+});
+
+// Chapéus
+const hatKeys = ['none', 'witch', 'crown', 'beret', 'flower'];
+const hatLabels = {
+  none: '🎩 Chapéu: Nenhum',
+  witch: '🧙 Bruxo',
+  crown: '👑 Coroa',
+  beret: '🧑‍🎨 Boina',
+  flower: '🌸 Sakura'
+};
+let hatIdx = 0;
+const btnHat = document.getElementById('btnHat');
+btnHat.addEventListener('click', () => {
+  hatIdx = (hatIdx + 1) % hatKeys.length;
+  currentHat = hatKeys[hatIdx];
+  btnHat.textContent = hatLabels[currentHat];
+});
+
+// Posturas
+const postures = [
+  { key: 'walk', label: '🐾 Modo: Andando' },
+  { key: 'sit', label: '🐱 Sentado' },
+  { key: 'loaf', label: '🍞 Pãozinho' },
+  { key: 'belly', label: '💖 Barriguinha' }
+];
+let postureIdx = 0;
+const btnPosture = document.getElementById('btnPosture');
+btnPosture.addEventListener('click', () => {
+  postureIdx = (postureIdx + 1) % postures.length;
+  currentPosture = postures[postureIdx].key;
+  btnPosture.textContent = postures[postureIdx].label;
+});
+
+// Carinho
+document.getElementById('btnPet').addEventListener('click', () => {
+  triggerPetReactions();
+});
+
+const btnSlices = document.getElementById('btnSlices');
+let exploded = false;
+btnSlices.addEventListener('click', () => {
+  exploded = !exploded;
+  targetSpacing = exploded ? 3.0 : 1.0;
+  btnSlices.classList.toggle('active', exploded);
+});
+
+const squashSlider = document.getElementById('squashSlider');
+squashSlider.addEventListener('input', (e) => {
+  squash = parseFloat(e.target.value);
+});

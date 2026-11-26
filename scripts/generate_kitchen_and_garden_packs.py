@@ -3,7 +3,6 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
-EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 def make_grid(w, h, fill=0):
     return [[fill for _ in range(w)] for _ in range(h)]
@@ -242,7 +241,7 @@ for z in range(8):
     b_slices.append(g)
 k_pack['fruit_bowl'] = to_strings(b_slices)
 
-with open(os.path.join(VOXELS_DIR, 'kitchen_pack.json'), 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'kitchen_pack.json'), 'w', encoding='utf-8', newline='\n') as f:
     json.dump(k_pack, f, indent=2)
 print("SUCCESS: kitchen_pack.json generated with wall-to-wall counter and big square table!")
 
@@ -430,6 +429,6 @@ for z in range(8):
     fb_slices.append(g)
 g_pack['flower_bed'] = to_strings(fb_slices)
 
-with open(os.path.join(VOXELS_DIR, 'garden_pack.json'), 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'garden_pack.json'), 'w', encoding='utf-8', newline='\n') as f:
     json.dump(g_pack, f, indent=2)
 print("SUCCESS: garden_pack.json generated with giant oak, upright tire swing, and flowerbeds!")
