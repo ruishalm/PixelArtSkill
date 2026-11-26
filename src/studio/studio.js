@@ -643,6 +643,8 @@
         });
       };
       bindSlider('slRadius', 'valRadius', v => `${v}`, v => { brushRadius = v; });
+      cat.scale = 0.45; // proporção realista frente a casas/árvores (no Vale Felino segue 1.0)
+      bindSlider('slAvatarScale', 'valAvatarScale', v => `${v.toFixed(2)}x`, v => { cat.scale = v; });
       bindSlider('slStrength', 'valStrength', v => v.toFixed(1), v => { brushStrength = v; });
       bindSlider('slWind', 'valWind', v => `${v.toFixed(1)}x`, v => { ENGINE_TUNING.windMul = v; });
       bindSlider('slGravity', 'valGravity', v => `${v}`, v => {
