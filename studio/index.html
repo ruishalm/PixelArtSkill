@@ -5416,6 +5416,76 @@
       }
     }
 
+    // Interação [Pegar / Soltar / Arremessar]: carrega drops (toras, pedras) acima da cabeça
+    let carriedDrop = null;
+
+    function pickOrDropItem() {
+      const fx = -Math.sin(cat.selfAngle);
+      const fy = Math.cos(cat.selfAngle);
+      if (carriedDrop) {
+        const dr = carriedDrop;
+        carriedDrop = null;
+        dr.carried = false;
+        dr.x = cat.x + fx * 7 * (cat.scale || 1);
+        dr.y = cat.y + fy * 7 * (cat.scale || 1);
+        dr.vx = fx * 14;
+        dr.vy = fy * 14;
+        dr.vz = 10;
+        return;
+      }
+      let best = null;
+      let bestD = 24;
+      for (let i = 0; i < debrisDrops.length; i++) {
+        const dr = debrisDrops[i];
+        if (dr.carried) continue;
+        const d = Math.hypot(dr.x - cat.x, dr.y - cat.y);
+        if (d < bestD && Math.abs(dr.z - cat.z) < 20) { bestD = d; best = dr; }
+      }
+      if (!best) {
+        // Toras plantadas no mapa viram drop pegável
+        for (let i = 0; i < props.length; i++) {
+          const p = props[i];
+          if (p.destroyed || p.modelKey !== 'wood_log') continue;
+          const d = Math.hypot(p.wx - cat.x, p.wy - cat.y);
+          if (d < bestD && Math.abs(p.wz - cat.z) < 20) {
+            bestD = d;
+            best = p;
+          }
+        }
+        if (best) {
+          best.destroyed = true;
+          if (best.solidCollider) best.solidCollider.disabled = true;
+          if (best.platCollider) best.platCollider.disabled = true;
+          spawnPushableLog(best.wx, best.wy, best.selfAngle || 0);
+          best = debrisDrops[debrisDrops.length - 1];
+        }
+      }
+      if (!best) return;
+      best.carried = true;
+      best.inWater = false;
+      best.vx = 0; best.vy = 0; best.vz = 0;
+      best.life = Math.max(best.life, 30);
+      carriedDrop = best;
+      catSpeak('Peguei!', 70);
+    }
+
+    function throwCarriedItem() {
+      if (!carriedDrop) return false;
+      const dr = carriedDrop;
+      const fx = -Math.sin(cat.selfAngle);
+      const fy = Math.cos(cat.selfAngle);
+      carriedDrop = null;
+      dr.carried = false;
+      dr.x = cat.x + fx * 6 * (cat.scale || 1);
+      dr.y = cat.y + fy * 6 * (cat.scale || 1);
+      dr.vx = fx * 110;
+      dr.vy = fy * 110;
+      dr.vz = 85;
+      dr.spin = 5;
+      injectWindImpulse(dr.x, dr.y, fx * 1.6, fy * 1.6, 30, 0.4);
+      return true;
+    }
+
     window.addEventListener('keydown', (e) => {
       const code = e.code;
       keys[code] = true;
@@ -5426,6 +5496,10 @@
         cat.jumpBuffer = 0.13;
       } else if (code === 'KeyR') {
         triggerAction();
+      } else if (code === 'KeyF' && !window.__STUDIO_EDIT_MODE__) {
+        if (!throwCarriedItem()) triggerAction();
+      } else if (code === 'KeyG' && !window.__STUDIO_EDIT_MODE__) {
+        pickOrDropItem();
       } else if (code === 'KeyC') {
         resetCatToSpawn();
       } else if (code === 'KeyM') {
@@ -6174,6 +6248,17 @@
           debrisDrops.splice(i, 1);
           continue;
         }
+        if (dr.carried) {
+          const S = cat.scale || 1;
+          dr.x = cat.x - Math.sin(cat.selfAngle) * 4 * S;
+          dr.y = cat.y + Math.cos(cat.selfAngle) * 4 * S;
+          dr.z = cat.z + 17 * S;
+          dr.vx = 0; dr.vy = 0; dr.vz = 0;
+          dr.selfAngle = cat.selfAngle;
+          dr.inWater = false;
+          dr.life = Math.max(dr.life, 30);
+          continue;
+        }
         if (dr.inWater) {
           const flow = sampleWaterFlow(dr.x, dr.y);
           const wave = sampleWaveHeightAndGrad(dr.x, dr.y);
@@ -6915,6 +7000,7 @@
         platformColliders.length = 0;
         fallingBodies.length = 0;
         debrisDrops.length = 0;
+        carriedDrop = null;
       }
       function resetTerrainLayers() {
         shadowMask.fill(0);
