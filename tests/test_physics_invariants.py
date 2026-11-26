@@ -34,16 +34,23 @@ class TestPixelArtSkill(unittest.TestCase):
         # validate_pack raises AssertionError / ValueError on any malformed slice
         gtp.validate_pack(pack)
 
+    def _assert_utf8_lf(self, path):
+        with open(path, 'rb') as bf:
+            raw = bf.read()
+        self.assertFalse(raw.startswith(b'\xef\xbb\xbf'), f'UTF-8 BOM found in {path}')
+        self.assertNotIn(b'\r\n', raw, f'CRLF found in {path}')
+        return raw
+
     def test_02_bundler_and_js_syntax(self):
         import generate_terrain_world as gtw
 
         with tempfile.TemporaryDirectory() as tmpdir:
             out_html = os.path.join(tmpdir, 'terrain-world.html')
             gtw.build_terrain_world(out_html)
-            with open(out_html, 'r', encoding='utf-8') as f:
-                html = f.read()
+            raw = self._assert_utf8_lf(out_html)
+            html = raw.decode('utf-8')
 
-            self.assertLess(len(html.encode('utf-8')), 15 * 1024, 'terrain-world.html must stay < 15 KB')
+            self.assertLess(len(raw), 15 * 1024, 'terrain-world.html must stay < 15 KB')
             # Zero unresolved placeholders
             for token in (
                 '__TERRAIN_SCRIPTS__',
@@ -56,8 +63,12 @@ class TestPixelArtSkill(unittest.TestCase):
                 self.assertNotIn(token, html)
 
             self.assertIn('<link rel="stylesheet" href="terrain-world.css"', html)
-            self.assertTrue(os.path.isfile(os.path.join(ROOT, 'examples', 'terrain-world.css')))
-            self.assertTrue(os.path.isfile(os.path.join(ROOT, 'assets', 'voxels', 'voxel-data.js')))
+            terrain_css = os.path.join(ROOT, 'examples', 'terrain-world.css')
+            self.assertTrue(os.path.isfile(terrain_css))
+            self._assert_utf8_lf(terrain_css)
+            committed_html = os.path.join(ROOT, 'examples', 'terrain-world.html')
+            self.assertTrue(os.path.isfile(committed_html))
+            self.assertEqual(self._assert_utf8_lf(committed_html), raw, 'Committed examples/terrain-world.html is out of sync with generator')
 
             # Every <script src="..."> must exist relative to examples/ and pass node --check
             srcs = re.findall(r'<script\s+src="([^"]+)"', html)
@@ -67,10 +78,10 @@ class TestPixelArtSkill(unittest.TestCase):
             for rel_src in srcs:
                 resolved = os.path.normpath(os.path.join(examples_dir, rel_src))
                 self.assertTrue(os.path.isfile(resolved), f'Missing script target: {rel_src} -> {resolved}')
+                js_raw = self._assert_utf8_lf(resolved)
                 res = subprocess.run(['node', '--check', resolved], capture_output=True, text=True)
                 self.assertEqual(res.returncode, 0, f'Syntax error in {resolved}:\n{res.stderr}')
-                with open(resolved, 'r', encoding='utf-8') as sf:
-                    combined_parts.append(sf.read())
+                combined_parts.append(js_raw.decode('utf-8'))
 
             # Combined cross-module syntax check (catches duplicate top-level const/let)
             combined_js = os.path.join(tmpdir, 'combined_terrain.js')
@@ -346,10 +357,10 @@ console.log('SEED_OK');
         with tempfile.TemporaryDirectory() as tmpdir:
             out_html = os.path.join(tmpdir, 'studio.html')
             gs.build_studio(out_html)
-            with open(out_html, 'r', encoding='utf-8') as f:
-                studio_html = f.read()
+            raw = self._assert_utf8_lf(out_html)
+            studio_html = raw.decode('utf-8')
 
-            self.assertLess(len(studio_html.encode('utf-8')), 15 * 1024, 'studio/index.html must stay < 15 KB')
+            self.assertLess(len(raw), 15 * 1024, 'studio/index.html must stay < 15 KB')
             for token in (
                 '__STUDIO_SCRIPTS__',
                 '__STUDIO_JS_BUNDLE__',
@@ -361,24 +372,40 @@ console.log('SEED_OK');
                 self.assertNotIn(token, studio_html)
 
             self.assertIn('<link rel="stylesheet" href="studio.css"', studio_html)
-            self.assertTrue(os.path.isfile(os.path.join(ROOT, 'studio', 'studio.css')))
+            studio_css = os.path.join(ROOT, 'studio', 'studio.css')
+            self.assertTrue(os.path.isfile(studio_css))
+            self._assert_utf8_lf(studio_css)
+            committed_studio = os.path.join(ROOT, 'studio', 'index.html')
+            self.assertTrue(os.path.isfile(committed_studio))
+            self.assertEqual(self._assert_utf8_lf(committed_studio), raw, 'Committed studio/index.html is out of sync with generator')
             voxel_data_js = os.path.join(ROOT, 'assets', 'voxels', 'voxel-data.js')
             self.assertTrue(os.path.isfile(voxel_data_js))
+            self._assert_utf8_lf(voxel_data_js)
 
             # Every <script src="..."> in studio HTML must exist on disk and pass node --check
             srcs = re.findall(r'<script\s+src="([^"]+)"', studio_html)
             self.assertGreaterEqual(len(srcs), 15)
             studio_dir = os.path.join(ROOT, 'studio')
+            combined_parts = []
             for rel_src in srcs:
                 resolved = os.path.normpath(os.path.join(studio_dir, rel_src))
                 self.assertTrue(os.path.isfile(resolved), f'Missing script target: {rel_src} -> {resolved}')
+                js_raw = self._assert_utf8_lf(resolved)
                 res = subprocess.run(['node', '--check', resolved], capture_output=True, text=True)
                 self.assertEqual(res.returncode, 0, f'Syntax error in {resolved}:\n{res.stderr}')
+                combined_parts.append(js_raw.decode('utf-8'))
+
+            combined_studio = os.path.join(tmpdir, 'combined_studio.js')
+            with open(combined_studio, 'w', encoding='utf-8', newline='\n') as cf:
+                cf.write('\n'.join(combined_parts))
+            res = subprocess.run(['node', '--check', combined_studio], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f'Combined Studio JS syntax error:\n{res.stderr}')
 
         # Also validate all studio modules directly
         studio_modules = sorted(glob.glob(os.path.join(ROOT, 'src', 'studio', '*.js')))
         self.assertGreaterEqual(len(studio_modules), 4)
         for mod in studio_modules:
+            self._assert_utf8_lf(mod)
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
 
@@ -398,23 +425,23 @@ console.log('SEED_OK');
             groom.build_mega_room(room_html, idx_html)
 
             specs = [
-                (cat_html, os.path.join(ROOT, 'examples'), 'cat-3d.css', 2),
-                (chk_html, os.path.join(ROOT, 'examples'), 'chicken-3d.css', 2),
-                (room_html, os.path.join(ROOT, 'examples'), 'room-3d.css', 7),
-                (idx_html, ROOT, 'examples/room-3d.css', 7),
+                (cat_html, os.path.join(ROOT, 'examples', 'cat-3d.html'), os.path.join(ROOT, 'examples'), 'cat-3d.css', 2),
+                (chk_html, os.path.join(ROOT, 'examples', 'chicken-3d.html'), os.path.join(ROOT, 'examples'), 'chicken-3d.css', 2),
+                (room_html, os.path.join(ROOT, 'examples', 'room-3d.html'), os.path.join(ROOT, 'examples'), 'room-3d.css', 7),
+                (idx_html, os.path.join(ROOT, 'index.html'), ROOT, 'examples/room-3d.css', 7),
             ]
 
-            for html_path, base_dir, expected_css, min_scripts in specs:
-                with open(html_path, 'rb') as bf:
-                    raw = bf.read()
-                self.assertFalse(raw.startswith(b'\xef\xbb\xbf'), f'UTF-8 BOM found in {html_path}')
-                self.assertNotIn(b'\r\n', raw, f'CRLF found in {html_path}')
+            for html_path, committed_path, base_dir, expected_css, min_scripts in specs:
+                raw = self._assert_utf8_lf(html_path)
+                self.assertTrue(os.path.isfile(committed_path), f'Missing committed HTML: {committed_path}')
+                self.assertEqual(self._assert_utf8_lf(committed_path), raw, f'Committed {committed_path} is out of sync with generator')
                 html_text = raw.decode('utf-8')
                 self.assertLess(len(raw), 15 * 1024, f'{html_path} must stay < 15 KB')
                 self.assertEqual(re.findall(r'__[A-Z0-9_]+__', html_text), [])
                 self.assertIn(f'<link rel="stylesheet" href="{expected_css}"', html_text)
                 css_resolved = os.path.normpath(os.path.join(base_dir, expected_css))
                 self.assertTrue(os.path.isfile(css_resolved), f'Missing CSS: {css_resolved}')
+                self._assert_utf8_lf(css_resolved)
 
                 srcs = re.findall(r'<script\s+src="([^"]+)"', html_text)
                 self.assertGreaterEqual(len(srcs), min_scripts, f'Too few scripts in {html_path}')
@@ -422,10 +449,7 @@ console.log('SEED_OK');
                 for rel_src in srcs:
                     resolved = os.path.normpath(os.path.join(base_dir, rel_src))
                     self.assertTrue(os.path.isfile(resolved), f'Missing script target: {rel_src} -> {resolved}')
-                    with open(resolved, 'rb') as jsbf:
-                        js_raw = jsbf.read()
-                    self.assertFalse(js_raw.startswith(b'\xef\xbb\xbf'), f'UTF-8 BOM in {resolved}')
-                    self.assertNotIn(b'\r\n', js_raw, f'CRLF in {resolved}')
+                    js_raw = self._assert_utf8_lf(resolved)
                     res = subprocess.run(['node', '--check', resolved], capture_output=True, text=True)
                     self.assertEqual(res.returncode, 0, f'Syntax error in {resolved}:\n{res.stderr}')
                     parts.append(js_raw.decode('utf-8'))
