@@ -234,6 +234,7 @@
     }
     .biome-toast.show { opacity: 1; }
     .hidden-compat { display: none; }
+    .play-only .topbar, .play-only .sidebar, .play-only .coord-pill { display: none; }
   </style>
 </head>
 <body>
@@ -261,6 +262,7 @@
     </div>
     <div class="top-group">
       <button id="btnExportJson" class="btn">💾 Exportar .json</button>
+      <button id="btnPublishHtml" class="btn accent" title="Gera um .html autocontido que abre direto em modo Testar">🚀 Publicar .html</button>
       <button id="btnImportJson" class="btn">📂 Importar .json</button>
       <input id="fileImportInput" type="file" accept=".json" style="display:none" />
     </div>
