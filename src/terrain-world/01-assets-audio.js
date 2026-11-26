@@ -1,10 +1,11 @@
     // =========================================================================
     // 1. DADOS VOXEL EMBUTIDOS (Zero Fetch / 100% Autocontido)
     // =========================================================================
-    const CAT_BODY_DATA = __CAT_SLICES__;
-    const HATS_DATA = __HATS_PACK__;
-    const CHICKEN_DATA = __CHICKEN_DATA__;
-    const PROPS_DATA = __PROPS_PACK__;
+    const _vp = window.__VOXEL_PACKS__ || null;
+    const CAT_BODY_DATA = (_vp && _vp.CAT_BODY_DATA) ? _vp.CAT_BODY_DATA : __CAT_SLICES__;
+    const HATS_DATA = (_vp && _vp.HATS_DATA) ? _vp.HATS_DATA : __HATS_PACK__;
+    const CHICKEN_DATA = (_vp && _vp.CHICKEN_DATA) ? _vp.CHICKEN_DATA : __CHICKEN_DATA__;
+    const PROPS_DATA = (_vp && _vp.PROPS_DATA) ? _vp.PROPS_DATA : __PROPS_PACK__;
 
     const PAW_DATA = [
       ["1441", "4114", "1441", "1111"],
