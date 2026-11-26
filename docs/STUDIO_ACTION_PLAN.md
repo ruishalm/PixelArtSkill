@@ -157,7 +157,7 @@ flowchart TD
 
 ## 7. Status de execução
 
-> Atualizado após a modularização completa do repositório e auditoria da suíte de testes (`tests/test_physics_invariants.py`, 7/7 testes passando com `node --check`, verificação de sincronismo dos HTMLs/CSS/JS gerados e validação LF/UTF-8).
+> Atualizado após a modularização completa do repositório e auditoria da suíte de testes (`tests/test_physics_invariants.py`, 8/8 testes passando com `node --check`, verificação de sincronismo dos HTMLs/CSS/JS gerados, integridade de links, redirecionamento de scripts legados e validação LF/UTF-8).
 
 ### Feito (cada item na sua branch, mergeado em `dev-engine` / `dev-studio`)
 - **Grid configurável (parte da 1A):** `src/engine/00-world-config.js`; tamanhos 128 / 256 / 512 / 1080 escolhidos na carga (`?grid=N`), com seletor no Studio que recarrega a página. O Vale Felino continua em 1080.
@@ -174,4 +174,4 @@ flowchart TD
 ### Pendente / Observações
 - **1A (resize em runtime sem reload) e desacoplamento completo de `generate_studio.py`:** `scripts/generate_studio.py` ainda inclui `src/terrain-world/*.js` para reaproveitar estruturas compartilhadas (`hmap`, `propModels`, `loop`), mas pula toda a inicialização do Vale Felino via `window.__IS_STUDIO__`.
 - **Categoria `Avatar de Teste` no Modelador:** não implementada (o Studio usa `human` ou `cat`).
-- **Verificação manual interativa em navegador real:** a suíte automatizada (`tests/test_physics_invariants.py`) valida packs, builds, sintaxe JS combinada e invariantes matemáticos em Node; testes visuais/interativos do Studio em navegador real seguem recomendados quando houver alterações de UI.
+- **Verificação em navegador:** a suíte automatizada (`tests/test_physics_invariants.py`, 8/8) valida packs, builds, sintaxe JS combinada, links e invariantes matemáticos em Node, complementada por smoke test em Chrome headless (6 páginas HTML + round-trip do Modelador e `Publicar .html`); inspeção visual manual interativa segue recomendada após futuras alterações de UI.
