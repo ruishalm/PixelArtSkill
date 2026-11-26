@@ -228,7 +228,7 @@ pack = {
     'mug': to_strings(mug_slices)
 }
 
-with open(os.path.join(VOXELS_DIR, 'modular_desk_pack.json'), 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'modular_desk_pack.json'), 'w', encoding='utf-8', newline='\n') as f:
     json.dump(pack, f, indent=2)
 
 print("SUCCESS: modular_desk_pack.json rebuilt with 64x34 desk!")

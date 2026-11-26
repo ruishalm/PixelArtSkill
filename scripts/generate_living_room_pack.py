@@ -262,8 +262,18 @@ for z in range(30):
 
 pack['bookshelf'] = to_strings(shelf_slices)
 
-# Salva o arquivo de móveis da Sala de Estar
-with open(os.path.join(VOXELS_DIR, 'living_room_pack.json'), 'w', encoding='utf-8') as f:
+# Salva o arquivo de móveis da Sala de Estar preservando sub-itens modulares da estante (bs_*)
+out_path = os.path.join(VOXELS_DIR, 'living_room_pack.json')
+if os.path.isfile(out_path):
+    with open(out_path, 'r', encoding='utf-8') as f:
+        existing = json.load(f)
+    for k, v in existing.items():
+        if k not in pack:
+            pack[k] = v
+        elif k == 'bookshelf' and len(v) > len(pack['bookshelf']):
+            pack['bookshelf'] = v
+
+with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
     json.dump(pack, f, indent=2)
 
 print("SUCCESS: living_room_pack.json generated with Sofa, Coffee Table, TV Rack, and Bookshelf!")

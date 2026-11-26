@@ -460,6 +460,58 @@ console.log('SEED_OK');
                 res = subprocess.run(['node', '--check', combined_path], capture_output=True, text=True)
                 self.assertEqual(res.returncode, 0, f'Combined syntax error for {html_path}:\n{res.stderr}')
 
+    def test_08_repo_hygiene_links_and_legacy_redirects(self):
+        text_exts = {'.html', '.css', '.js', '.json', '.py', '.md', '.yml', '.yaml', '.txt'}
+        special_names = {'.gitattributes', '.gitignore', 'LICENSE'}
+        all_js = []
+
+        for dirpath, dirnames, filenames in os.walk(ROOT):
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in {'.git', '__pycache__', '.playwright-mcp', 'pixel-plays', 'pixelart-gaussiansplat', 'shapeshift-labs-ink-studio'}
+            ]
+            for fn in filenames:
+                if fn == 'temp_check.js':
+                    continue
+                p = os.path.join(dirpath, fn)
+                ext = os.path.splitext(fn)[1].lower()
+                if ext == '.js':
+                    all_js.append(p)
+                if ext in text_exts or fn in special_names:
+                    raw = self._assert_utf8_lf(p)
+                    raw.decode('utf-8')
+
+        self.assertGreaterEqual(len(all_js), 30)
+        for js_path in sorted(all_js):
+            res = subprocess.run(['node', '--check', js_path], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f'Syntax error in {js_path}:\n{res.stderr}')
+
+        # Legacy room scripts must redirect to generate_mega_room instead of emitting monolithic HTML
+        for legacy_name in ('generate_room.py', 'generate_full_3d_room.py'):
+            with open(os.path.join(ROOT, 'scripts', legacy_name), 'r', encoding='utf-8') as f:
+                code = f.read()
+            self.assertIn('generate_mega_room', code, f'{legacy_name} must redirect to generate_mega_room')
+            self.assertNotIn('<!DOCTYPE html>', code, f'{legacy_name} must not contain monolithic HTML')
+
+        # All local relative href/src links in HTML pages must exist on disk
+        for rel_html in (
+            'index.html',
+            'examples/terrain-world.html',
+            'examples/room-3d.html',
+            'examples/cat-3d.html',
+            'examples/chicken-3d.html',
+            'studio/index.html',
+        ):
+            html_path = os.path.join(ROOT, rel_html)
+            base_dir = os.path.dirname(html_path)
+            with open(html_path, 'r', encoding='utf-8') as f:
+                html_txt = f.read()
+            for ref in re.findall(r'(?:href|src)="([^"]+)"', html_txt):
+                if ref.startswith(('http://', 'https://', 'data:', '#')):
+                    continue
+                target = os.path.normpath(os.path.join(base_dir, ref))
+                self.assertTrue(os.path.exists(target), f'Broken link in {rel_html}: {ref} -> {target}')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
