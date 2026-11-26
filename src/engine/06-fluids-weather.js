@@ -993,10 +993,11 @@
         initThermGridAt(targetOX, targetOY);
       }
 
-      // Fontes de calor (campfires) + interação com o gatinho
+      // Fontes de calor (campfires e props 'fire') + interação com o gatinho
       for (let i = 0; i < props.length; i++) {
         const p = props[i];
-        if (p.destroyed || p.modelKey !== 'campfire') continue;
+        const pMeta = PROP_COLLIDER_META[p.modelKey];
+        if (p.destroyed || (p.modelKey !== 'campfire' && !(pMeta && pMeta.isFire))) continue;
         const S = cat.scale || 1;
         const dCat = Math.hypot(cat.x - p.wx, cat.y - p.wy);
         if (dCat < 7.2 + 3.0 * S + 0.3 && cat.z <= p.wz + 14) {
