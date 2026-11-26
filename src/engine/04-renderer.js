@@ -350,7 +350,7 @@
 
         const hAbove = Math.max(0, cat.z - cat.groundZ);
         const shrink = Math.max(0.45, 1.0 - hAbove / 55);
-        registerShadow(cat.x, cat.y, cat.groundZ, cat.z, 6.2 * shrink, 4.0 * shrink, 0.32 * shrink);
+        registerShadow(cat.x, cat.y, cat.groundZ, cat.z, 6.2 * shrink * (cat.scale || 1), 4.0 * shrink * (cat.scale || 1), 0.32 * shrink);
 
         const catBlinkHidden = cat.hurtTimer > 0 && (Math.floor((1.0 - cat.hurtTimer) * 6) % 2 === 0);
         const bob = inAir ? 0 : (cat.isWalking ? Math.abs(Math.sin(t * 2)) * 0.7 : Math.sin(cat.idleTimer * 2.4) * 0.35);
@@ -361,46 +361,50 @@
             [-4.5,  3.5, inAir ? 0.5 : (cat.isWalking ? Math.max(0, Math.sin(t) * 3.0) : 0), inAir ? 2.2 : (cat.isWalking ? -Math.cos(t) * 2.3 : 0)],
             [ 3.5,  3.5, inAir ? 0.5 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI) * 3.0) : 0), inAir ? 2.2 : (cat.isWalking ? -Math.cos(t + Math.PI) * 2.3 : 0)]
           ];
+          const S = cat.scale || 1;
           for (const [lx, ly, lift, stride] of pawSpecs) {
-            const px = cat.x + lx * cosC - (ly + stride) * sinC;
-            const py = cat.y + lx * sinC + (ly + stride) * cosC;
-            const pBaseZ = Math.round(cat.z + lift);
-            const pTopZ = pBaseZ + sk.paw.count;
+            const px = cat.x + (lx * S) * cosC - ((ly + stride) * S) * sinC;
+            const py = cat.y + (lx * S) * sinC + ((ly + stride) * S) * cosC;
+            const pBaseZ = Math.round(cat.z + lift * S);
+            const pTopZ = pBaseZ + Math.ceil(sk.paw.count * S);
             const pDp = (px - camX) * sinA + (py - camY) * cosA;
             activeDrawables.push({
               baseZ: pBaseZ,
               topZ: pTopZ,
               depth: pDp + 0.4,
               drawSlice: (z) => {
-                stampModelSlice(entityCtx, sk.paw, z - pBaseZ, px, py, z, cat.selfAngle, cat.scale, cosA, sinA);
+                const psz = Math.min(sk.paw.count - 1, Math.floor((z - pBaseZ) / S));
+                stampModelSlice(entityCtx, sk.paw, psz, px, py, z, cat.selfAngle, S, cosA, sinA);
               }
             });
             if (pTopZ > maxEntityTopZ) maxEntityTopZ = pTopZ;
           }
 
-          const bodyBaseZ = Math.round(cat.z + 1.5 + bob);
-          const bodyTopZ = bodyBaseZ + sk.body.count;
+          const bodyBaseZ = Math.round(cat.z + (1.5 + bob) * S);
+          const bodyTopZ = bodyBaseZ + Math.ceil(sk.body.count * S);
           activeDrawables.push({
             baseZ: bodyBaseZ,
             topZ: bodyTopZ,
             depth: dpCat + 0.5,
             drawSlice: (z) => {
-              stampModelSlice(entityCtx, sk.body, z - bodyBaseZ, cat.x, cat.y, z, cat.selfAngle, cat.scale, cosA, sinA);
+              const bsz = Math.min(sk.body.count - 1, Math.floor((z - bodyBaseZ) / S));
+              stampModelSlice(entityCtx, sk.body, bsz, cat.x, cat.y, z, cat.selfAngle, S, cosA, sinA);
             }
           });
           if (bodyTopZ > maxEntityTopZ) maxEntityTopZ = bodyTopZ;
 
           if (hatModel) {
-            const hx = cat.x - 4.5 * sinC;
-            const hy = cat.y + 4.5 * cosC;
-            const hatBaseZ = Math.round(cat.z + (15.0 + bob - 2.8) * cat.scale);
-            const hatTopZ = hatBaseZ + hatModel.count;
+            const hx = cat.x - 4.5 * S * sinC;
+            const hy = cat.y + 4.5 * S * cosC;
+            const hatBaseZ = Math.round(cat.z + (15.0 + bob - 2.8) * S);
+            const hatTopZ = hatBaseZ + Math.ceil(hatModel.count * S);
             activeDrawables.push({
               baseZ: hatBaseZ,
               topZ: hatTopZ,
               depth: dpCat + 0.6,
               drawSlice: (z) => {
-                stampModelSlice(entityCtx, hatModel, z - hatBaseZ, hx, hy, z, cat.selfAngle, cat.scale, cosA, sinA);
+                const hsz = Math.min(hatModel.count - 1, Math.floor((z - hatBaseZ) / S));
+                stampModelSlice(entityCtx, hatModel, hsz, hx, hy, z, cat.selfAngle, S, cosA, sinA);
               }
             });
             if (hatTopZ > maxEntityTopZ) maxEntityTopZ = hatTopZ;
@@ -437,7 +441,7 @@
 
         if (cat.speech && cat.speech.timer > 0) {
           cat.speech.timer--;
-          const sp = project(cat.x, cat.y, cat.z + 24);
+          const sp = project(cat.x, cat.y, cat.z + 24 * (cat.scale || 1));
           speechQueue.push({ lowX: sp.x, lowY: sp.y, text: cat.speech.text });
         }
       }
