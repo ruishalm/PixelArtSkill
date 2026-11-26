@@ -324,6 +324,48 @@ console.log('SEED_OK');
         self.assertEqual(res.returncode, 0, f'Node seed test failed:\n{res.stderr}')
         self.assertIn('SEED_OK', res.stdout)
 
+    def test_06_modular_studio_build_and_js_syntax(self):
+        import generate_studio as gs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_html = os.path.join(tmpdir, 'studio.html')
+            gs.build_studio(out_html)
+            with open(out_html, 'r', encoding='utf-8') as f:
+                studio_html = f.read()
+
+            self.assertLess(len(studio_html.encode('utf-8')), 15 * 1024, 'studio/index.html must stay < 15 KB')
+            for token in (
+                '__STUDIO_SCRIPTS__',
+                '__STUDIO_JS_BUNDLE__',
+                '__CAT_SLICES__',
+                '__HATS_PACK__',
+                '__CHICKEN_DATA__',
+                '__PROPS_PACK__',
+            ):
+                self.assertNotIn(token, studio_html)
+
+            self.assertIn('<link rel="stylesheet" href="studio.css"', studio_html)
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, 'studio', 'studio.css')))
+            voxel_data_js = os.path.join(ROOT, 'assets', 'voxels', 'voxel-data.js')
+            self.assertTrue(os.path.isfile(voxel_data_js))
+
+            # Every <script src="..."> in studio HTML must exist on disk and pass node --check
+            srcs = re.findall(r'<script\s+src="([^"]+)"', studio_html)
+            self.assertGreaterEqual(len(srcs), 15)
+            studio_dir = os.path.join(ROOT, 'studio')
+            for rel_src in srcs:
+                resolved = os.path.normpath(os.path.join(studio_dir, rel_src))
+                self.assertTrue(os.path.isfile(resolved), f'Missing script target: {rel_src} -> {resolved}')
+                res = subprocess.run(['node', '--check', resolved], capture_output=True, text=True)
+                self.assertEqual(res.returncode, 0, f'Syntax error in {resolved}:\n{res.stderr}')
+
+        # Also validate all studio modules directly
+        studio_modules = sorted(glob.glob(os.path.join(ROOT, 'src', 'studio', '*.js')))
+        self.assertGreaterEqual(len(studio_modules), 4)
+        for mod in studio_modules:
+            res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
