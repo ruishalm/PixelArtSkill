@@ -644,7 +644,18 @@
         });
       };
       bindSlider('slRadius', 'valRadius', v => `${v}`, v => { brushRadius = v; });
-      cat.scale = 0.45; // proporção realista frente a casas/árvores (no Vale Felino segue 1.0)
+      // Avatar de teste: humanoide (escala 1.0) ou gato em escala realista (0.45)
+      const avatarSel = document.getElementById('avatarSelect');
+      const avatarScaleEl = document.getElementById('slAvatarScale');
+      const avatarScaleVal = document.getElementById('valAvatarScale');
+      function setAvatar(kind) {
+        cat.avatar = kind;
+        cat.scale = kind === 'human' ? 1.0 : 0.45;
+        avatarScaleEl.value = String(cat.scale);
+        avatarScaleVal.textContent = `${cat.scale.toFixed(2)}x`;
+      }
+      avatarSel.addEventListener('change', () => setAvatar(avatarSel.value));
+      setAvatar('human');
       bindSlider('slAvatarScale', 'valAvatarScale', v => `${v.toFixed(2)}x`, v => { cat.scale = v; });
       bindSlider('slStrength', 'valStrength', v => v.toFixed(1), v => { brushStrength = v; });
       bindSlider('slWind', 'valWind', v => `${v.toFixed(1)}x`, v => { ENGINE_TUNING.windMul = v; });

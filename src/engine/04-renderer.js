@@ -354,7 +354,10 @@
 
         const catBlinkHidden = cat.hurtTimer > 0 && (Math.floor((1.0 - cat.hurtTimer) * 6) % 2 === 0);
         const bob = inAir ? 0 : (cat.isWalking ? Math.abs(Math.sin(t * 2)) * 0.7 : Math.sin(cat.idleTimer * 2.4) * 0.35);
-        if (!catBlinkHidden) {
+        if (!catBlinkHidden && cat.avatar === 'human' && typeof pushHumanoidDrawables === 'function') {
+          const humanTop = pushHumanoidDrawables(activeDrawables, cat, cosA, sinA, bob);
+          if (humanTop > maxEntityTopZ) maxEntityTopZ = humanTop;
+        } else if (!catBlinkHidden) {
           const pawSpecs = [
             [-4.5, -7.5, inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.0) : 0), inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.3 : 0)],
             [ 3.5, -7.5, inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + 0.3) * 3.0) : 0), inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + 0.3) * 2.3 : 0)],
