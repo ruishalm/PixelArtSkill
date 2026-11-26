@@ -1,4 +1,4 @@
-﻿"""Zero-dependency bundler for Voxel 3D Studio (studio/index.html).
+"""Zero-dependency bundler for Voxel 3D Studio (studio/index.html).
 
 Combines src/engine/*.js + src/terrain-world/*.js + src/studio/studio.js into
 src/studio/shell.html with embedded Base-36 / RLE voxel packs.
