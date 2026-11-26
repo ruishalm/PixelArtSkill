@@ -7,7 +7,6 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
-EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 W, H = 24, 24
 NUM_SLICES = 16

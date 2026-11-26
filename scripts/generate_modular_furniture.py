@@ -3,7 +3,6 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
-EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 
 def make_grid(w, h, fill=0):
     return [[fill for _ in range(w)] for _ in range(h)]
