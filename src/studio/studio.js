@@ -20,7 +20,9 @@
       let lastVecWorld = null;
       let selectionBox = null; // { x0, y0, x1, y1 } em coordenadas do mundo
       let selStartWorld = null;
+      let terrainPaintedInStroke = false;
       const undoStack = [];
+      const redoStack = [];
 
       // Remoção segura de props: desativa colisores ligados ao prop e tira das listas da engine
       function removePropObj(p) {
@@ -47,24 +49,43 @@
         cliffMask.fill(0);
       }
 
-      function pushUndoSnapshot() {
-        if (undoStack.length >= 12) undoStack.shift();
-        undoStack.push({
+      function makeSnapshot() {
+        return {
           h: new Float32Array(hmap),
           m: new Uint8Array(matMap),
           p: new Uint8Array(pinnedMask)
-        });
+        };
       }
 
-      function popUndoSnapshot() {
-        const snap = undoStack.pop();
-        if (!snap) return;
+      function restoreSnapshot(snap) {
         hmap.set(snap.h);
         matMap.set(snap.m);
         pinnedMask.set(snap.p);
         if (typeof buildStandableMap === 'function') buildStandableMap();
         bakeTerrainSlices();
         bakeMinimapBase();
+      }
+
+      function pushUndoSnapshot(clearRedo = true) {
+        if (undoStack.length >= 12) undoStack.shift();
+        undoStack.push(makeSnapshot());
+        if (clearRedo) redoStack.length = 0;
+      }
+
+      function popUndoSnapshot() {
+        const snap = undoStack.pop();
+        if (!snap) return;
+        if (redoStack.length >= 12) redoStack.shift();
+        redoStack.push(makeSnapshot());
+        restoreSnapshot(snap);
+      }
+
+      function popRedoSnapshot() {
+        const snap = redoStack.pop();
+        if (!snap) return;
+        if (undoStack.length >= 12) undoStack.shift();
+        undoStack.push(makeSnapshot());
+        restoreSnapshot(snap);
       }
 
       // Garante que props iniciais possam ser diferenciados de props fixos do usuário
@@ -195,6 +216,7 @@
         }
 
         if (terrainDirty) {
+          terrainPaintedInStroke = true;
           rebakeTerrainDirtyRect(mx0 - 1, my0 - 1, mx1 + 1, my1 + 1);
           bakeMinimapBase();
         }
@@ -347,6 +369,12 @@
 
       window.addEventListener('pointerup', (e) => {
         if (!window.__STUDIO_EDIT_MODE__) return;
+        if (terrainPaintedInStroke) {
+          terrainPaintedInStroke = false;
+          if (typeof buildStandableMap === 'function') buildStandableMap();
+          bakeTerrainSlices();
+          bakeMinimapBase();
+        }
         isPainting = false;
         isOrbiting = false;
         lastVecWorld = null;
@@ -496,12 +524,21 @@
       };
 
       // 5. Terreno Procedural Genérico do Studio (sem mapa hardcodado do Vale Felino)
-      function generateProceduralStudioTerrain(seed) {
+      const baseKindSel = document.getElementById('baseKindSelect');
+      const genModeSel = document.getElementById('genModeSelect');
+
+      function generateProceduralStudioTerrain(seed, baseKind = (baseKindSel ? baseKindSel.value : 'island')) {
         setWorldSeed(seed);
         document.getElementById('seedInput').value = WORLD_SEED;
         if (typeof bridges !== 'undefined') bridges.length = 0;
         if (typeof npcs !== 'undefined') npcs.length = 0;
         if (typeof fishes !== 'undefined') fishes.length = 0;
+
+        if (baseKind === 'flat') {
+          hmap.fill(0);
+          matMap.fill(MAT_GRASS);
+          return;
+        }
 
         const fs = 1080 / mw; // mantém o "tamanho" das feições: diorama pequeno mostra o relevo inteiro
         for (let my = 0; my < mh; my++) {
@@ -509,16 +546,22 @@
           for (let mx = 0; mx < mw; mx++) {
             const wx = (mx - HALF_GRID) * VOX;
             const idx = my * mw + mx;
-            const nBase = fbm2d(wx * 0.0022 * fs, wy * 0.0022 * fs, 4);
+            const nBase = fbm2d(wx * 0.0022 * fs, wy * 0.0022 * fs);
             const nRidge = ridgedFbm(wx * 0.0018 * fs + 19.3, wy * 0.0018 * fs - 7.1, 3);
-            const distEdge = Math.max(Math.abs(wx), Math.abs(wy)) / HALF_WORLD;
-            const islandMask = Math.max(0, 1 - Math.pow(distEdge, 3.2));
-            let h = (nBase * 24 + nRidge * 28 - 4) * islandMask - (1 - islandMask) * 6;
+            let h;
+            if (baseKind === 'continental') {
+              const nVal = fbm2d(wx * 0.0014 * fs - 11.7, wy * 0.0014 * fs + 5.3);
+              h = nBase * 20 + nRidge * 28 + nVal * 12 - 2;
+            } else {
+              const distEdge = Math.max(Math.abs(wx), Math.abs(wy)) / HALF_WORLD;
+              const islandMask = Math.max(0, 1 - Math.pow(distEdge, 3.2));
+              h = (nBase * 24 + nRidge * 28 - 4) * islandMask - (1 - islandMask) * 6;
+            }
             h = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX, h));
             hmap[idx] = h;
             if (h <= -3.5) matMap[idx] = MAT_WATER;
             else if (h <= -0.8) matMap[idx] = MAT_SHALLOW;
-            else if (h <= 2.2) matMap[idx] = MAT_SAND;
+            else if (h <= (baseKind === 'continental' ? 0.6 : 2.2)) matMap[idx] = MAT_SAND;
             else if (h >= 42) matMap[idx] = MAT_PEAK;
             else matMap[idx] = MAT_GRASS;
           }
@@ -526,7 +569,9 @@
       }
 
       // 6. Regeneração Total vs Híbrida (preserva áreas e props fixos)
-      function regenWorld(newSeed, preservePinned) {
+      function regenWorld(newSeed, preservePinned, baseKindOverride = null) {
+        const baseKind = baseKindOverride || (baseKindSel ? baseKindSel.value : 'island');
+        const genMode = genModeSel ? genModeSel.value : 'hybrid';
         let savedH = null, savedM = null, savedProps = null;
         if (preservePinned) {
           savedH = new Float32Array(hmap);
@@ -540,7 +585,7 @@
           customFlowVx.fill(0); customFlowVy.fill(0);
         }
 
-        generateProceduralStudioTerrain(newSeed);
+        generateProceduralStudioTerrain(newSeed, baseKind);
 
         if (preservePinned && savedH) {
           for (let i = 0; i < hmap.length; i++) {
@@ -574,23 +619,25 @@
         clearAllProps();
         resetTerrainLayers();
 
-        // Espalha natureza procedural leve fora das áreas travadas
-        const rng = mulberry32((WORLD_SEED ^ 0x9E3779B9) >>> 0);
-        const propCount = Math.max(8, Math.round(140 * (mw / 1080) * (mh / 1080)));
-        const spread = HALF_WORLD * 0.72;
-        for (let i = 0; i < propCount; i++) {
-          const wx = (rng() * 2 - 1) * spread;
-          const wy = (rng() * 2 - 1) * spread;
-          const mx = Math.floor(wx / VOX + HALF_GRID);
-          const my = Math.floor(wy / VOX + HALF_GRID);
-          if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
-          if (pinnedMask[my * mw + mx] === 1) continue;
-          const c = getCellAt(wx, wy);
-          if (!c || isWetMat(c.mat) || c.h > 38) continue;
-          const key = rng() < 0.55 ? 'pine_tree' : (rng() < 0.8 ? 'sakura_oak' : 'boulder_large');
-          const before = props.length;
-          addProp(key, wx, wy, { allowOnPath: false });
-          if (props.length > before) props[props.length - 1].pinned = false;
+        // Espalha natureza procedural leve fora das áreas travadas (exceto Plano Vazio ou Tudo Fixo)
+        if (baseKind !== 'flat' && genMode !== 'manual') {
+          const rng = mulberry32((WORLD_SEED ^ 0x9E3779B9) >>> 0);
+          const propCount = Math.max(8, Math.round(140 * (mw / 1080) * (mh / 1080)));
+          const spread = HALF_WORLD * 0.72;
+          for (let i = 0; i < propCount; i++) {
+            const wx = (rng() * 2 - 1) * spread;
+            const wy = (rng() * 2 - 1) * spread;
+            const mx = Math.floor(wx / VOX + HALF_GRID);
+            const my = Math.floor(wy / VOX + HALF_GRID);
+            if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
+            if (pinnedMask[my * mw + mx] === 1) continue;
+            const c = getCellAt(wx, wy);
+            if (!c || isWetMat(c.mat) || c.h > 38) continue;
+            const key = rng() < 0.55 ? 'pine_tree' : (rng() < 0.8 ? 'sakura_oak' : 'boulder_large');
+            const before = props.length;
+            addProp(key, wx, wy, { allowOnPath: false });
+            if (props.length > before) props[props.length - 1].pinned = false;
+          }
         }
 
         if (preservePinned && savedProps) {
@@ -601,6 +648,7 @@
           }
         }
         if (typeof buildStandableMap === 'function') buildStandableMap();
+        if (typeof initFlowStreaks === 'function') initFlowStreaks();
 
         bakeTerrainSlices();
         bakeMinimapBase();
@@ -615,7 +663,7 @@
         window.__STUDIO_EDIT_MODE__ = true;
         document.getElementById('btnModeEdit').className = 'mode-btn active-edit';
         document.getElementById('btnModeTest').className = 'mode-btn';
-        document.getElementById('helpPill').textContent = 'Editar: Clique/Arraste aplica pincel • Botão Direito orbita • WASD move câmera • Q/E gira';
+        document.getElementById('helpPill').textContent = 'Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira';
       });
       document.getElementById('btnModeTest').addEventListener('click', () => {
         window.__STUDIO_EDIT_MODE__ = false;
@@ -683,6 +731,7 @@
       });
       document.getElementById('btnNewFlat').addEventListener('click', () => {
         pushUndoSnapshot();
+        if (baseKindSel) baseKindSel.value = 'flat';
         hmap.fill(0);
         matMap.fill(MAT_GRASS);
         pinnedMask.fill(0);
@@ -692,15 +741,35 @@
         resetTerrainLayers();
         if (typeof bridges !== 'undefined') bridges.length = 0;
         if (typeof buildStandableMap === 'function') buildStandableMap();
+        if (typeof initFlowStreaks === 'function') initFlowStreaks();
         camX = 0; camY = 0;
         bakeTerrainSlices();
         bakeMinimapBase();
       });
       document.getElementById('btnUndo').addEventListener('click', popUndoSnapshot);
+      document.getElementById('btnRedo').addEventListener('click', popRedoSnapshot);
       window.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && window.__STUDIO_EDIT_MODE__) {
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+        const modelerOpen = document.getElementById('modelerView')?.classList.contains('show');
+        if (modelerOpen || !window.__STUDIO_EDIT_MODE__) return;
+
+        const key = e.key.toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && key === 'z') {
           e.preventDefault();
-          popUndoSnapshot();
+          if (e.shiftKey) popRedoSnapshot();
+          else popUndoSnapshot();
+        } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
+          e.preventDefault();
+          popRedoSnapshot();
+        } else if (e.key === '[' || e.code === 'BracketLeft') {
+          brushRadius = Math.max(4, brushRadius - 2);
+          document.getElementById('slRadius').value = String(brushRadius);
+          document.getElementById('valRadius').textContent = String(brushRadius);
+        } else if (e.key === ']' || e.code === 'BracketRight') {
+          brushRadius = Math.min(48, brushRadius + 2);
+          document.getElementById('slRadius').value = String(brushRadius);
+          document.getElementById('valRadius').textContent = String(brushRadius);
         }
       });
 
@@ -724,6 +793,35 @@
       }
       document.getElementById('btnPinSel').addEventListener('click', () => applyBoxPinState(1));
       document.getElementById('btnUnpinSel').addEventListener('click', () => applyBoxPinState(0));
+      document.getElementById('btnPinAll').addEventListener('click', () => {
+        pushUndoSnapshot();
+        pinnedMask.fill(1);
+        for (let i = 0; i < props.length; i++) props[i].pinned = true;
+      });
+      document.getElementById('btnUnpinAll').addEventListener('click', () => {
+        pushUndoSnapshot();
+        pinnedMask.fill(0);
+        for (let i = 0; i < props.length; i++) props[i].pinned = false;
+      });
+      if (baseKindSel) {
+        baseKindSel.addEventListener('change', () => {
+          pushUndoSnapshot();
+          const s = parseInt(document.getElementById('seedInput').value, 10) || DEFAULT_WORLD_SEED;
+          const preserve = genModeSel && genModeSel.value === 'hybrid';
+          regenWorld(s, preserve, baseKindSel.value);
+        });
+      }
+      if (genModeSel) {
+        genModeSel.addEventListener('change', () => {
+          if (genModeSel.value === 'manual') {
+            pinnedMask.fill(1);
+            for (let i = 0; i < props.length; i++) props[i].pinned = true;
+          } else if (genModeSel.value === 'procedural') {
+            pinnedMask.fill(0);
+            for (let i = 0; i < props.length; i++) props[i].pinned = false;
+          }
+        });
+      }
       document.getElementById('btnClearSel').addEventListener('click', () => {
         if (!selectionBox) return;
         pushUndoSnapshot();
@@ -781,6 +879,8 @@
           gridW: mw,
           gridH: mh,
           seed: WORLD_SEED,
+          baseKind: baseKindSel ? baseKindSel.value : 'island',
+          generationMode: genModeSel ? genModeSel.value : 'hybrid',
           avatar: cat.avatar || 'cat',
           avatarScale: cat.scale,
           tuning: { ...ENGINE_TUNING, gravity: GRAVITY },
@@ -811,7 +911,9 @@
         if (window.StudioModeler && Array.isArray(data.customAssets)) {
           window.StudioModeler.importAssets(data.customAssets);
         }
-        regenWorld(data.seed || DEFAULT_WORLD_SEED, false);
+        if (data.baseKind && baseKindSel) baseKindSel.value = data.baseKind;
+        if (data.generationMode && genModeSel) genModeSel.value = data.generationMode;
+        regenWorld(data.seed || DEFAULT_WORLD_SEED, false, data.baseKind || null);
         if (Array.isArray(data.pinnedCells)) {
           for (const [idx, h, m] of data.pinnedCells) {
             pinnedMask[idx] = 1;

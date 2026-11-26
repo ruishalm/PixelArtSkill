@@ -57,7 +57,7 @@
         mmBaseCtx.fillRect(x0, y0, bw, bh);
       }
     }
-    bakeMinimapBase();
+    if (!window.__IS_STUDIO__) bakeMinimapBase();
 
     function drawMinimap() {
       mmCtx.imageSmoothingEnabled = false;

@@ -1,8 +1,8 @@
     // =========================================================================
     // 7. ESTADO DO GATO, FÍSICA CONTÍNUA EM MICRO-VOXELS & TRAVEL
     // =========================================================================
-    const SPAWN_X = -330;
-    const SPAWN_Y = 90;
+    const SPAWN_X = window.__IS_STUDIO__ ? 0 : -330;
+    const SPAWN_Y = window.__IS_STUDIO__ ? 0 : 90;
     const spawnH = getHeightAt(SPAWN_X, SPAWN_Y) || 0;
 
     const cat = {
@@ -95,7 +95,8 @@
     }
 
     function evaluateSupport(wx, wy, currentZ, onGround) {
-      const r = onGround ? 2.4 : 3.2;
+      const S = cat.scale || 1;
+      const r = (onGround ? 2.4 : 3.2) * S;
       const samples = [
         [wx, wy],
         [wx - r, wy], [wx + r, wy],
@@ -173,7 +174,8 @@
         return { blocked: true, reason: 'water', maxStepH: waterSurfZ(centerCell) };
       }
 
-      const r = 2.6;
+      const S = cat.scale || 1;
+      const r = 2.6 * S;
       const offsets = [[0, 0], [-r, -r], [r, -r], [-r, r], [r, r]];
 
       const allowedClimb = onGround ? AUTO_STEP_MAX : 1.5;
@@ -219,7 +221,7 @@
       for (const sc of propColliders) {
         if (sc.disabled) continue;
         if (catZ >= sc.baseZ - 2 && catZ < sc.baseZ + sc.colH - 1.5) {
-          if (isPointInPropCollider(nx, ny, sc, 3.0)) {
+          if (isPointInPropCollider(nx, ny, sc, 3.0 * S)) {
             blocked = true;
             propBlocked = true;
             const topH = sc.baseZ + sc.colH;
@@ -232,7 +234,7 @@
         if (pc.disabled) continue;
         const d = Math.hypot(nx - pc.wx, ny - pc.wy);
         const curD = Math.hypot(cat.x - pc.wx, cat.y - pc.wy);
-        if (d < pc.r + 1.2 && d <= curD + 0.05 && catZ < pc.topZ - 2.0 && catZ >= pc.baseZ - 4.0) {
+        if (d < pc.r + 1.2 * S && d <= curD + 0.05 && catZ < pc.topZ - 2.0 && catZ >= pc.baseZ - 4.0) {
           blocked = true;
           if (pc.topZ > maxBlockingH) maxBlockingH = pc.topZ;
         }
@@ -253,10 +255,11 @@
     }
 
     function updateObstacleSensor(dirX, dirY) {
+      const S = cat.scale || 1;
       const fx = dirX !== 0 || dirY !== 0 ? dirX : -Math.sin(cat.selfAngle);
       const fy = dirX !== 0 || dirY !== 0 ? dirY : Math.cos(cat.selfAngle);
-      const probeX = cat.x + fx * 11;
-      const probeY = cat.y + fy * 11;
+      const probeX = cat.x + fx * (11 * S);
+      const probeY = cat.y + fy * (11 * S);
       const c = getCellAt(probeX, probeY);
       const curBr = getBridgeAt(cat.x, cat.y);
       const probeBr = getBridgeAt(probeX, probeY);
@@ -289,7 +292,7 @@
 
       for (const sc of propColliders) {
         if (sc.disabled) continue;
-        if (cat.groundZ < sc.baseZ + sc.colH - 1.5 && isPointInPropCollider(probeX, probeY, sc, 3.2)) {
+        if (cat.groundZ < sc.baseZ + sc.colH - 1.5 && isPointInPropCollider(probeX, probeY, sc, 3.2 * S)) {
           cat.obstacleHint = 'high';
           cat.obstacleLabel = sc.shape === 'box' ? '🏠 Parede / Estrutura' : '🌲 Obstáculo Sólido';
           return;
@@ -301,7 +304,7 @@
         : ((!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) ? Math.max(c.h, c.cliffTop) : c.h);
       for (const pc of platformColliders) {
         if (pc.disabled) continue;
-        if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 && pc.topZ > targetH) {
+        if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 * S && pc.topZ > targetH) {
           targetH = pc.topZ;
         }
       }
@@ -522,6 +525,16 @@
 
       const shallowScale = c.mat === MAT_SHALLOW ? 0.55 : 1.0;
 
+      const paintedFlow = samplePaintedVector(customFlowVx, customFlowVy, wx, wy);
+      if (paintedFlow && (paintedFlow.vx * paintedFlow.vx + paintedFlow.vy * paintedFlow.vy) > 0.04) {
+        const pvx = paintedFlow.vx * shallowScale;
+        const pvy = paintedFlow.vy * shallowScale;
+        return { vx: pvx, vy: pvy, speed: Math.hypot(pvx, pvy) };
+      }
+      if (window.__IS_STUDIO__) {
+        return { vx: 0, vy: 0, speed: 0 };
+      }
+
       if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
         const vx = -34 * drainFactor * shallowScale;
         const vy = 4 * drainFactor * shallowScale;
@@ -543,13 +556,6 @@
           bestTx = seg.tx;
           bestTy = seg.ty;
         }
-      }
-      // Lagos isolados e áreas fora do leito do rio (~64u) são água parada (sem correnteza), salvo correnteza pintada no Studio
-      const paintedFlow = samplePaintedVector(customFlowVx, customFlowVy, wx, wy);
-      if (paintedFlow && (paintedFlow.vx * paintedFlow.vx + paintedFlow.vy * paintedFlow.vy) > 0.04) {
-        const pvx = paintedFlow.vx * shallowScale;
-        const pvy = paintedFlow.vy * shallowScale;
-        return { vx: pvx, vy: pvy, speed: Math.hypot(pvx, pvy) };
       }
       if (bestD2 > 64 * 64) {
         return { vx: 0, vy: 0, speed: 0 };
@@ -1116,11 +1122,13 @@
       };
     }
 
-    rebuildWaterfallBlocks();
-    for (let i = 0; i < 70; i++) {
-      stepWaterfallSim(1 / 30, false);
+    if (!window.__IS_STUDIO__) {
+      rebuildWaterfallBlocks();
+      for (let i = 0; i < 70; i++) {
+        stepWaterfallSim(1 / 30, false);
+      }
+      initFlowStreaks();
     }
-    initFlowStreaks();
 
     const canvas = document.getElementById('viewport');
     const ctx = canvas.getContext('2d');
@@ -1231,8 +1239,10 @@
         life: 999999
       });
     }
-    spawnPushableLog(86, 248, 0.4);     // Tronco empurrável na margem do vau do Rio (perto da Vila)
-    spawnPushableLog(-618, -585, 0.8);  // Tronco empurrável na borda do Lago Zen
+    if (!window.__IS_STUDIO__) {
+      spawnPushableLog(86, 248, 0.4);     // Tronco empurrável na margem do vau do Rio (perto da Vila)
+      spawnPushableLog(-618, -585, 0.8);  // Tronco empurrável na borda do Lago Zen
+    }
 
     function triggerAction() {
       if (actionCooldown > 0) return;
@@ -2500,15 +2510,17 @@
       });
     }
 
-    // 1. Varal de bandeirinhas na Vila (entre Cabana 2 e o toco/poste)
-    createVerletChain(-214, 210, 34, -262, 153, 22, 14, { pinEnd: true, segLen: 5.8, windScale: 1.35, kind: 'garland' });
-    // 2. Fitas do Portal Torii no Jardim Zen
-    createVerletChain(-458, -405, 58, -458, -405, 42, 8, { pinEnd: false, segLen: 2.2, windScale: 1.5, kind: 'banner', colors: ['#EF4444', '#FFFDF7'] });
-    createVerletChain(-412, -405, 58, -412, -405, 42, 8, { pinEnd: false, segLen: 2.2, windScale: 1.5, kind: 'banner', colors: ['#EF4444', '#FFFDF7'] });
-    // 3. Flâmula no topo do Farol da Praia
-    createVerletChain(-714, 822, 122, -692, 822, 120, 10, { pinEnd: false, segLen: 2.4, windScale: 2.1, kind: 'banner', colors: ['#F97316', '#FACC15'] });
-    // 4. Cipó pendente na Árvore Sakura do Pico
-    createVerletChain(468, -576, 62, 468, -576, 40, 9, { pinEnd: false, segLen: 2.6, windScale: 1.4, kind: 'vine', colors: ['#F472B6', '#4ADE80'] });
+    if (!window.__IS_STUDIO__) {
+      // 1. Varal de bandeirinhas na Vila (entre Cabana 2 e o toco/poste)
+      createVerletChain(-214, 210, 34, -262, 153, 22, 14, { pinEnd: true, segLen: 5.8, windScale: 1.35, kind: 'garland' });
+      // 2. Fitas do Portal Torii no Jardim Zen
+      createVerletChain(-458, -405, 58, -458, -405, 42, 8, { pinEnd: false, segLen: 2.2, windScale: 1.5, kind: 'banner', colors: ['#EF4444', '#FFFDF7'] });
+      createVerletChain(-412, -405, 58, -412, -405, 42, 8, { pinEnd: false, segLen: 2.2, windScale: 1.5, kind: 'banner', colors: ['#EF4444', '#FFFDF7'] });
+      // 3. Flâmula no topo do Farol da Praia
+      createVerletChain(-714, 822, 122, -692, 822, 120, 10, { pinEnd: false, segLen: 2.4, windScale: 2.1, kind: 'banner', colors: ['#F97316', '#FACC15'] });
+      // 4. Cipó pendente na Árvore Sakura do Pico
+      createVerletChain(468, -576, 62, 468, -576, 40, 9, { pinEnd: false, segLen: 2.6, windScale: 1.4, kind: 'vine', colors: ['#F472B6', '#4ADE80'] });
+    }
 
     function stepVerletChains(dt) {
       const stepDt = Math.min(0.033, dt);
@@ -2630,12 +2642,13 @@
       for (let i = 0; i < props.length; i++) {
         const p = props[i];
         if (p.destroyed || p.modelKey !== 'campfire') continue;
+        const S = cat.scale || 1;
         const dCat = Math.hypot(cat.x - p.wx, cat.y - p.wy);
-        if (dCat < 10.5 && cat.z <= p.wz + 14) {
-          // Empurra radialmente para fora do colisor sólido (r=7.2 + pad=3.0) para nunca travar em cima
+        if (dCat < 7.2 + 3.0 * S + 0.3 && cat.z <= p.wz + 14) {
+          // Empurra radialmente para fora do colisor sólido para nunca travar em cima
           const nx = dCat > 0.1 ? (cat.x - p.wx) / dCat : 0;
           const ny = dCat > 0.1 ? (cat.y - p.wy) / dCat : 1;
-          const safeDist = 12.0;
+          const safeDist = 7.2 + 3.0 * S + 1.8;
           cat.x = p.wx + nx * safeDist;
           cat.y = p.wy + ny * safeDist;
           if (cat.hurtTimer <= 0) {
