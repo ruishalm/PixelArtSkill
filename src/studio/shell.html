@@ -247,8 +247,10 @@
       <span style="font-size:11px;color:#A8A29E;">Seed:</span>
       <input id="seedInput" class="seed-input" type="number" value="1337" />
       <button id="btnRandSeed" class="btn" title="Nova seed aleatória">🎲 Nova</button>
+      <button id="btnNewFlat" class="btn" title="Começar mapa plano vazio do zero">🆕 Novo Plano</button>
       <button id="btnRegenAll" class="btn accent" title="Regenerar mundo inteiro">🔄 Regenerar Tudo</button>
       <button id="btnRegenUnpinned" class="btn pin" title="Mantém terreno e props fixos e regenera o resto">📌 Regenerar Resto</button>
+      <button id="btnUndo" class="btn" title="Desfazer última pincelada (Ctrl+Z)">↩️ Desfazer</button>
     </div>
     <div class="top-group">
       <button id="btnExportJson" class="btn">💾 Exportar .json</button>
@@ -260,12 +262,13 @@
   <div class="workspace">
     <aside class="sidebar">
       <div>
-        <div class="sec-title">Relevo</div>
+        <div class="sec-title">Relevo &amp; Borracha</div>
         <div class="tool-grid">
           <button class="tool-btn active" data-tool="raise">⛰️ Subir</button>
           <button class="tool-btn" data-tool="lower">🕳️ Descer</button>
           <button class="tool-btn" data-tool="flatten">📐 Aplainar</button>
           <button class="tool-btn" data-tool="smooth">〰️ Suavizar</button>
+          <button class="tool-btn" data-tool="eraser" style="grid-column: span 2;">🧽 Borracha (Zera Relevo/Props/Pin)</button>
         </div>
       </div>
 
@@ -293,8 +296,12 @@
       <div>
         <div class="sec-title">Camada Híbrida (Fixo vs Procedural)</div>
         <div class="tool-grid">
-          <button class="tool-btn" data-tool="pin">📌 Fixar Área</button>
+          <button class="tool-btn" data-tool="select_box" style="grid-column: span 2;">⬚ Selecionar Retângulo</button>
+          <button class="tool-btn" data-tool="pin">📌 Fixar Pincel</button>
           <button class="tool-btn" data-tool="unpin">🔓 Destravar</button>
+          <button id="btnPinSel" class="btn pin" style="font-size:10px;">📌 Travar Seleção</button>
+          <button id="btnUnpinSel" class="btn" style="font-size:10px;">🔓 Destravar Sel.</button>
+          <button id="btnClearSel" class="btn" style="grid-column: span 2; font-size:10px;">🧹 Limpar Seleção / Área</button>
         </div>
       </div>
 
