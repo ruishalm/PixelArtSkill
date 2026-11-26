@@ -214,7 +214,7 @@
         });
         if (maxDrawZ > maxEntityTopZ) maxEntityTopZ = maxDrawZ;
         if (p.isFire) {
-          const fz = p.baseZ + (p.modelKey === 'stone_lantern' ? 20 : 8);
+          const fz = p.baseZ + (p.modelKey === 'stone_lantern' ? 20 : (p.modelKey === 'campfire' ? 8 : Math.max(4, Math.round((p.topZ - p.baseZ) * 0.65))));
           if (fz > maxEntityTopZ) maxEntityTopZ = fz;
           if (!firesByZ.has(fz)) firesByZ.set(fz, []);
           firesByZ.get(fz).push(p);

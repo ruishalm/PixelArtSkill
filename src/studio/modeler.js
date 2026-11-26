@@ -16,6 +16,29 @@
         'rgba(0,0,0,0)', '#F2C9A0', '#4F83C2', '#3E4A6E', '#5B3A22', '#2A2018', '#8A5A2B', '#B07A3C',
         '#3F8F3A', '#6BBF59', '#9AA3A8', '#C9CED2', '#D94F4F', '#F2C94C', '#FFFFFF', '#1B1B1B'
       ];
+      const PAL_PRESETS = {
+        default: DEFAULT_PAL,
+        wood: [
+          'rgba(0,0,0,0)', '#2A1810', '#3E2315', '#5B3A22', '#7A4E2D', '#9B663B', '#B97F4B', '#D49E6A',
+          '#E7BC8E', '#4A3728', '#6B5340', '#8C7058', '#A8896E', '#C4A688', '#3F6E35', '#689F52'
+        ],
+        foliage: [
+          'rgba(0,0,0,0)', '#143628', '#1B4332', '#2D6A4F', '#40916C', '#52B788', '#74C69D', '#95D5B2',
+          '#9D174D', '#DB2777', '#F472B6', '#F9A8D4', '#FCE7F3', '#FACC15', '#5B3A22', '#8A5A2B'
+        ],
+        stone: [
+          'rgba(0,0,0,0)', '#272A30', '#3B4048', '#525864', '#6E7685', '#8C95A6', '#AAB3C2', '#CBD2DF',
+          '#E2E8F0', '#5C5852', '#847F77', '#ADA79E', '#CFC9BE', '#3F8F3A', '#6BBF59', '#D97706'
+        ],
+        character: [
+          'rgba(0,0,0,0)', '#F2C9A0', '#D9A173', '#9E6B47', '#5B3A22', '#2A2018', '#1B1B1B', '#FFFFFF',
+          '#4F83C2', '#3E4A6E', '#D94F4F', '#8E2B2B', '#3F8F3A', '#F2C94C', '#9333EA', '#94A3A8'
+        ],
+        pastel: [
+          'rgba(0,0,0,0)', '#FFF5EB', '#FDE2E4', '#FAD2E1', '#E2ECE9', '#BEE1E6', '#DFE7FD', '#CDDAFD',
+          '#FDE68A', '#FDBA74', '#FCA5A5', '#A7F3D0', '#93C5FD', '#C4B5FD', '#8C6D59', '#3B2219'
+        ]
+      };
       let pal = DEFAULT_PAL.slice();
       let N = 24;
       let vol = [];
@@ -27,7 +50,7 @@
       let angle = 0.6;
       let dragRotX = null;
       let voxCache = null;
-      const customAssets = []; // { key, name, size, pal, slices, solid }
+      const customAssets = []; // { key, name, size, pal, slices, kind, solid, hp, dropKey }
 
       function newVolume(size) {
         N = size;
@@ -68,6 +91,96 @@
         renderPalette();
         drawEdit();
       });
+
+      const palPresetEl = document.getElementById('mPalPreset');
+      if (palPresetEl) {
+        palPresetEl.addEventListener('change', () => {
+          const next = PAL_PRESETS[palPresetEl.value];
+          if (!next) return;
+          pal = next.slice();
+          curColor = Math.min(Math.max(1, curColor), pal.length - 1);
+          document.getElementById('mColor').value = pal[curColor];
+          voxCache = null;
+          renderPalette();
+          drawEdit();
+          say(`Paleta "${palPresetEl.options[palPresetEl.selectedIndex].textContent}" aplicada.`);
+        });
+      }
+
+      function parseHexRGB(hex) {
+        if (!hex || !hex.startsWith('#') || hex.length < 7) return [200, 200, 200];
+        const n = parseInt(hex.slice(1, 7), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      function shadeHex(hex, factor) {
+        const [r0, g0, b0] = parseHexRGB(hex);
+        let r, g, b;
+        if (factor >= 1) {
+          const t = Math.min(0.45, (factor - 1) * 1.1);
+          r = Math.round(r0 + (255 - r0) * t);
+          g = Math.round(g0 + (250 - g0) * t);
+          b = Math.round(b0 + (240 - b0) * t);
+        } else {
+          r = Math.round(r0 * factor);
+          g = Math.round(g0 * factor);
+          b = Math.round(b0 * factor);
+        }
+        const h2 = (v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
+        return `#${h2(r)}${h2(g)}${h2(b)}`;
+      }
+      function findOrAddPalColor(hex) {
+        const norm = hex.toLowerCase();
+        for (let i = 1; i < pal.length; i++) {
+          if (String(pal[i]).toLowerCase() === norm) return i;
+        }
+        if (pal.length < 36) {
+          pal.push(hex);
+          return pal.length - 1;
+        }
+        const [tr, tg, tb] = parseHexRGB(hex);
+        let bestIdx = 1, bestDist = Infinity;
+        for (let i = 1; i < pal.length; i++) {
+          const [r, g, b] = parseHexRGB(pal[i]);
+          const d = (r - tr) * (r - tr) + (g - tg) * (g - tg) + (b - tb) * (b - tb);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        return bestIdx;
+      }
+      const btnAutoShade = document.getElementById('mBtnAutoShade');
+      if (btnAutoShade) {
+        btnAutoShade.addEventListener('click', () => {
+          let zMin = N, zMax = -1;
+          for (let z = 0; z < N; z++) {
+            const layer = vol[z];
+            for (let i = 0; i < layer.length; i++) {
+              if (layer[i] > 0) {
+                if (z < zMin) zMin = z;
+                if (z > zMax) zMax = z;
+                break;
+              }
+            }
+          }
+          if (zMax < 0) { say('Modelo vazio: pinte algo antes do Auto-Shading.', false); return; }
+          if (zMax === zMin) { say('Pinte em mais de uma camada Z para aplicar Auto-Shading.', false); return; }
+          const origPal = pal.slice();
+          for (let z = zMin; z <= zMax; z++) {
+            const t = (z - zMin) / (zMax - zMin);
+            const factor = t < 0.33 ? 0.80 : (t > 0.68 ? 1.18 : 1.0);
+            if (factor === 1.0) continue;
+            const layer = vol[z];
+            for (let i = 0; i < layer.length; i++) {
+              const v = layer[i];
+              if (v > 0 && origPal[v]) {
+                layer[i] = findOrAddPalColor(shadeHex(origPal[v], factor));
+              }
+            }
+          }
+          voxCache = null;
+          renderPalette();
+          drawEdit();
+          say(`Auto-Shading (Z ${zMin}..${zMax}) aplicado! Paleta com ${pal.length - 1} cores.`);
+        });
+      }
 
       // ---------- Edição ----------
       const cell = () => editCv.width / N;
@@ -305,38 +418,101 @@
         return String(name || 'modelo').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'modelo';
       }
 
+      const KIND_ICONS = {
+        decor: '🧱',
+        solid: '🧊',
+        destructible: '🪓',
+        pickable: '🎒',
+        foliage: '🌿',
+        fire: '🔥'
+      };
+
       function addAssetButton(a) {
         const grid = document.getElementById('customAssetGrid');
         if (!grid) return;
         document.getElementById('customAssetEmpty').style.display = 'none';
+        const kind = a.kind || (a.solid ? 'solid' : 'decor');
+        const label = `${KIND_ICONS[kind] || '🧱'} ${a.name}`;
         const existing = grid.querySelector(`[data-tool="prop_${a.key}"]`);
-        if (existing) return;
+        if (existing) {
+          existing.textContent = label;
+          return;
+        }
         const b = document.createElement('button');
         b.className = 'tool-btn';
         b.dataset.tool = 'prop_' + a.key;
-        b.textContent = '🧱 ' + a.name;
+        b.textContent = label;
         grid.appendChild(b);
       }
 
       function registerAsset(a) {
+        const kind = a.kind || (a.solid ? 'solid' : 'decor');
         const model = buildSliceSheet(a.slices, a.pal);
         propModels[a.key] = model;
-        PROP_COLLIDER_META[a.key] = a.solid
-          ? { mode: 'solid', r: Math.max(3, a.size * 0.3), h: a.slices.length, shadowR: Math.max(4, a.size * 0.35) }
-          : { mode: 'none', shadowR: Math.max(3, a.size * 0.25) };
+        const colors = (a.pal || []).filter(c => c && !c.startsWith('rgba')).slice(0, 4);
+        const leafColors = colors.length ? colors : ['#6BBF59', '#3F8F3A'];
+        const isSolid = kind === 'solid' || kind === 'destructible' || kind === 'fire';
+        PROP_COLLIDER_META[a.key] = {
+          mode: isSolid ? 'solid' : 'none',
+          r: Math.max(3, a.size * 0.3),
+          h: a.slices.length,
+          shadowR: Math.max(3, a.size * (isSolid ? 0.35 : 0.25)),
+          pickable: kind === 'pickable',
+          isFire: kind === 'fire'
+        };
+        if (kind === 'destructible' && typeof DESTRUCTIBLE_META !== 'undefined') {
+          DESTRUCTIBLE_META[a.key] = {
+            mode: 'crumble',
+            hp: Math.max(1, parseInt(a.hp, 10) || 3),
+            zCut: Math.max(1, Math.floor(a.slices.length * 0.25)),
+            drops: a.drops !== undefined ? a.drops : 2,
+            dropKey: a.dropKey || 'stone_chunk',
+            bestTool: 'none',
+            colors: leafColors
+          };
+        } else if (typeof DESTRUCTIBLE_META !== 'undefined') {
+          delete DESTRUCTIBLE_META[a.key];
+        }
+        if (kind === 'foliage' && typeof FOLIAGE_META !== 'undefined') {
+          FOLIAGE_META[a.key] = {
+            isFoliage: true,
+            rigidity: 0.22,
+            windScale: 3.0,
+            pushRadius: Math.max(10, a.size * 0.6),
+            pushStrength: 6.0,
+            leafColors
+          };
+        } else if (typeof FOLIAGE_META !== 'undefined') {
+          delete FOLIAGE_META[a.key];
+        }
+        const saved = { ...a, kind, solid: isSolid };
         const i = customAssets.findIndex((x) => x.key === a.key);
-        if (i >= 0) customAssets[i] = a; else customAssets.push(a);
-        addAssetButton(a);
+        if (i >= 0) customAssets[i] = saved; else customAssets.push(saved);
+        addAssetButton(saved);
+      }
+
+      const kindSel = document.getElementById('mKind');
+      const destrOptsEl = document.getElementById('mDestrOpts');
+      if (kindSel && destrOptsEl) {
+        kindSel.addEventListener('change', () => {
+          destrOptsEl.style.display = kindSel.value === 'destructible' ? 'flex' : 'none';
+        });
       }
 
       document.getElementById('mBtnSave').addEventListener('click', () => {
         const slices = currentSlices();
         if (!slices) { say('Modelo vazio: pinte alguma coisa antes de salvar.', false); return; }
         const name = document.getElementById('mName').value.trim() || 'modelo';
-        let key = 'custom_' + slug(name);
-        const solid = document.getElementById('mKind').value === 'solid';
-        registerAsset({ key, name, size: N, pal: pal.slice(), slices, solid });
-        say(`"${name}" salvo na biblioteca (${slices.length} camadas). Use na aba 🌍 Mundo → Meus Modelos.`);
+        const key = 'custom_' + slug(name);
+        const kind = kindSel.value;
+        const hp = parseInt(document.getElementById('mHp')?.value || '3', 10) || 3;
+        const dropKey = document.getElementById('mDropKey')?.value || 'stone_chunk';
+        registerAsset({
+          key, name, size: N, pal: pal.slice(), slices,
+          kind, solid: kind === 'solid' || kind === 'destructible' || kind === 'fire',
+          hp, drops: 2, dropKey
+        });
+        say(`"${name}" (${kind}) salvo na biblioteca (${slices.length} camadas). Use na aba 🌍 Mundo → Meus Modelos.`);
       });
 
       function downloadJson(filename, obj) {
@@ -350,8 +526,15 @@
         const slices = currentSlices();
         if (!slices) { say('Modelo vazio: nada para exportar.', false); return; }
         const name = document.getElementById('mName').value.trim() || 'modelo';
+        const kind = kindSel.value;
+        const hp = parseInt(document.getElementById('mHp')?.value || '3', 10) || 3;
+        const dropKey = document.getElementById('mDropKey')?.value || 'stone_chunk';
         // formato compatível com assets/voxels (palette + slices em base-36)
-        downloadJson(`${slug(name)}.model.json`, { name, size: N, palette: pal, slices, solid: document.getElementById('mKind').value === 'solid' });
+        downloadJson(`${slug(name)}.model.json`, {
+          name, size: N, palette: pal, slices,
+          kind, solid: kind === 'solid' || kind === 'destructible' || kind === 'fire',
+          hp, dropKey
+        });
         say('Modelo exportado.');
       });
 
@@ -365,16 +548,23 @@
             const d = JSON.parse(reader.result);
             const slices = d.slices;
             if (!Array.isArray(slices) || !slices.length) throw new Error('arquivo sem "slices"');
+            const firstRow = typeof decodeRLERow === 'function' ? decodeRLERow(slices[0][0]) : slices[0][0];
             const size = slices[0].length;
-            if (![16, 24, 32].includes(size) || slices[0][0].length !== size) throw new Error(`grade ${size} não suportada (use 16, 24 ou 32 quadrada)`);
+            if (![16, 24, 32].includes(size) || firstRow.length !== size) throw new Error(`grade ${size} não suportada (use 16, 24 ou 32 quadrada)`);
             newVolume(size);
             document.getElementById('mSize').value = String(size);
             pal = (d.palette || d.pal || DEFAULT_PAL).slice(0, 36);
             for (let z = 0; z < Math.min(N, slices.length); z++)
-              for (let y = 0; y < N; y++)
-                for (let x = 0; x < N; x++) vol[z][y * N + x] = parseInt(slices[z][y][x], 36) || 0;
+              for (let y = 0; y < N; y++) {
+                const row = typeof decodeRLERow === 'function' ? decodeRLERow(slices[z][y]) : slices[z][y];
+                for (let x = 0; x < N; x++) vol[z][y * N + x] = parseInt(row[x], 36) || 0;
+              }
             if (d.name) document.getElementById('mName').value = d.name;
-            document.getElementById('mKind').value = d.solid ? 'solid' : 'decor';
+            const impKind = d.kind || (d.solid ? 'solid' : 'decor');
+            kindSel.value = impKind;
+            if (destrOptsEl) destrOptsEl.style.display = impKind === 'destructible' ? 'flex' : 'none';
+            if (d.hp && document.getElementById('mHp')) document.getElementById('mHp').value = String(d.hp);
+            if (d.dropKey && document.getElementById('mDropKey')) document.getElementById('mDropKey').value = d.dropKey;
             curColor = Math.min(curColor, pal.length - 1) || 1;
             renderPalette();
             drawEdit();

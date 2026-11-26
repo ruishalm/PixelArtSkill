@@ -458,10 +458,22 @@
       <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mMirror" checked /> 🪞 Espelho X (simetria)</label>
       <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mOnion" checked /> 🧅 Onion skin (camada abaixo)</label>
       <div class="sec-title">Paleta</div>
+      <div class="mrow">
+        <span style="font-size:11px;color:#A8A29E;">Preset:</span>
+        <select id="mPalPreset" class="mtxt" style="flex:1;">
+          <option value="default">🎨 Padrão</option>
+          <option value="wood">🪵 Madeira</option>
+          <option value="foliage">🌿 Folhagem</option>
+          <option value="stone">🪨 Pedra</option>
+          <option value="character">🧍 Personagem</option>
+          <option value="pastel">🌸 Cozy Pastel</option>
+        </select>
+      </div>
       <div class="mrow" id="mPalette"></div>
       <div class="mrow">
         <span style="font-size:11px;color:#A8A29E;">Editar cor:</span>
         <input type="color" id="mColor" value="#ffffff" />
+        <button class="btn" id="mBtnAutoShade" title="Escurece a base e clareia o topo por altura Z">✨ Auto-Shading (Z)</button>
       </div>
     </div>
 
@@ -474,10 +486,23 @@
       </div>
       <div class="sec-title">Salvar na biblioteca do mundo</div>
       <div class="mrow">
-        <input id="mName" class="mtxt" type="text" placeholder="Nome do modelo" value="meu_modelo" style="width:150px;" />
+        <input id="mName" class="mtxt" type="text" placeholder="Nome do modelo" value="meu_modelo" style="width:140px;" />
         <select id="mKind" class="mtxt">
           <option value="decor">Decoração (sem colisão)</option>
           <option value="solid">Sólido (colide)</option>
+          <option value="destructible">Destrutível (HP + drop)</option>
+          <option value="pickable">Item Pegável (G/F)</option>
+          <option value="foliage">Folhagem (balança no vento)</option>
+          <option value="fire">Fogo/Luz (calor + brilho)</option>
+        </select>
+      </div>
+      <div class="mrow" id="mDestrOpts" style="display:none;">
+        <span style="font-size:11px;color:#A8A29E;">HP:</span>
+        <input id="mHp" class="mtxt" type="number" min="1" max="10" value="3" style="width:48px;" />
+        <span style="font-size:11px;color:#A8A29E;">Drop:</span>
+        <select id="mDropKey" class="mtxt">
+          <option value="stone_chunk">🪨 Pedra</option>
+          <option value="wood_log">🪵 Tora</option>
         </select>
       </div>
       <div class="mrow">

@@ -648,10 +648,11 @@
         if (d < bestD && Math.abs(dr.z - cat.z) < 20) { bestD = d; best = dr; }
       }
       if (!best) {
-        // Toras plantadas no mapa viram drop pegável
+        // Toras e itens pegáveis plantados no mapa viram drop pegável
         for (let i = 0; i < props.length; i++) {
           const p = props[i];
-          if (p.destroyed || p.modelKey !== 'wood_log') continue;
+          const pm = PROP_COLLIDER_META[p.modelKey];
+          if (p.destroyed || (p.modelKey !== 'wood_log' && !(pm && pm.pickable))) continue;
           const d = Math.hypot(p.wx - cat.x, p.wy - cat.y);
           if (d < bestD && Math.abs(p.wz - cat.z) < 20) {
             bestD = d;
@@ -662,7 +663,26 @@
           best.destroyed = true;
           if (best.solidCollider) best.solidCollider.disabled = true;
           if (best.platCollider) best.platCollider.disabled = true;
-          spawnPushableLog(best.wx, best.wy, best.selfAngle || 0);
+          if (best.modelKey === 'wood_log') {
+            spawnPushableLog(best.wx, best.wy, best.selfAngle || 0);
+          } else {
+            const pc = getCellAt(best.wx, best.wy);
+            debrisDrops.push({
+              modelKey: best.modelKey,
+              model: best.model,
+              x: best.wx,
+              y: best.wy,
+              z: best.wz,
+              vx: 0, vy: 0, vz: 0,
+              scale: best.scale || 0.85,
+              selfAngle: best.selfAngle || 0,
+              spin: 0,
+              bounces: 0,
+              inWater: !!(pc && isWetMat(pc.mat)),
+              persistent: true,
+              life: 999999
+            });
+          }
           best = debrisDrops[debrisDrops.length - 1];
         }
       }
