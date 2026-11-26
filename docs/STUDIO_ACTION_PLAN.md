@@ -6,9 +6,11 @@
 
 ## 1. Diagnóstico Atual e Arquitetura Alvo
 
-### O que temos hoje
-- `src/engine/` já possui 5 módulos extraídos (`00-math-noise.js`, `01-voxel-audio.js`, `02-slice-baker.js`, `03-terrain-sculptor.js`, `04-renderer.js`), mas parte da física, fluidos, resize e constantes do grid (`mw = 1080`, `mh = 1080`) ainda vivem em `src/terrain-world/`.
-- `studio/index.html` já tem pincéis ao vivo, vento/correnteza, seleção/trava (`pin`), `Novo Plano`, `Borracha` e `Undo`, porém o bundler `scripts/generate_studio.py` ainda inclui `src/terrain-world/*.js`, herdando o tamanho fixo `1080×1080`, a escala exagerada do gato e código do mostruário.
+### O que temos hoje (após modularização completa)
+- **`src/engine/` (10 módulos compartilhados):** `00-math-noise.js`, `00-world-config.js`, `01-voxel-audio.js`, `02-slice-baker.js`, `03-terrain-sculptor.js`, `04-renderer.js`, `05-humanoid.js`, `06-fluids-weather.js`, `07-physics-movement.js`, `08-destruction-carry.js`.
+- **`src/terrain-world/` (`shell.html`, `terrain-world.css`, `01`..`06`):** geologia, props e loop do mostruário *Vale Felino 3D*, gerado em `examples/terrain-world.html` + `examples/terrain-world.css` + `assets/voxels/voxel-data.js` por `scripts/generate_terrain_world.py`.
+- **`src/studio/` (`shell.html`, `studio.css`, `00`..`03`):** Voxel 3D Studio completo (Editor de Mundo + Modelador Voxel por fatias + Publicador `.html` standalone), gerado em `studio/index.html` + `studio/studio.css` + `assets/voxels/voxel-data.js` por `scripts/generate_studio.py` (usando `window.__IS_STUDIO__ = true` para reutilizar a engine sem inicializar o mapa do Vale Felino).
+- **`src/examples/` (`room-3d/`, `cat-3d/`, `chicken-3d/`):** todos os demais exemplos também foram modularizados em `shell.html` + `.css` + `.js` + `assets/voxels/*-voxel-data.js`, gerados por `generate_mega_room.py`, `generate_html.py` e `generate_chicken_html.py`.
 
 ### Arquitetura Alvo (Separação Limpa)
 ```mermaid
@@ -155,20 +157,21 @@ flowchart TD
 
 ## 7. Status de execução
 
-> Atualizado após a conclusão das etapas planejadas. A suíte completa (`tests/test_physics_invariants.py`) segue adiada a pedido; as verificações feitas foram `node --check` em módulos e bundles HTML gerados, além de smoke tests headless em Node com DOM falso (não é navegador real).
+> Atualizado após a modularização completa do repositório e auditoria da suíte de testes (`tests/test_physics_invariants.py`, 7/7 testes passando com `node --check`, verificação de sincronismo dos HTMLs/CSS/JS gerados e validação LF/UTF-8).
 
-### Feito (cada item na sua branch, mergeado em `dev-engine`)
+### Feito (cada item na sua branch, mergeado em `dev-engine` / `dev-studio`)
 - **Grid configurável (parte da 1A):** `src/engine/00-world-config.js`; tamanhos 128 / 256 / 512 / 1080 escolhidos na carga (`?grid=N`), com seletor no Studio que recarrega a página. O Vale Felino continua em 1080.
-- **Extração de física e fluidos (1B — `feat/engine-physics-split`):** `src/engine/06-fluids-weather.js` e `src/engine/07-physics-core.js` extraídos de `src/terrain-world/05-physics-fluids.js` mantendo a ordem de concatenação dos bundlers.
+- **Extração de física e fluidos (1B — `feat/engine-physics-split`):** `src/engine/06-fluids-weather.js`, `src/engine/07-physics-movement.js` e `src/engine/08-destruction-carry.js` extraídos de `src/terrain-world/05-physics-fluids.js` mantendo a ordem de carga dos `<script src="...">`.
+- **Modularização completa de Studio, Exemplos e `index.html` (`refactor/modular-studio-files` & `refactor/modular-all-examples`):** nenhum HTML gerado tem CSS/JS/JSON inline gigante — `studio/index.html`, `index.html`, `examples/*.html` ficam `< 15 KB`, carregando `.css` externos, `assets/voxels/*-voxel-data.js` e módulos em `src/`.
 - **Mundo limpo no Studio & polimento (2A + Fase 2 — `feat/studio-blank-world`):** flag `window.__IS_STUDIO__` no `src/studio/shell.html` pula `initOrganicWorld()`, `populateWorldObjects()`, `spawnPushableLog()`, `rebuildWaterfallBlocks()` e `createVerletChain()` do Vale Felino na carga do Studio; adicionados seletores de Base Inicial (`Ilha Procedural`, `Continental`, `Plano Vazio`) e Modo de Geração (`Tudo Procedural`, `Híbrido`, `Tudo Fixo`), botões `Travar Tudo` / `Destravar Tudo`, **Redo (`Ctrl+Y` / `Ctrl+Shift+Z`)**, atalhos `[` e `]` para raio do pincel, e colisão/sensor do avatar acompanhando `cat.scale`.
 - **Escala do personagem (`feat/avatar-scale`):** `cat.scale` agora escala posições, alturas, sombra e balão; Studio usa 0.45 para o gato.
 - **Ações (`feat/interact-pick-throw`):** `F` quebra (ou arremessa se carregando), `G` pega/solta drops. `E` não foi usado porque já gira a câmera.
 - **Humanoide cru (`feat/humanoid-avatar`):** `src/engine/05-humanoid.js`, avatar padrão do Studio.
 - **Publicar `.html` (`feat/studio-publish-html`):** HTML autocontido que abre em modo Testar; payload do projeto versionado (grid, avatar, `baseKind`, `generationMode`).
 - **Modelador Voxel MVP (`feat/studio-modeler`) & Polimento (`feat/modeler-polish`):** editor por camadas Z (16/24/32), lápis/borracha/balde/conta-gotas, espelho X, onion skin, paleta editável com presets (Padrão, Madeira, Folhagem, Pedra, Personagem, Cozy Pastel), botão `Auto-Shading (Z)`, preview 3D girando, categorias (`decor`, `solid`, `destructible` com HP/drop, `pickable`, `foliage`, `fire`), salvar na biblioteca do mundo ("Meus Modelos"), importar/exportar modelo `.json` (compatível com RLE), modelos incluídos no projeto e no `.html` publicado.
+- **Redirecionamento de scripts legados (`chore/project-full-audit`):** `scripts/generate_room.py` e `scripts/generate_full_3d_room.py` redirecionados para `generate_mega_room.build_mega_room()` para evitar sobrescrita monolítica acidental de `examples/room-3d.html`.
 
 ### Pendente / Observações
-- **1A (resize em runtime sem reload) e desacoplamento completo de `generate_studio.py`:** `scripts/generate_studio.py` ainda concatena `src/terrain-world/*.js` para reaproveitar estruturas compartilhadas (`hmap`, `propModels`, `loop`), mas pula toda a inicialização do Vale Felino via `window.__IS_STUDIO__`.
+- **1A (resize em runtime sem reload) e desacoplamento completo de `generate_studio.py`:** `scripts/generate_studio.py` ainda inclui `src/terrain-world/*.js` para reaproveitar estruturas compartilhadas (`hmap`, `propModels`, `loop`), mas pula toda a inicialização do Vale Felino via `window.__IS_STUDIO__`.
 - **Categoria `Avatar de Teste` no Modelador:** não implementada (o Studio usa `human` ou `cat`).
-- **Execução da suíte `tests/test_physics_invariants.py`:** adiada conforme solicitado.
-- **Verificação em navegador real:** nada do Studio foi aberto num navegador até agora.
+- **Verificação manual interativa em navegador real:** a suíte automatizada (`tests/test_physics_invariants.py`) valida packs, builds, sintaxe JS combinada e invariantes matemáticos em Node; testes visuais/interativos do Studio em navegador real seguem recomendados quando houver alterações de UI.

@@ -157,7 +157,7 @@ slices[15][12][18] = 4; slices[15][12][17] = 4
 slices[15][12][15] = 4
 slices[15][12][13] = 4
 
-with open(os.path.join(VOXELS_DIR, 'chicken_slices.json'), 'w', encoding='utf-8') as f:
+with open(os.path.join(VOXELS_DIR, 'chicken_slices.json'), 'w', encoding='utf-8', newline='\n') as f:
     json.dump({
         'name': 'Galinha Cocoricó',
         'width': W,

@@ -177,6 +177,7 @@ $$\mathbf{x}_{t+1} = \mathbf{x}_t + (\mathbf{x}_t - \mathbf{x}_{t-1})\,\gamma + 
 | Demo | Skill Modules Demonstrated | Link |
 |---|---|---|
 | **1080×1080 Micro-Voxel Terrain** | *Pull-Chain* engine, Tight-Crop Slices, `sampleWaterFlow` (Rankine Dipole), `waterfallSim`, Archimedes buoyancy, Thermodynamics/Fire, Granular Matter (Dirty-Rect), Verlet Cloth/Ropes, Procedural Trees, `Foliage`, `Destructible`, and Hi-Res Overlay | [examples/terrain-world.html](https://ruishalm.github.io/PixelArtSkill/examples/terrain-world.html) |
+| **Voxel 3D Studio** | Browser world editor (`128`..`1080` grid presets), live physics sliders, hybrid pin/procedural layer, built-in **Voxel Slice Modeler**, `.json` project I/O, and standalone `.html` publisher | [studio/index.html](https://ruishalm.github.io/PixelArtSkill/studio/index.html) |
 | **Multi-Room Diorama** | *Wall Culling*, hollow furniture angular occlusion, `unproject` drag & drop, *Hierarchical Parenting*, and 3-slot persistence | [`index.html` / `examples/room-3d.html`](https://ruishalm.github.io/PixelArtSkill/) |
 | **Quadruped Voxel Model** | Base-36 16-slice stacking, 360° orbital rotation, `squash = 0.75`, and single `1px` silhouette | [examples/cat-3d.html](https://ruishalm.github.io/PixelArtSkill/examples/cat-3d.html) |
 | **Articulated Voxel Model** | Rigid anti-shearing sub-stacks and 2-phase biomechanical walk cycle (*Swing* / *Stance*) | [examples/chicken-3d.html](https://ruishalm.github.io/PixelArtSkill/examples/chicken-3d.html) |
@@ -185,20 +186,24 @@ $$\mathbf{x}_{t+1} = \mathbf{x}_t + (\mathbf{x}_t - \mathbf{x}_{t-1})\,\gamma + 
 
 ## 🚀 Running Locally
 
-Zero build, zero npm, zero WebGL:
+Zero build tools, zero npm, zero WebGL:
 
 ```bash
 git clone https://github.com/ruishalm/PixelArtSkill.git
 cd PixelArtSkill
 python -m http.server 8088
-# Open http://localhost:8088/index.html or http://localhost:8088/examples/terrain-world.html
+# Open http://localhost:8088/index.html, http://localhost:8088/examples/terrain-world.html, or http://localhost:8088/studio/index.html
 ```
 
-To rebuild `examples/terrain-world.html` from `src/terrain-world/` and `assets/voxels/`, and run the verification suite:
+To rebuild the modular HTML/CSS/voxel-JS targets from `src/` and `assets/voxels/`, and run the full verification suite:
 
 ```bash
 python scripts/generate_terrain_world.py
-python tests/test_physics_invariants.py
+python scripts/generate_studio.py
+python scripts/generate_mega_room.py
+python scripts/generate_html.py
+python scripts/generate_chicken_html.py
+python -m unittest discover -s tests -v
 ```
 
 ---
@@ -208,36 +213,45 @@ python tests/test_physics_invariants.py
 ```text
 PixelArtSkill/
 ├── .github/workflows/deploy.yml   # GitHub Pages: automated continuous deploy on main
+├── .gitattributes                 # Enforces LF line endings across text assets
 ├── .gitignore
 ├── LICENSE
 ├── README.md                      # Official documentation, math formulas, and roadmap
 ├── SKILL.md                       # Antigravity Skill specification (rules, formulas, prompt)
-├── index.html                     # Default entry point (GitHub Pages)
+├── index.html                     # Default entry point (modular Room 3D mirror for GitHub Pages)
 ├── docs/
+│   ├── STUDIO_ACTION_PLAN.md      # Architecture & execution plan for src/engine/ and Studio
 │   └── sprite-stacking-prompt-guide.md
-├── examples/                      # Self-contained demos generated with the skill
-│   ├── terrain-world.html
-│   ├── room-3d.html
-│   ├── cat-3d.html
-│   └── chicken-3d.html
-├── scripts/                       # Portable Python generators & bundlers
-│   ├── generate_terrain_world.py  # Zero-dependency bundler: src/terrain-world/ → examples/terrain-world.html
+├── studio/                        # Generated Voxel 3D Studio entry point
+│   ├── index.html
+│   └── studio.css
+├── examples/                      # Modular demos generated from src/ & assets/voxels/
+│   ├── terrain-world.html / .css
+│   ├── room-3d.html / .css
+│   ├── cat-3d.html / .css
+│   └── chicken-3d.html / .css
+├── scripts/                       # Portable Python generators & zero-dependency builders
+│   ├── generate_terrain_world.py  # src/engine/ + src/terrain-world/ → examples/terrain-world.html
+│   ├── generate_studio.py         # src/engine/ + src/terrain-world/ + src/studio/ → studio/index.html
+│   ├── generate_mega_room.py      # src/examples/room-3d/ → examples/room-3d.html & index.html
+│   ├── generate_html.py           # src/examples/cat-3d/ → examples/cat-3d.html
+│   ├── generate_chicken_html.py   # src/examples/chicken-3d/ → examples/chicken-3d.html
 │   ├── generate_terrain_props.py  # Procedural CSG voxel prop generator (--seed CLI)
-│   ├── generate_mega_room.py
 │   ├── generate_kitchen_and_garden_packs.py
 │   ├── generate_living_room_pack.py
 │   ├── generate_modular_furniture.py
-│   ├── generate_full_3d_room.py
-│   ├── generate_room.py
-│   ├── generate_html.py
-│   ├── generate_chicken_html.py
-│   └── build_chicken_slices.py
-├── src/
-│   └── terrain-world/             # Modular JS engine (shell.html + 01..06: geology, fluids, foliage, render)
+│   ├── build_chicken_slices.py
+│   ├── generate_room.py           # Deprecated alias → redirects to generate_mega_room.py
+│   └── generate_full_3d_room.py   # Deprecated alias → redirects to generate_mega_room.py
+├── src/                           # Modular JS, CSS & HTML shells
+│   ├── engine/                    # Shared 2.5D engine (00..08: config, noise, audio, baker, sculptor, renderer, humanoid, fluids, physics, destruction)
+│   ├── terrain-world/             # Vale Felino 3D world configuration, geology, props & loop (shell.html + css + 01..06)
+│   ├── studio/                    # Voxel 3D Studio modeler, brushes, regen/undo & publisher (shell.html + css + 00..03)
+│   └── examples/                  # Modular sources for room-3d/, cat-3d/ & chicken-3d/
 ├── tests/
-│   └── test_physics_invariants.py # Automated suite: voxel packs, JS syntax & physics invariants (Python + Node)
+│   └── test_physics_invariants.py # Automated suite: voxel packs, modular builds, JS syntax, EOL & physics invariants
 └── assets/
-    ├── voxels/                    # 13 Base-36 JSON voxel packs (cabin, torii, tools, furniture...)
+    ├── voxels/                    # 14 Base-36 JSON voxel packs + 4 generated *-voxel-data.js / voxel-data.js bundles
     └── previews/                  # 15 reference images and validation renders
 ```
 
@@ -254,7 +268,7 @@ Milestone tracker for the **mathematical voxel physics** lab in Pure HTML5 Canva
 - [x] **Granular Matter & Incremental Dirty-Rect Re-Bake**: sand (`MAT_SAND`) and snow (`MAT_PEAK`) with dynamic angle-of-repose relaxation (`talus = 2`/`3` in `relaxGranularBox`), impact footprints, and digging (`KeyR` / `tool_hoe`), updating only the dirty rectangle in `terrainSlices[z]` via `rebakeTerrainDirtyRect`.
 - [x] **Cloth, Ropes & Hanging Bridges (Verlet Integration)**: 3D node chains (`verletChains` — Village festive garland, Torii ribbons, Lighthouse pennant, and Sakura vine) coupled to `WindField` and `Character` push, rendered per Z-slice with real 3D occlusion.
 - [ ] **Chunk Streaming (`Web Worker` + `OffscreenCanvas`)**: optional for continuous open worlds larger than `1080×1080`, keeping only a `3×3` window of pre-baked chunks in RAM at 60 FPS.
-- [ ] **Modular Engine (`src/engine/`) & Browser Visual Studio (`studio/index.html`)**: complete separation of pure engine modules (`math-noise`, `voxel-sheets`, `slice-baker`, `fluids`, `materials`, `renderer`) + a zero-dependency in-browser visual editor (terrain/sand/water brushes, drag-and-drop procedural trees/Verlet/campfires, live physics sliders, and one-click self-contained `.html` export).
+- [x] **Modular Engine (`src/engine/`) & Browser Visual Studio (`studio/index.html`)**: shared engine modules (`00-math-noise`, `00-world-config`, `01-voxel-audio`, `02-slice-baker`, `03-terrain-sculptor`, `04-renderer`, `05-humanoid`, `06-fluids-weather`, `07-physics-movement`, `08-destruction-carry`), modularized examples (`src/examples/` + `src/terrain-world/`), and a zero-dependency in-browser Studio (terrain/sand/water/wind/flow brushes, procedural/hybrid/manual modes, voxel slice modeler, live physics sliders, `.json` export/import, and one-click standalone `.html` publishing).
 
 ---
 

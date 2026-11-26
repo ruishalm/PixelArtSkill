@@ -2583,7 +2583,7 @@ def main():
 
     pack = build_pack(seed=args.seed)
     out_path = args.out
-    with open(out_path, 'w', encoding='utf-8') as f:
+    with open(out_path, 'w', encoding='utf-8', newline='\n') as f:
         json.dump(pack, f, indent=2)
 
     with open(out_path, 'r', encoding='utf-8') as f:
