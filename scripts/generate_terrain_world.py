@@ -12,6 +12,7 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOXELS_DIR = os.path.join(ROOT, 'assets', 'voxels')
+ENGINE_DIR = os.path.join(ROOT, 'src', 'engine')
 SRC_DIR = os.path.join(ROOT, 'src', 'terrain-world')
 EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 _RLE_RE = re.compile(r'(.)\1{2,}')
@@ -44,12 +45,13 @@ def build_terrain_world(out_path=None):
     with open(shell_path, 'r', encoding='utf-8') as f:
         shell_html = f.read()
 
+    engine_paths = sorted(glob.glob(os.path.join(ENGINE_DIR, '*.js'))) if os.path.isdir(ENGINE_DIR) else []
     module_paths = sorted(glob.glob(os.path.join(SRC_DIR, '*.js')))
     if not module_paths:
         raise RuntimeError(f'No JS modules found in {SRC_DIR}')
 
     js_parts = []
-    for mod_path in module_paths:
+    for mod_path in engine_paths + module_paths:
         with open(mod_path, 'r', encoding='utf-8') as f:
             js_parts.append(f.read())
     js_bundle = ''.join(js_parts)

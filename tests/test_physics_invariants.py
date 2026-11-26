@@ -63,10 +63,12 @@ class TestPixelArtSkill(unittest.TestCase):
             res = subprocess.run(['node', '--check', js_path], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Bundled JS syntax error:\n{res.stderr}')
 
-        # Also check every individual module in src/terrain-world/*.js
+        # Also check every individual module in src/engine/*.js and src/terrain-world/*.js
+        engine_modules = sorted(glob.glob(os.path.join(ROOT, 'src', 'engine', '*.js')))
         modules = sorted(glob.glob(os.path.join(ROOT, 'src', 'terrain-world', '*.js')))
+        self.assertGreaterEqual(len(engine_modules), 1)
         self.assertEqual(len(modules), 6)
-        for mod in modules:
+        for mod in engine_modules + modules:
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
 
