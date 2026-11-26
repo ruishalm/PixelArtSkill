@@ -1,0 +1,300 @@
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+body {
+  background: linear-gradient(180deg, #86CFF4 0%, #CBEBFA 55%, #F4E9D7 100%);
+  color: #3B2219;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+#viewport {
+  position: absolute;
+  inset: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: grab;
+  touch-action: none;
+  display: block;
+}
+#viewport:active { cursor: grabbing; }
+
+/* HUD Topo Esquerdo */
+.hud-top-left {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(255, 252, 245, 0.92);
+  backdrop-filter: blur(10px);
+  border: 2px solid #5B3C2B;
+  border-radius: 14px;
+  padding: 10px 13px;
+  box-shadow: 0 8px 22px rgba(59, 34, 25, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-width: 345px;
+  z-index: 10;
+}
+.hud-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hud-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #3B2219;
+  letter-spacing: -0.3px;
+}
+.badges-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.fish-badge {
+  background: #FEF3C7;
+  border: 1.5px solid #D97706;
+  color: #92400E;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.biome-badge {
+  background: #DCFCE7;
+  border: 1.5px solid #16A34A;
+  color: #166534;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.pill-btn {
+  background: #EFE7D8;
+  color: #3B2219;
+  border: 1.5px solid #8C6D59;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.pill-btn:hover { background: #E4D7C0; transform: translateY(-1px); }
+.pill-btn.primary {
+  background: #D97706;
+  color: #FFFDF9;
+  border-color: #92400E;
+}
+.pill-btn.travel {
+  background: #E0F2FE;
+  color: #075985;
+  border-color: #0284C7;
+}
+
+/* Toast de Descoberta de Bioma */
+.biome-toast {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-16px);
+  background: rgba(59, 34, 25, 0.92);
+  color: #FEF3C7;
+  border: 2px solid #FBBF24;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s, transform 0.3s;
+  z-index: 20;
+  white-space: nowrap;
+}
+.biome-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Minimapa Topo Direito */
+.minimap-card {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 252, 245, 0.92);
+  backdrop-filter: blur(10px);
+  border: 2px solid #5B3C2B;
+  border-radius: 14px;
+  padding: 7px;
+  box-shadow: 0 8px 22px rgba(59, 34, 25, 0.16);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+}
+.minimap-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6B4E3D;
+  max-width: 120px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#minimapCanvas {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  border: 1.5px solid #7C5C47;
+  image-rendering: pixelated;
+}
+
+/* Rodapé Telemetria */
+.hud-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 252, 245, 0.92);
+  backdrop-filter: blur(10px);
+  border: 2px solid #5B3C2B;
+  border-radius: 16px;
+  padding: 7px 14px;
+  box-shadow: 0 8px 24px rgba(59, 34, 25, 0.18);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 96vw;
+  font-size: 12px;
+  z-index: 10;
+}
+.stat-chip {
+  background: #F3ECE0;
+  border: 1px solid #C8B59B;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-weight: 700;
+  color: #3B2219;
+  white-space: nowrap;
+}
+.obstacle-chip {
+  border-radius: 8px;
+  padding: 3px 9px;
+  font-weight: 800;
+  white-space: nowrap;
+  border: 1.5px solid transparent;
+}
+.obs-ok { background: #DCFCE7; color: #166534; border-color: #22C55E; }
+.obs-jump { background: #FEF3C7; color: #92400E; border-color: #F59E0B; }
+.obs-high { background: #FEE2E2; color: #991B1B; border-color: #EF4444; }
+.obs-water { background: #DBEAFE; color: #1E40AF; border-color: #3B82F6; }
+.obs-shallow { background: #CFFAFE; color: #0E7490; border-color: #06B6D4; }
+
+.keys-hint {
+  font-size: 11px;
+  color: #6B4E3D;
+  font-weight: 600;
+  white-space: nowrap;
+}
+kbd {
+  background: #FFFDF8;
+  border: 1px solid #B59F84;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  color: #3B2219;
+}
+
+/* Controles Touch Responsivos para Celular / Tablet */
+.touch-controls {
+  position: absolute;
+  bottom: 84px;
+  left: 14px;
+  right: 14px;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 15;
+}
+.touch-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 42px);
+  grid-template-rows: repeat(2, 42px);
+  gap: 4px;
+  pointer-events: auto;
+}
+.touch-btn {
+  background: rgba(255, 252, 245, 0.85);
+  border: 2px solid #5B3C2B;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #3B2219;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.touch-btn:active { background: #E4D7C0; }
+.touch-jump {
+  pointer-events: auto;
+  width: 72px;
+  height: 54px;
+  border-radius: 14px;
+  background: rgba(217, 119, 6, 0.9);
+  color: #FFFDF9;
+  border: 2px solid #78350F;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (pointer: coarse) {
+  .touch-controls { display: flex; }
+  .keys-hint { display: none; }
+}
+@media (max-width: 640px) {
+  .hud-top-left {
+    top: 8px;
+    left: 8px;
+    padding: 7px 9px;
+    max-width: calc(100vw - 118px);
+    gap: 5px;
+  }
+  .hud-title { font-size: 13px; }
+  .pill-btn { padding: 3px 6px; font-size: 10px; }
+  .minimap-card { top: 8px; right: 8px; padding: 5px; }
+  #minimapCanvas { width: 84px; height: 84px; }
+  .minimap-title { font-size: 9px; max-width: 84px; }
+  .hud-bottom { bottom: 8px; padding: 5px 10px; gap: 5px; font-size: 11px; }
+  .keys-hint { display: none; }
+  .biome-toast { top: 124px; font-size: 12px; padding: 5px 12px; }
+}
