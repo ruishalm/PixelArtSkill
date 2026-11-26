@@ -5078,8 +5078,9 @@
 
     function handleResize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
-      viewW = window.innerWidth;
-      viewH = window.innerHeight;
+      const host = canvas.parentElement;
+      viewW = (host && host.clientWidth > 0) ? host.clientWidth : window.innerWidth;
+      viewH = (host && host.clientHeight > 0) ? host.clientHeight : window.innerHeight;
       pixelScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2));
       LOW_W = Math.ceil(viewW / pixelScale);
       LOW_H = Math.ceil(viewH / pixelScale);
