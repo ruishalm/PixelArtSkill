@@ -234,7 +234,8 @@
     }
     .biome-toast.show { opacity: 1; }
     .hidden-compat { display: none; }
-    .play-only .topbar, .play-only .sidebar, .play-only .coord-pill { display: none; }
+    .play-only .topbar, .play-only .sidebar, .play-only .coord-pill, .play-only .modeler { display: none !important; }
+    .play-only .workspace { display: flex !important; }
 
     /* Modelador Voxel */
     .modeler { flex: 1; display: none; min-height: 0; background: #1C1917; overflow: auto; padding: 12px; gap: 14px; flex-wrap: wrap; align-content: flex-start; }
@@ -3030,13 +3031,6 @@
       const c = getCellAt(wx, wy);
       if (!c || !isWetMat(c.mat)) return { vx: 0, vy: 0, speed: 0 };
 
-      let drainFactor = 1.0;
-      if (wy >= 740) {
-        const t = Math.max(0, Math.min(1, (wy - 740) / 220));
-        drainFactor = 1 - t * t * (3 - 2 * t);
-        if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
-      }
-
       const shallowScale = c.mat === MAT_SHALLOW ? 0.55 : 1.0;
 
       const paintedFlow = samplePaintedVector(customFlowVx, customFlowVy, wx, wy);
@@ -3047,6 +3041,13 @@
       }
       if (window.__IS_STUDIO__) {
         return { vx: 0, vy: 0, speed: 0 };
+      }
+
+      let drainFactor = 1.0;
+      if (wy >= 740) {
+        const t = Math.max(0, Math.min(1, (wy - 740) / 220));
+        drainFactor = 1 - t * t * (3 - 2 * t);
+        if (drainFactor <= 0.001) return { vx: 0, vy: 0, speed: 0 };
       }
 
       if (wx >= 130 && wx <= 280 && wy >= -540 && wy <= -450) {
@@ -3145,7 +3146,7 @@
         }
       }
 
-      if (!found) {
+      if (!found && !window.__IS_STUDIO__) {
         const tx = 128 + (Math.random() * 2 - 1) * 44;
         const ty = 200 + (Math.random() * 2 - 1) * 140;
         const c = getCellAt(tx, ty);
@@ -3851,12 +3852,14 @@
         const pMeta = PROP_COLLIDER_META[p.modelKey];
         if (p.destroyed || (p.modelKey !== 'campfire' && !(pMeta && pMeta.isFire))) continue;
         const S = cat.scale || 1;
+        const fireR = ((pMeta && pMeta.r) || 7.2) * (p.scale || 1);
+        const fireH = ((pMeta && pMeta.h) || 13) * (p.scale || 1) + 1;
         const dCat = Math.hypot(cat.x - p.wx, cat.y - p.wy);
-        if (dCat < 7.2 + 3.0 * S + 0.3 && cat.z <= p.wz + 14) {
+        if (dCat < fireR + 3.0 * S + 0.3 && cat.z <= p.wz + fireH) {
           // Empurra radialmente para fora do colisor sólido para nunca travar em cima
           const nx = dCat > 0.1 ? (cat.x - p.wx) / dCat : 0;
           const ny = dCat > 0.1 ? (cat.y - p.wy) / dCat : 1;
-          const safeDist = 7.2 + 3.0 * S + 1.8;
+          const safeDist = fireR + 3.0 * S + 1.8;
           cat.x = p.wx + nx * safeDist;
           cat.y = p.wy + ny * safeDist;
           if (cat.hurtTimer <= 0) {
@@ -4583,52 +4586,53 @@
         dr.vz = 10;
         return;
       }
-      let best = null;
+      let bestDrop = null;
+      let bestProp = null;
       let bestD = 24;
       for (let i = 0; i < debrisDrops.length; i++) {
         const dr = debrisDrops[i];
         if (dr.carried) continue;
         const d = Math.hypot(dr.x - cat.x, dr.y - cat.y);
-        if (d < bestD && Math.abs(dr.z - cat.z) < 20) { bestD = d; best = dr; }
+        if (d < bestD && Math.abs(dr.z - cat.z) < 20) { bestD = d; bestDrop = dr; }
       }
-      if (!best) {
-        // Toras e itens pegáveis plantados no mapa viram drop pegável
-        for (let i = 0; i < props.length; i++) {
-          const p = props[i];
-          const pm = PROP_COLLIDER_META[p.modelKey];
-          if (p.destroyed || (p.modelKey !== 'wood_log' && !(pm && pm.pickable))) continue;
-          const d = Math.hypot(p.wx - cat.x, p.wy - cat.y);
-          if (d < bestD && Math.abs(p.wz - cat.z) < 20) {
-            bestD = d;
-            best = p;
-          }
+      // Toras e itens pegáveis plantados no mapa viram drop pegável (compete por distância real)
+      for (let i = 0; i < props.length; i++) {
+        const p = props[i];
+        const pm = PROP_COLLIDER_META[p.modelKey];
+        if (p.destroyed || (p.modelKey !== 'wood_log' && !(pm && pm.pickable))) continue;
+        const d = Math.hypot(p.wx - cat.x, p.wy - cat.y);
+        if (d < bestD && Math.abs(p.wz - cat.z) < 20) {
+          bestD = d;
+          bestDrop = null;
+          bestProp = p;
         }
-        if (best) {
-          best.destroyed = true;
-          if (best.solidCollider) best.solidCollider.disabled = true;
-          if (best.platCollider) best.platCollider.disabled = true;
-          if (best.modelKey === 'wood_log') {
-            spawnPushableLog(best.wx, best.wy, best.selfAngle || 0);
-          } else {
-            const pc = getCellAt(best.wx, best.wy);
-            debrisDrops.push({
-              modelKey: best.modelKey,
-              model: best.model,
-              x: best.wx,
-              y: best.wy,
-              z: best.wz,
-              vx: 0, vy: 0, vz: 0,
-              scale: best.scale || 0.85,
-              selfAngle: best.selfAngle || 0,
-              spin: 0,
-              bounces: 0,
-              inWater: !!(pc && isWetMat(pc.mat)),
-              persistent: true,
-              life: 999999
-            });
-          }
-          best = debrisDrops[debrisDrops.length - 1];
+      }
+      let best = bestDrop;
+      if (bestProp) {
+        bestProp.destroyed = true;
+        if (bestProp.solidCollider) bestProp.solidCollider.disabled = true;
+        if (bestProp.platCollider) bestProp.platCollider.disabled = true;
+        if (bestProp.modelKey === 'wood_log') {
+          spawnPushableLog(bestProp.wx, bestProp.wy, bestProp.selfAngle || 0);
+        } else {
+          const pc = getCellAt(bestProp.wx, bestProp.wy);
+          debrisDrops.push({
+            modelKey: bestProp.modelKey,
+            model: bestProp.model,
+            x: bestProp.wx,
+            y: bestProp.wy,
+            z: bestProp.wz,
+            vx: 0, vy: 0, vz: 0,
+            scale: bestProp.scale || 0.85,
+            selfAngle: bestProp.selfAngle || 0,
+            spin: 0,
+            bounces: 0,
+            inWater: !!(pc && isWetMat(pc.mat)),
+            persistent: true,
+            life: 999999
+          });
         }
+        best = debrisDrops[debrisDrops.length - 1];
       }
       if (!best) return;
       best.carried = true;
@@ -4657,23 +4661,29 @@
     }
 
     window.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      const modelerEl = document.getElementById('modelerView');
+      if (modelerEl && modelerEl.classList && modelerEl.classList.contains('show')) return;
+
       const code = e.code;
       keys[code] = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
         e.preventDefault();
       }
+      if (window.__STUDIO_EDIT_MODE__) return;
       if (code === 'Space') {
         cat.jumpBuffer = 0.13;
       } else if (code === 'KeyR') {
         triggerAction();
-      } else if (code === 'KeyF' && !window.__STUDIO_EDIT_MODE__) {
+      } else if (code === 'KeyF') {
         if (!throwCarriedItem()) triggerAction();
-      } else if (code === 'KeyG' && !window.__STUDIO_EDIT_MODE__) {
+      } else if (code === 'KeyG') {
         pickOrDropItem();
       } else if (code === 'KeyC') {
         resetCatToSpawn();
       } else if (code === 'KeyM') {
-        triggerMeow();
+        if (typeof triggerMeow === 'function') triggerMeow();
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -5209,24 +5219,26 @@
 
       refreshWaterObstaclesCache();
 
-      // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul
-      floatingSpawnAccum += dt;
-      const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
-      const spawnInterval = nearWaterfall ? 0.28 : 0.55;
-      if (floatingSpawnAccum >= spawnInterval) {
-        floatingSpawnAccum = 0;
-        if (floatingItems.length < 64) {
-          spawnFloatingPetal(
-            232 + (Math.random() - 0.5) * 14,
-            -495 + (Math.random() - 0.5) * 14,
-            null,
-            -2
-          );
-          if (Math.hypot(camX - 118, camY - 220) < 420) {
-            spawnFloatingPetal(134 + (Math.random() - 0.5) * 32, 165 + (Math.random() - 0.5) * 14, null, -2);
-          }
-          if (Math.hypot(camX - 132, camY + 80) < 420) {
-            spawnFloatingPetal(126 + (Math.random() - 0.5) * 32, -130 + (Math.random() - 0.5) * 14, null, -2);
+      // Pétalas/itens flutuantes no poço da cachoeira e correnteza do rio até o dreno no mar sul (Vale Felino)
+      if (!window.__IS_STUDIO__) {
+        floatingSpawnAccum += dt;
+        const nearWaterfall = Math.hypot(camX - 232, camY + 495) < 480;
+        const spawnInterval = nearWaterfall ? 0.28 : 0.55;
+        if (floatingSpawnAccum >= spawnInterval) {
+          floatingSpawnAccum = 0;
+          if (floatingItems.length < 64) {
+            spawnFloatingPetal(
+              232 + (Math.random() - 0.5) * 14,
+              -495 + (Math.random() - 0.5) * 14,
+              null,
+              -2
+            );
+            if (Math.hypot(camX - 118, camY - 220) < 420) {
+              spawnFloatingPetal(134 + (Math.random() - 0.5) * 32, 165 + (Math.random() - 0.5) * 14, null, -2);
+            }
+            if (Math.hypot(camX - 132, camY + 80) < 420) {
+              spawnFloatingPetal(126 + (Math.random() - 0.5) * 32, -130 + (Math.random() - 0.5) * 14, null, -2);
+            }
           }
         }
       }
@@ -5414,7 +5426,7 @@
             }
             dr.inWater = false;
           }
-          if (!dc || dr.y > 860) dr.life = Math.min(dr.life, 0.5);
+          if (!dc || (!window.__IS_STUDIO__ && dr.y > 860)) dr.life = Math.min(dr.life, 0.5);
         } else {
           // Gatinho empurra troncos/pedras na margem para dentro da água!
           const dCatDr = Math.hypot(dr.x - cat.x, dr.y - cat.y);
@@ -5509,7 +5521,7 @@
             }
           }
         }
-        stepWaterfallSim(1 / 30, true);
+        if (!window.__IS_STUDIO__) stepWaterfallSim(1 / 30, true);
         stepWaveBuffer();
       }
       stepThermodynamics(dt);
@@ -7654,7 +7666,9 @@
       }
 
       function slug(name) {
-        return String(name || 'modelo').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'modelo';
+        return String(name || 'modelo')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'modelo';
       }
 
       const KIND_ICONS = {
@@ -7795,7 +7809,8 @@
             pal = (d.palette || d.pal || DEFAULT_PAL).slice(0, 36);
             for (let z = 0; z < Math.min(N, slices.length); z++)
               for (let y = 0; y < N; y++) {
-                const row = typeof decodeRLERow === 'function' ? decodeRLERow(slices[z][y]) : slices[z][y];
+                const rawRow = (slices[z] && slices[z][y]) || '';
+                const row = typeof decodeRLERow === 'function' ? decodeRLERow(rawRow) : rawRow;
                 for (let x = 0; x < N; x++) vol[z][y * N + x] = parseInt(row[x], 36) || 0;
               }
             if (d.name) document.getElementById('mName').value = d.name;
@@ -7813,6 +7828,7 @@
           }
         };
         reader.readAsText(f);
+        e.target.value = '';
       });
 
       // ---------- Abas Mundo <-> Modelador ----------
@@ -7862,6 +7878,8 @@
       const overlay = document.getElementById('studioOverlay');
       const octx = overlay.getContext('2d');
       const pinnedMask = new Uint8Array(mw * mh);
+      const sculptH = new Float32Array(mw * mh);
+      function syncSculptFromHmap() { sculptH.set(hmap); }
 
       let activeTool = 'raise';
       let brushRadius = 16;
@@ -7905,16 +7923,32 @@
 
       function makeSnapshot() {
         return {
-          h: new Float32Array(hmap),
+          h: new Float32Array(sculptH),
           m: new Uint8Array(matMap),
-          p: new Uint8Array(pinnedMask)
+          p: new Uint8Array(pinnedMask),
+          props: props.filter(p => !p.destroyed).map(p => ({
+            modelKey: p.modelKey, wx: p.wx, wy: p.wy, liftZ: p.wz,
+            angle: p.selfAngle, scale: p.scale, pinned: !!p.pinned
+          }))
         };
       }
 
       function restoreSnapshot(snap) {
-        hmap.set(snap.h);
+        sculptH.set(snap.h);
+        for (let i = 0; i < hmap.length; i++) hmap[i] = Math.round(sculptH[i]);
         matMap.set(snap.m);
         pinnedMask.set(snap.p);
+        if (Array.isArray(snap.props)) {
+          clearAllProps();
+          for (const sp of snap.props) {
+            const before = props.length;
+            addProp(sp.modelKey, sp.wx, sp.wy, {
+              allowOnPath: true, allowInWater: true,
+              liftZ: sp.liftZ, angle: sp.angle, scale: sp.scale
+            });
+            if (props.length > before) props[props.length - 1].pinned = !!sp.pinned;
+          }
+        }
         if (typeof buildStandableMap === 'function') buildStandableMap();
         bakeTerrainSlices();
         bakeMinimapBase();
@@ -8005,20 +8039,24 @@
             const w = falloff * falloff * (3 - 2 * falloff);
 
             if (activeTool === 'raise') {
-              hmap[idx] = Math.min(TERRAIN_Z_MAX, hmap[idx] + brushStrength * 1.4 * w);
+              sculptH[idx] = Math.min(TERRAIN_Z_MAX, sculptH[idx] + brushStrength * 1.4 * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'lower') {
-              hmap[idx] = Math.max(Z_MIN, hmap[idx] - brushStrength * 1.4 * w);
+              sculptH[idx] = Math.max(Z_MIN, sculptH[idx] - brushStrength * 1.4 * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'flatten') {
-              hmap[idx] = hmap[idx] + (flattenTargetZ - hmap[idx]) * Math.min(1, 0.35 * brushStrength * w);
+              sculptH[idx] = sculptH[idx] + (flattenTargetZ - sculptH[idx]) * Math.min(1, 0.35 * brushStrength * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'smooth') {
-              const avg = (hmap[idx - 1] + hmap[idx + 1] + hmap[idx - mw] + hmap[idx + mw]) * 0.25;
-              hmap[idx] = hmap[idx] + (avg - hmap[idx]) * Math.min(1, 0.45 * brushStrength * w);
+              const avg = (sculptH[idx - 1] + sculptH[idx + 1] + sculptH[idx - mw] + sculptH[idx + mw]) * 0.25;
+              sculptH[idx] = sculptH[idx] + (avg - sculptH[idx]) * Math.min(1, 0.45 * brushStrength * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool.startsWith('mat_')) {
@@ -8028,10 +8066,10 @@
               else if (activeTool === 'mat_path') m = MAT_PATH;
               else if (activeTool === 'mat_water') {
                 m = MAT_WATER;
-                if (hmap[idx] > -4) hmap[idx] = -4;
+                if (sculptH[idx] > -4) { sculptH[idx] = -4; hmap[idx] = -4; }
               } else if (activeTool === 'mat_shallow') {
                 m = MAT_SHALLOW;
-                if (hmap[idx] > -1) hmap[idx] = -1;
+                if (sculptH[idx] > -1) { sculptH[idx] = -1; hmap[idx] = -1; }
               }
               matMap[idx] = m;
               pinnedMask[idx] = 1;
@@ -8041,6 +8079,7 @@
             } else if (activeTool === 'unpin') {
               pinnedMask[idx] = 0;
             } else if (activeTool === 'eraser') {
+              sculptH[idx] = 0;
               hmap[idx] = 0;
               matMap[idx] = MAT_GRASS;
               pinnedMask[idx] = 0;
@@ -8140,15 +8179,21 @@
             const d = Math.hypot(props[i].wx - wx, props[i].wy - wy);
             if (d < bestD) { bestD = d; bestIdx = i; }
           }
-          if (bestIdx >= 0) removePropObj(props[bestIdx]);
+          if (bestIdx >= 0) {
+            pushUndoSnapshot();
+            removePropObj(props[bestIdx]);
+          }
           return;
         }
 
         const modelKey = activeTool.replace('prop_', '');
+        pushUndoSnapshot();
         const beforeLen = props.length;
         addProp(modelKey, wx, wy, { allowOnPath: true, allowInWater: false });
         if (props.length > beforeLen) {
           props[props.length - 1].pinned = true;
+        } else {
+          undoStack.pop();
         }
       }
 
@@ -8501,11 +8546,37 @@
             if (props.length > before) props[props.length - 1].pinned = true;
           }
         }
+        if (genMode === 'manual') {
+          pinnedMask.fill(1);
+          for (let i = 0; i < props.length; i++) props[i].pinned = true;
+        }
+        syncSculptFromHmap();
         if (typeof buildStandableMap === 'function') buildStandableMap();
         if (typeof initFlowStreaks === 'function') initFlowStreaks();
 
         bakeTerrainSlices();
         bakeMinimapBase();
+      }
+
+      function findSafeSpawnNear(wx, wy) {
+        const isDry = (x, y) => {
+          const br = getBridgeAt(x, y);
+          if (br) return { x, y, z: getBridgeDeckZ(br, x, y) };
+          const c = getCellAt(x, y);
+          if (c && !isWetMat(c.mat) && c.standable) return { x, y, z: c.h };
+          return null;
+        };
+        const direct = isDry(wx, wy);
+        if (direct) return direct;
+        for (let rad = VOX * 2; rad <= HALF_WORLD; rad += VOX * 3) {
+          for (let a = 0; a < 16; a++) {
+            const ang = (a / 16) * Math.PI * 2;
+            const hit = isDry(wx + Math.cos(ang) * rad, wy + Math.sin(ang) * rad);
+            if (hit) return hit;
+          }
+        }
+        const c0 = getCellAt(wx, wy);
+        return { x: wx, y: wy, z: c0 ? Math.max(0, c0.h) : 0 };
       }
 
       // Inicializa o Studio com terreno procedural neutro (sem o mapa hardcodado do Vale Felino)
@@ -8523,9 +8594,11 @@
         window.__STUDIO_EDIT_MODE__ = false;
         document.getElementById('btnModeEdit').className = 'mode-btn';
         document.getElementById('btnModeTest').className = 'mode-btn active-test';
-        const c = getCellAt(camX, camY);
-        teleportToWorld(camX, camY, 'Testando cena! 🐱', c ? c.h : 0);
-        document.getElementById('helpPill').textContent = 'Testar: WASD anda • Espaço pula • Clique usa ferramenta • Volte para Editar quando quiser';
+        const safe = findSafeSpawnNear(camX, camY);
+        teleportToWorld(safe.x, safe.y, 'Testando cena! 🐱', safe.z);
+        document.getElementById('helpPill').textContent = document.body.classList.contains('play-only')
+          ? 'WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Q/E gira'
+          : 'Testar: WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Volte p/ Editar';
       });
 
       document.querySelector('.sidebar').addEventListener('click', (e) => {
@@ -8587,6 +8660,7 @@
         pushUndoSnapshot();
         if (baseKindSel) baseKindSel.value = 'flat';
         hmap.fill(0);
+        syncSculptFromHmap();
         matMap.fill(MAT_GRASS);
         pinnedMask.fill(0);
         customWindVx.fill(0); customWindVy.fill(0);
@@ -8616,11 +8690,11 @@
         } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
           e.preventDefault();
           popRedoSnapshot();
-        } else if (e.key === '[' || e.code === 'BracketLeft') {
+        } else if (e.key === '[' || (e.key !== ']' && e.code === 'BracketLeft')) {
           brushRadius = Math.max(4, brushRadius - 2);
           document.getElementById('slRadius').value = String(brushRadius);
           document.getElementById('valRadius').textContent = String(brushRadius);
-        } else if (e.key === ']' || e.code === 'BracketRight') {
+        } else if (e.key === ']' || (e.key !== '[' && e.code === 'BracketRight')) {
           brushRadius = Math.min(48, brushRadius + 2);
           document.getElementById('slRadius').value = String(brushRadius);
           document.getElementById('valRadius').textContent = String(brushRadius);
@@ -8629,6 +8703,7 @@
 
       function applyBoxPinState(pinVal) {
         if (!selectionBox) return;
+        pushUndoSnapshot();
         const mx0 = Math.max(0, Math.floor(selectionBox.x0 / VOX + HALF_GRID));
         const mx1 = Math.min(mw - 1, Math.ceil(selectionBox.x1 / VOX + HALF_GRID));
         const my0 = Math.max(0, Math.floor(selectionBox.y0 / VOX + HALF_GRID));
@@ -8686,6 +8761,7 @@
         for (let my = my0; my <= my1; my++) {
           for (let mx = mx0; mx <= mx1; mx++) {
             const idx = my * mw + mx;
+            sculptH[idx] = 0;
             hmap[idx] = 0;
             matMap[idx] = MAT_GRASS;
             pinnedMask[idx] = 0;
@@ -8702,10 +8778,12 @@
         selectionBox = null;
       });
       document.getElementById('btnRegenAll').addEventListener('click', () => {
+        pushUndoSnapshot();
         const s = parseInt(document.getElementById('seedInput').value, 10) || DEFAULT_WORLD_SEED;
         regenWorld(s, false);
       });
       document.getElementById('btnRegenUnpinned').addEventListener('click', () => {
+        pushUndoSnapshot();
         const s = parseInt(document.getElementById('seedInput').value, 10) || DEFAULT_WORLD_SEED;
         regenWorld(s, true);
       });
@@ -8761,6 +8839,15 @@
             GRAVITY = data.tuning.gravity;
             JUMP_VEL = Math.sqrt(2 * GRAVITY * 35.0);
           }
+          const syncSl = (id, vid, val, fmt) => {
+            const el = document.getElementById(id), vEl = document.getElementById(vid);
+            if (el) el.value = String(val);
+            if (vEl) vEl.textContent = fmt(val);
+          };
+          syncSl('slWind', 'valWind', ENGINE_TUNING.windMul, v => `${v.toFixed(1)}x`);
+          syncSl('slGravity', 'valGravity', GRAVITY, v => `${v}`);
+          syncSl('slCool', 'valCool', ENGINE_TUNING.fireCool, v => v.toFixed(2));
+          syncSl('slTalus', 'valTalus', ENGINE_TUNING.sandTalus, v => `${v}`);
         }
         if (window.StudioModeler && Array.isArray(data.customAssets)) {
           window.StudioModeler.importAssets(data.customAssets);
@@ -8770,6 +8857,7 @@
         regenWorld(data.seed || DEFAULT_WORLD_SEED, false, data.baseKind || null);
         if (Array.isArray(data.pinnedCells)) {
           for (const [idx, h, m] of data.pinnedCells) {
+            if (idx < 0 || idx >= hmap.length) continue;
             pinnedMask[idx] = 1;
             hmap[idx] = h;
             matMap[idx] = m;
@@ -8777,11 +8865,13 @@
         }
         if (Array.isArray(data.windSparse)) {
           for (const [idx, vx, vy] of data.windSparse) {
+            if (idx < 0 || idx >= customWindVx.length) continue;
             customWindVx[idx] = vx; customWindVy[idx] = vy;
           }
         }
         if (Array.isArray(data.flowSparse)) {
           for (const [idx, vx, vy] of data.flowSparse) {
+            if (idx < 0 || idx >= customFlowVx.length) continue;
             customFlowVx[idx] = vx; customFlowVy[idx] = vy;
           }
         }
@@ -8801,6 +8891,7 @@
             avatarScaleVal.textContent = `${cat.scale.toFixed(2)}x`;
           }
         }
+        syncSculptFromHmap();
         if (typeof buildStandableMap === 'function') buildStandableMap();
         bakeTerrainSlices();
         bakeMinimapBase();
@@ -8843,10 +8934,14 @@
           }
         };
         reader.readAsText(file);
+        e.target.value = '';
       });
 
       // Cena publicada (.html exportado): carrega o projeto embutido e abre direto em modo Testar
       if (window.__STUDIO_BOOT__) {
+        document.getElementById('modelerView')?.classList.remove('show');
+        const ws = document.querySelector('.workspace');
+        if (ws) ws.style.display = 'flex';
         try { loadProject(window.__STUDIO_BOOT__); } catch (err) { console.error(err); }
         document.body.classList.add('play-only');
         document.getElementById('btnModeTest').click();

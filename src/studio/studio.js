@@ -8,6 +8,8 @@
       const overlay = document.getElementById('studioOverlay');
       const octx = overlay.getContext('2d');
       const pinnedMask = new Uint8Array(mw * mh);
+      const sculptH = new Float32Array(mw * mh);
+      function syncSculptFromHmap() { sculptH.set(hmap); }
 
       let activeTool = 'raise';
       let brushRadius = 16;
@@ -51,16 +53,32 @@
 
       function makeSnapshot() {
         return {
-          h: new Float32Array(hmap),
+          h: new Float32Array(sculptH),
           m: new Uint8Array(matMap),
-          p: new Uint8Array(pinnedMask)
+          p: new Uint8Array(pinnedMask),
+          props: props.filter(p => !p.destroyed).map(p => ({
+            modelKey: p.modelKey, wx: p.wx, wy: p.wy, liftZ: p.wz,
+            angle: p.selfAngle, scale: p.scale, pinned: !!p.pinned
+          }))
         };
       }
 
       function restoreSnapshot(snap) {
-        hmap.set(snap.h);
+        sculptH.set(snap.h);
+        for (let i = 0; i < hmap.length; i++) hmap[i] = Math.round(sculptH[i]);
         matMap.set(snap.m);
         pinnedMask.set(snap.p);
+        if (Array.isArray(snap.props)) {
+          clearAllProps();
+          for (const sp of snap.props) {
+            const before = props.length;
+            addProp(sp.modelKey, sp.wx, sp.wy, {
+              allowOnPath: true, allowInWater: true,
+              liftZ: sp.liftZ, angle: sp.angle, scale: sp.scale
+            });
+            if (props.length > before) props[props.length - 1].pinned = !!sp.pinned;
+          }
+        }
         if (typeof buildStandableMap === 'function') buildStandableMap();
         bakeTerrainSlices();
         bakeMinimapBase();
@@ -151,20 +169,24 @@
             const w = falloff * falloff * (3 - 2 * falloff);
 
             if (activeTool === 'raise') {
-              hmap[idx] = Math.min(TERRAIN_Z_MAX, hmap[idx] + brushStrength * 1.4 * w);
+              sculptH[idx] = Math.min(TERRAIN_Z_MAX, sculptH[idx] + brushStrength * 1.4 * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'lower') {
-              hmap[idx] = Math.max(Z_MIN, hmap[idx] - brushStrength * 1.4 * w);
+              sculptH[idx] = Math.max(Z_MIN, sculptH[idx] - brushStrength * 1.4 * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'flatten') {
-              hmap[idx] = hmap[idx] + (flattenTargetZ - hmap[idx]) * Math.min(1, 0.35 * brushStrength * w);
+              sculptH[idx] = sculptH[idx] + (flattenTargetZ - sculptH[idx]) * Math.min(1, 0.35 * brushStrength * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'smooth') {
-              const avg = (hmap[idx - 1] + hmap[idx + 1] + hmap[idx - mw] + hmap[idx + mw]) * 0.25;
-              hmap[idx] = hmap[idx] + (avg - hmap[idx]) * Math.min(1, 0.45 * brushStrength * w);
+              const avg = (sculptH[idx - 1] + sculptH[idx + 1] + sculptH[idx - mw] + sculptH[idx + mw]) * 0.25;
+              sculptH[idx] = sculptH[idx] + (avg - sculptH[idx]) * Math.min(1, 0.45 * brushStrength * w);
+              hmap[idx] = Math.round(sculptH[idx]);
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool.startsWith('mat_')) {
@@ -174,10 +196,10 @@
               else if (activeTool === 'mat_path') m = MAT_PATH;
               else if (activeTool === 'mat_water') {
                 m = MAT_WATER;
-                if (hmap[idx] > -4) hmap[idx] = -4;
+                if (sculptH[idx] > -4) { sculptH[idx] = -4; hmap[idx] = -4; }
               } else if (activeTool === 'mat_shallow') {
                 m = MAT_SHALLOW;
-                if (hmap[idx] > -1) hmap[idx] = -1;
+                if (sculptH[idx] > -1) { sculptH[idx] = -1; hmap[idx] = -1; }
               }
               matMap[idx] = m;
               pinnedMask[idx] = 1;
@@ -187,6 +209,7 @@
             } else if (activeTool === 'unpin') {
               pinnedMask[idx] = 0;
             } else if (activeTool === 'eraser') {
+              sculptH[idx] = 0;
               hmap[idx] = 0;
               matMap[idx] = MAT_GRASS;
               pinnedMask[idx] = 0;
@@ -286,15 +309,21 @@
             const d = Math.hypot(props[i].wx - wx, props[i].wy - wy);
             if (d < bestD) { bestD = d; bestIdx = i; }
           }
-          if (bestIdx >= 0) removePropObj(props[bestIdx]);
+          if (bestIdx >= 0) {
+            pushUndoSnapshot();
+            removePropObj(props[bestIdx]);
+          }
           return;
         }
 
         const modelKey = activeTool.replace('prop_', '');
+        pushUndoSnapshot();
         const beforeLen = props.length;
         addProp(modelKey, wx, wy, { allowOnPath: true, allowInWater: false });
         if (props.length > beforeLen) {
           props[props.length - 1].pinned = true;
+        } else {
+          undoStack.pop();
         }
       }
 
@@ -647,11 +676,37 @@
             if (props.length > before) props[props.length - 1].pinned = true;
           }
         }
+        if (genMode === 'manual') {
+          pinnedMask.fill(1);
+          for (let i = 0; i < props.length; i++) props[i].pinned = true;
+        }
+        syncSculptFromHmap();
         if (typeof buildStandableMap === 'function') buildStandableMap();
         if (typeof initFlowStreaks === 'function') initFlowStreaks();
 
         bakeTerrainSlices();
         bakeMinimapBase();
+      }
+
+      function findSafeSpawnNear(wx, wy) {
+        const isDry = (x, y) => {
+          const br = getBridgeAt(x, y);
+          if (br) return { x, y, z: getBridgeDeckZ(br, x, y) };
+          const c = getCellAt(x, y);
+          if (c && !isWetMat(c.mat) && c.standable) return { x, y, z: c.h };
+          return null;
+        };
+        const direct = isDry(wx, wy);
+        if (direct) return direct;
+        for (let rad = VOX * 2; rad <= HALF_WORLD; rad += VOX * 3) {
+          for (let a = 0; a < 16; a++) {
+            const ang = (a / 16) * Math.PI * 2;
+            const hit = isDry(wx + Math.cos(ang) * rad, wy + Math.sin(ang) * rad);
+            if (hit) return hit;
+          }
+        }
+        const c0 = getCellAt(wx, wy);
+        return { x: wx, y: wy, z: c0 ? Math.max(0, c0.h) : 0 };
       }
 
       // Inicializa o Studio com terreno procedural neutro (sem o mapa hardcodado do Vale Felino)
@@ -669,9 +724,11 @@
         window.__STUDIO_EDIT_MODE__ = false;
         document.getElementById('btnModeEdit').className = 'mode-btn';
         document.getElementById('btnModeTest').className = 'mode-btn active-test';
-        const c = getCellAt(camX, camY);
-        teleportToWorld(camX, camY, 'Testando cena! 🐱', c ? c.h : 0);
-        document.getElementById('helpPill').textContent = 'Testar: WASD anda • Espaço pula • Clique usa ferramenta • Volte para Editar quando quiser';
+        const safe = findSafeSpawnNear(camX, camY);
+        teleportToWorld(safe.x, safe.y, 'Testando cena! 🐱', safe.z);
+        document.getElementById('helpPill').textContent = document.body.classList.contains('play-only')
+          ? 'WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Q/E gira'
+          : 'Testar: WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Volte p/ Editar';
       });
 
       document.querySelector('.sidebar').addEventListener('click', (e) => {
@@ -733,6 +790,7 @@
         pushUndoSnapshot();
         if (baseKindSel) baseKindSel.value = 'flat';
         hmap.fill(0);
+        syncSculptFromHmap();
         matMap.fill(MAT_GRASS);
         pinnedMask.fill(0);
         customWindVx.fill(0); customWindVy.fill(0);
@@ -762,11 +820,11 @@
         } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
           e.preventDefault();
           popRedoSnapshot();
-        } else if (e.key === '[' || e.code === 'BracketLeft') {
+        } else if (e.key === '[' || (e.key !== ']' && e.code === 'BracketLeft')) {
           brushRadius = Math.max(4, brushRadius - 2);
           document.getElementById('slRadius').value = String(brushRadius);
           document.getElementById('valRadius').textContent = String(brushRadius);
-        } else if (e.key === ']' || e.code === 'BracketRight') {
+        } else if (e.key === ']' || (e.key !== '[' && e.code === 'BracketRight')) {
           brushRadius = Math.min(48, brushRadius + 2);
           document.getElementById('slRadius').value = String(brushRadius);
           document.getElementById('valRadius').textContent = String(brushRadius);
@@ -775,6 +833,7 @@
 
       function applyBoxPinState(pinVal) {
         if (!selectionBox) return;
+        pushUndoSnapshot();
         const mx0 = Math.max(0, Math.floor(selectionBox.x0 / VOX + HALF_GRID));
         const mx1 = Math.min(mw - 1, Math.ceil(selectionBox.x1 / VOX + HALF_GRID));
         const my0 = Math.max(0, Math.floor(selectionBox.y0 / VOX + HALF_GRID));
@@ -832,6 +891,7 @@
         for (let my = my0; my <= my1; my++) {
           for (let mx = mx0; mx <= mx1; mx++) {
             const idx = my * mw + mx;
+            sculptH[idx] = 0;
             hmap[idx] = 0;
             matMap[idx] = MAT_GRASS;
             pinnedMask[idx] = 0;
@@ -848,10 +908,12 @@
         selectionBox = null;
       });
       document.getElementById('btnRegenAll').addEventListener('click', () => {
+        pushUndoSnapshot();
         const s = parseInt(document.getElementById('seedInput').value, 10) || DEFAULT_WORLD_SEED;
         regenWorld(s, false);
       });
       document.getElementById('btnRegenUnpinned').addEventListener('click', () => {
+        pushUndoSnapshot();
         const s = parseInt(document.getElementById('seedInput').value, 10) || DEFAULT_WORLD_SEED;
         regenWorld(s, true);
       });
@@ -907,6 +969,15 @@
             GRAVITY = data.tuning.gravity;
             JUMP_VEL = Math.sqrt(2 * GRAVITY * 35.0);
           }
+          const syncSl = (id, vid, val, fmt) => {
+            const el = document.getElementById(id), vEl = document.getElementById(vid);
+            if (el) el.value = String(val);
+            if (vEl) vEl.textContent = fmt(val);
+          };
+          syncSl('slWind', 'valWind', ENGINE_TUNING.windMul, v => `${v.toFixed(1)}x`);
+          syncSl('slGravity', 'valGravity', GRAVITY, v => `${v}`);
+          syncSl('slCool', 'valCool', ENGINE_TUNING.fireCool, v => v.toFixed(2));
+          syncSl('slTalus', 'valTalus', ENGINE_TUNING.sandTalus, v => `${v}`);
         }
         if (window.StudioModeler && Array.isArray(data.customAssets)) {
           window.StudioModeler.importAssets(data.customAssets);
@@ -916,6 +987,7 @@
         regenWorld(data.seed || DEFAULT_WORLD_SEED, false, data.baseKind || null);
         if (Array.isArray(data.pinnedCells)) {
           for (const [idx, h, m] of data.pinnedCells) {
+            if (idx < 0 || idx >= hmap.length) continue;
             pinnedMask[idx] = 1;
             hmap[idx] = h;
             matMap[idx] = m;
@@ -923,11 +995,13 @@
         }
         if (Array.isArray(data.windSparse)) {
           for (const [idx, vx, vy] of data.windSparse) {
+            if (idx < 0 || idx >= customWindVx.length) continue;
             customWindVx[idx] = vx; customWindVy[idx] = vy;
           }
         }
         if (Array.isArray(data.flowSparse)) {
           for (const [idx, vx, vy] of data.flowSparse) {
+            if (idx < 0 || idx >= customFlowVx.length) continue;
             customFlowVx[idx] = vx; customFlowVy[idx] = vy;
           }
         }
@@ -947,6 +1021,7 @@
             avatarScaleVal.textContent = `${cat.scale.toFixed(2)}x`;
           }
         }
+        syncSculptFromHmap();
         if (typeof buildStandableMap === 'function') buildStandableMap();
         bakeTerrainSlices();
         bakeMinimapBase();
@@ -989,10 +1064,14 @@
           }
         };
         reader.readAsText(file);
+        e.target.value = '';
       });
 
       // Cena publicada (.html exportado): carrega o projeto embutido e abre direto em modo Testar
       if (window.__STUDIO_BOOT__) {
+        document.getElementById('modelerView')?.classList.remove('show');
+        const ws = document.querySelector('.workspace');
+        if (ws) ws.style.display = 'flex';
         try { loadProject(window.__STUDIO_BOOT__); } catch (err) { console.error(err); }
         document.body.classList.add('play-only');
         document.getElementById('btnModeTest').click();
