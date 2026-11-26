@@ -155,19 +155,20 @@ flowchart TD
 
 ## 7. Status de execução
 
-> Atualizado ao final da sessão. Testes automáticos completos (`tests/test_physics_invariants.py`) foram adiados a pedido; as verificações feitas foram `node --check` e um smoke test headless em Node com DOM falso (não é navegador real).
+> Atualizado após a conclusão das etapas planejadas. A suíte completa (`tests/test_physics_invariants.py`) segue adiada a pedido; as verificações feitas foram `node --check` em módulos e bundles HTML gerados, além de smoke tests headless em Node com DOM falso (não é navegador real).
 
 ### Feito (cada item na sua branch, mergeado em `dev-engine`)
 - **Grid configurável (parte da 1A):** `src/engine/00-world-config.js`; tamanhos 128 / 256 / 512 / 1080 escolhidos na carga (`?grid=N`), com seletor no Studio que recarrega a página. O Vale Felino continua em 1080.
+- **Extração de física e fluidos (1B — `feat/engine-physics-split`):** `src/engine/06-fluids-weather.js` e `src/engine/07-physics-core.js` extraídos de `src/terrain-world/05-physics-fluids.js` mantendo a ordem de concatenação dos bundlers.
+- **Mundo limpo no Studio & polimento (2A + Fase 2 — `feat/studio-blank-world`):** flag `window.__IS_STUDIO__` no `src/studio/shell.html` pula `initOrganicWorld()`, `populateWorldObjects()`, `spawnPushableLog()`, `rebuildWaterfallBlocks()` e `createVerletChain()` do Vale Felino na carga do Studio; adicionados seletores de Base Inicial (`Ilha Procedural`, `Continental`, `Plano Vazio`) e Modo de Geração (`Tudo Procedural`, `Híbrido`, `Tudo Fixo`), botões `Travar Tudo` / `Destravar Tudo`, **Redo (`Ctrl+Y` / `Ctrl+Shift+Z`)**, atalhos `[` e `]` para raio do pincel, e colisão/sensor do avatar acompanhando `cat.scale`.
 - **Escala do personagem (`feat/avatar-scale`):** `cat.scale` agora escala posições, alturas, sombra e balão; Studio usa 0.45 para o gato.
 - **Ações (`feat/interact-pick-throw`):** `F` quebra (ou arremessa se carregando), `G` pega/solta drops. `E` não foi usado porque já gira a câmera.
 - **Humanoide cru (`feat/humanoid-avatar`):** `src/engine/05-humanoid.js`, avatar padrão do Studio.
-- **Publicar `.html` (`feat/studio-publish-html`):** HTML autocontido que abre em modo Testar; payload do projeto versionado (grid, avatar).
-- **Modelador Voxel MVP (`feat/studio-modeler`):** editor por camadas Z (16/24/32), lápis/borracha/balde/conta-gotas, espelho X, onion skin, paleta editável, preview 3D girando, salvar na biblioteca do mundo ("Meus Modelos"), importar/exportar modelo `.json`, modelos incluídos no projeto e no `.html` publicado.
+- **Publicar `.html` (`feat/studio-publish-html`):** HTML autocontido que abre em modo Testar; payload do projeto versionado (grid, avatar, `baseKind`, `generationMode`).
+- **Modelador Voxel MVP (`feat/studio-modeler`) & Polimento (`feat/modeler-polish`):** editor por camadas Z (16/24/32), lápis/borracha/balde/conta-gotas, espelho X, onion skin, paleta editável com presets (Padrão, Madeira, Folhagem, Pedra, Personagem, Cozy Pastel), botão `Auto-Shading (Z)`, preview 3D girando, categorias (`decor`, `solid`, `destructible` com HP/drop, `pickable`, `foliage`, `fire`), salvar na biblioteca do mundo ("Meus Modelos"), importar/exportar modelo `.json` (compatível com RLE), modelos incluídos no projeto e no `.html` publicado.
 
-### Pendente
-- **1B:** extrair física e fluidos genéricos de `src/terrain-world/05-physics-fluids.js` para `src/engine/`.
-- **2A:** desligar `src/terrain-world/` de `scripts/generate_studio.py` (hoje o Studio ainda carrega o código do Vale Felino) e criar o fluxo "Novo Projeto" com bases (plano / ilha / continental).
-- **Fase 2, polimento:** Redo, atalhos de pincel, seletor explícito de modo de geração (Procedural / Híbrido / Fixo), colisão do personagem acompanhando a escala.
-- **Fase 3, restante:** auto-shading por altura, presets de paleta, categorias (destrutível, pegável, folhagem, fogo/luz, avatar de teste), "comparar escala com humanoide" já existe como silhueta simples.
+### Pendente / Observações
+- **1A (resize em runtime sem reload) e desacoplamento completo de `generate_studio.py`:** `scripts/generate_studio.py` ainda concatena `src/terrain-world/*.js` para reaproveitar estruturas compartilhadas (`hmap`, `propModels`, `loop`), mas pula toda a inicialização do Vale Felino via `window.__IS_STUDIO__`.
+- **Categoria `Avatar de Teste` no Modelador:** não implementada (o Studio usa `human` ou `cat`).
+- **Execução da suíte `tests/test_physics_invariants.py`:** adiada conforme solicitado.
 - **Verificação em navegador real:** nada do Studio foi aberto num navegador até agora.
