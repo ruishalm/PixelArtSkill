@@ -287,6 +287,7 @@
           avatar: cat.avatar || 'cat',
           avatarScale: cat.scale,
           tuning: { ...ENGINE_TUNING, gravity: GRAVITY },
+          customScript: currentCustomScript,
           customAssets: window.StudioModeler ? window.StudioModeler.exportAssets() : [],
           pinnedCells,
           caveSparse,
@@ -385,6 +386,11 @@
         syncSculptFromHmap();
         if (typeof buildStandableMap === 'function') buildStandableMap();
         if (typeof initFlowStreaks === 'function') initFlowStreaks();
+        if (typeof data.customScript === 'string' && window.VoxelEngine) {
+          const ta = document.getElementById('customScriptInput');
+          if (ta) ta.value = data.customScript;
+          window.VoxelEngine.runScript(data.customScript);
+        }
         bakeTerrainSlices();
         bakeMinimapBase();
       }
@@ -512,6 +518,264 @@
         };
         reader.readAsText(file);
         e.target.value = '';
+      });
+
+      // API Pública de Injeção de Script (Mod / Gameplay)
+      const _scriptTickCbs = [];
+      const _scriptKeyCbs = [];
+      let currentCustomScript = '';
+
+      window.VoxelEngine = {
+        get player() { return cat; },
+        get props() { return props; },
+        get drops() { return debrisDrops; },
+        onTick: (fn) => { if (typeof fn === 'function') _scriptTickCbs.push(fn); },
+        onKeyDown: (fn) => { if (typeof fn === 'function') _scriptKeyCbs.push(fn); },
+        clearHooks: () => { _scriptTickCbs.length = 0; _scriptKeyCbs.length = 0; },
+        getGroundAt: (wx, wy) => {
+          const c = getCellAt(wx, wy);
+          return c ? (c.hasCave && cat.z < c.caveCeil - 4 ? c.caveFloor : c.h) : 0;
+        },
+        spawnParticles: (wx, wy, wz, count = 8, colors = ['#38BDF8', '#E0F2FE'], speed = 35) => {
+          if (typeof spawnParticles === 'function') spawnParticles(wx, wy, wz, count, colors, speed);
+        },
+        speak: (msg, frames = 60) => { if (typeof catSpeak === 'function') catSpeak(msg, frames); },
+        teleportForward: (dist = 10) => {
+          const fx = -Math.sin(cat.selfAngle);
+          const fy = Math.cos(cat.selfAngle);
+          const tx = Math.max(WORLD_MIN + 4, Math.min(WORLD_MAX - 4, cat.x + fx * dist));
+          const ty = Math.max(WORLD_MIN + 4, Math.min(WORLD_MAX - 4, cat.y + fy * dist));
+          const col = checkCollisionAt(tx, ty, cat.z, cat.onGround);
+          if (col && col.blocked) return false;
+          if (typeof spawnParticles === 'function') {
+            spawnParticles(cat.x, cat.y, cat.z + 6, 8, ['#38BDF8', '#BAE6FD', '#FFFDF8'], 28);
+          }
+          cat.x = tx;
+          cat.y = ty;
+          const gz = window.VoxelEngine.getGroundAt(tx, ty);
+          if (cat.onGround) { cat.z = gz; cat.groundZ = gz; }
+          if (typeof spawnParticles === 'function') {
+            spawnParticles(tx, ty, cat.z + 6, 10, ['#38BDF8', '#FDE68A', '#FFFDF8'], 34);
+          }
+          if (typeof playTone === 'function') playTone(520, 880, 0.09, 'triangle', 0.07);
+          return true;
+        },
+        runScript: (code) => {
+          window.VoxelEngine.clearHooks();
+          currentCustomScript = String(code || '');
+          const msgEl = document.getElementById('scriptStatusMsg');
+          if (!currentCustomScript.trim()) {
+            if (msgEl) { msgEl.style.color = '#A8A29E'; msgEl.textContent = 'Nenhum script ativo.'; }
+            return true;
+          }
+          try {
+            const fn = new Function('VoxelEngine', currentCustomScript);
+            fn(window.VoxelEngine);
+            if (msgEl) { msgEl.style.color = '#86EFAC'; msgEl.textContent = '✅ Script ativo no modo Testar!'; }
+            return true;
+          } catch (err) {
+            if (msgEl) { msgEl.style.color = '#FCA5A5'; msgEl.textContent = '❌ Erro: ' + err.message; }
+            return false;
+          }
+        }
+      };
+
+      window.addEventListener('keydown', (e) => {
+        if (window.__STUDIO_EDIT_MODE__) return;
+        const tag = e.target && e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+        for (let i = 0; i < _scriptKeyCbs.length; i++) {
+          try { _scriptKeyCbs[i](e.code, e); } catch (err) { console.error(err); }
+        }
+      });
+
+      let _lastScriptTick = performance.now();
+      (function scriptTickLoop(now) {
+        const dt = Math.min(0.05, Math.max(0.001, (now - _lastScriptTick) / 1000));
+        _lastScriptTick = now;
+        if (!window.__STUDIO_EDIT_MODE__ && _scriptTickCbs.length > 0) {
+          for (let i = 0; i < _scriptTickCbs.length; i++) {
+            try { _scriptTickCbs[i](dt); } catch (err) { console.error(err); }
+          }
+        }
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(scriptTickLoop);
+      })(performance.now());
+
+      const BLINK_PRESET_CODE =
+`// Blink: mini-teleport de 10 unidades (Tecla B ou Shift)
+VoxelEngine.onKeyDown((code) => {
+  if (code === 'KeyB' || code === 'ShiftLeft') {
+    if (VoxelEngine.teleportForward(10)) {
+      VoxelEngine.speak('⚡ Blink!', 45);
+    }
+  }
+});`;
+
+      document.getElementById('btnPresetBlink')?.addEventListener('click', () => {
+        const ta = document.getElementById('customScriptInput');
+        if (ta) ta.value = BLINK_PRESET_CODE;
+        window.VoxelEngine.runScript(BLINK_PRESET_CODE);
+      });
+      document.getElementById('btnRunScript')?.addEventListener('click', () => {
+        const ta = document.getElementById('customScriptInput');
+        window.VoxelEngine.runScript(ta ? ta.value : '');
+      });
+      document.getElementById('btnLoadScriptFile')?.addEventListener('click', () => {
+        document.getElementById('fileScriptInput')?.click();
+      });
+      document.getElementById('fileScriptInput')?.addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = () => {
+          const ta = document.getElementById('customScriptInput');
+          if (ta) ta.value = r.result;
+          window.VoxelEngine.runScript(r.result);
+        };
+        r.readAsText(f);
+        e.target.value = '';
+      });
+
+      // Gerador PKZIP (Store + CRC32) em JS puro sem dependências
+      function buildZipBlob(entries) {
+        const enc = new TextEncoder();
+        const crcTable = new Uint32Array(256);
+        for (let i = 0; i < 256; i++) {
+          let c = i;
+          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          crcTable[i] = c >>> 0;
+        }
+        const crc32 = (u8) => {
+          let c = 0xFFFFFFFF;
+          for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+          return (c ^ 0xFFFFFFFF) >>> 0;
+        };
+        const locals = [];
+        const centrals = [];
+        let offset = 0;
+        for (const ent of entries) {
+          const nameBytes = enc.encode(ent.name);
+          const dataBytes = typeof ent.data === 'string' ? enc.encode(ent.data) : ent.data;
+          const crc = crc32(dataBytes);
+          const sz = dataBytes.length;
+
+          const lh = new Uint8Array(30 + nameBytes.length);
+          const lv = new DataView(lh.buffer);
+          lv.setUint32(0, 0x04034B50, true);
+          lv.setUint16(4, 20, true);
+          lv.setUint16(6, 0x0800, true); // UTF-8
+          lv.setUint32(14, crc, true);
+          lv.setUint32(18, sz, true);
+          lv.setUint32(22, sz, true);
+          lv.setUint16(26, nameBytes.length, true);
+          lh.set(nameBytes, 30);
+          locals.push(lh, dataBytes);
+
+          const ch = new Uint8Array(46 + nameBytes.length);
+          const cv = new DataView(ch.buffer);
+          cv.setUint32(0, 0x02014B50, true);
+          cv.setUint16(4, 20, true);
+          cv.setUint16(6, 20, true);
+          cv.setUint16(8, 0x0800, true);
+          cv.setUint32(16, crc, true);
+          cv.setUint32(20, sz, true);
+          cv.setUint32(24, sz, true);
+          cv.setUint16(28, nameBytes.length, true);
+          cv.setUint32(42, offset, true);
+          ch.set(nameBytes, 46);
+          centrals.push(ch);
+
+          offset += lh.length + sz;
+        }
+        let cdSize = 0;
+        for (const c of centrals) cdSize += c.length;
+        const eocd = new Uint8Array(22);
+        const ev = new DataView(eocd.buffer);
+        ev.setUint32(0, 0x06054B50, true);
+        ev.setUint16(8, entries.length, true);
+        ev.setUint16(10, entries.length, true);
+        ev.setUint32(12, cdSize, true);
+        ev.setUint32(16, offset, true);
+        return new Blob([...locals, ...centrals, eocd], { type: 'application/zip' });
+      }
+
+      const btnExportZip = document.getElementById('btnExportZip');
+      btnExportZip?.addEventListener('click', async () => {
+        const origLabel = btnExportZip.textContent;
+        btnExportZip.disabled = true;
+        btnExportZip.textContent = '⏳ Zipando...';
+        try {
+          const payload = buildProjectPayload();
+          const cfg = JSON.stringify({ gridW: mw, gridH: mh });
+          const bootJson = JSON.stringify(payload).replace(/</g, '\\u003c');
+          const entries = [];
+
+          // 1. Assets customizados separados por tipo
+          for (const a of (payload.customAssets || [])) {
+            const catType = a.category || (a.solid ? 'solid' : 'decor');
+            const folder = catType === 'avatar' ? 'assets/characters'
+              : (catType === 'pickable' ? 'assets/equips'
+              : (catType === 'foliage' ? 'assets/foliage' : 'assets/props'));
+            entries.push({ name: `${folder}/${a.key}.json`, data: JSON.stringify(a, null, 2) });
+          }
+
+          // 2. Metadados do projeto + script customizado
+          entries.push({ name: 'project.json', data: JSON.stringify(payload, null, 2) });
+          entries.push({ name: 'scripts/custom.js', data: currentCustomScript || '// Scripts do projeto (VoxelEngine API)\n' });
+          entries.push({ name: 'project-boot.js', data: `window.__WORLD_CFG__=${cfg};window.__STUDIO_BOOT__=${bootJson};` });
+
+          // 3. Clona o HTML e mapeia CSS/JS locais para pastas do projeto
+          const docClone = document.documentElement.cloneNode(true);
+          const cloneBody = docClone.querySelector('body');
+          if (cloneBody) cloneBody.classList.remove('play-only', 'in-modeler');
+          const cloneAssetGrid = docClone.querySelector('#customAssetGrid');
+          if (cloneAssetGrid) cloneAssetGrid.innerHTML = '';
+          docClone.querySelectorAll('#avatarSelect option[value^="custom_"]').forEach(el => el.remove());
+          docClone.querySelectorAll('script[data-studio-boot]').forEach(el => el.remove());
+
+          const cssLinks = Array.from(docClone.querySelectorAll('link[rel="stylesheet"][href]'));
+          const scriptTags = Array.from(docClone.querySelectorAll('script[src]'));
+          const [cssTexts, jsTexts] = await Promise.all([
+            Promise.all(cssLinks.map(el => fetchAssetText(el.getAttribute('href')))),
+            Promise.all(scriptTags.map(el => fetchAssetText(el.getAttribute('src'))))
+          ]);
+
+          cssLinks.forEach((el, i) => {
+            const name = i === 0 ? 'style.css' : `style-${i}.css`;
+            el.setAttribute('href', name);
+            entries.push({ name, data: cssTexts[i] });
+          });
+
+          scriptTags.forEach((el, i) => {
+            const rawSrc = el.getAttribute('src') || '';
+            const clean = rawSrc.replace(/^(\.\.\/)+/, '').replace(/^src\//, '');
+            el.setAttribute('src', clean);
+            entries.push({ name: clean, data: jsTexts[i] });
+          });
+
+          const bootTag = document.createElement('script');
+          bootTag.setAttribute('data-studio-boot', '1');
+          bootTag.setAttribute('src', 'project-boot.js');
+          const firstScript = (cloneBody || docClone).querySelector('script');
+          if (firstScript && firstScript.parentNode) firstScript.parentNode.insertBefore(bootTag, firstScript);
+
+          const zipHtml = '<!DOCTYPE html>\n' + docClone.outerHTML;
+          entries.push({ name: 'index.html', data: zipHtml });
+
+          const zipBlob = buildZipBlob(entries);
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(zipBlob);
+          a.download = `projeto-voxel-${mw}-seed-${WORLD_SEED}.zip`;
+          a.click();
+        } catch (err) {
+          alert(
+            'Erro ao exportar .zip do projeto: ' + err.message +
+            '\nDica: sirva a pasta via HTTP (ex: python -m http.server) ou GitHub Pages.'
+          );
+        } finally {
+          btnExportZip.disabled = false;
+          btnExportZip.textContent = origLabel;
+        }
       });
 
       // Cena publicada (.html exportado): carrega o projeto embutido e abre direto em modo Testar
