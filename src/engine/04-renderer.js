@@ -518,11 +518,29 @@
       const wfVisible = maxVisWx >= WF_X0 && minVisWx <= WF_X0 + WF_W * WF_CELL && maxVisWy >= WF_Y0 && minVisWy <= WF_Y0 + WF_H * WF_CELL;
       const dropStreakTick = Math.floor(fluidTime * 10);
 
+      let activeCaveCeil = null;
+      const playerCaveCell = getCellAt(cat.x, cat.y);
+      if (playerCaveCell && playerCaveCell.hasCave && cat.z < playerCaveCell.caveCeil - 2) {
+        activeCaveCeil = playerCaveCell.caveCeil;
+      } else if (
+        window.__STUDIO_EDIT_MODE__ &&
+        window.__STUDIO__ &&
+        window.__STUDIO__.activeTool === 'cave_carve' &&
+        window.__STUDIO__.hoverWorld
+      ) {
+        const hw = window.__STUDIO__.hoverWorld;
+        const hc = getCellAt(hw.wx, hw.wy);
+        if (hc && hc.hasCave) activeCaveCeil = hc.caveCeil;
+      }
+
       for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
+        const isCaveCutaway = activeCaveCeil !== null && z >= activeCaveCeil;
         // 4a. Fatia do terreno (Tight-Crop Bounded Slice + skip O(1))
         const tSlice = z <= TERRAIN_Z_MAX ? terrainSlices[z] : null;
         if (tSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
+          if (isCaveCutaway) lowCtx.globalAlpha = 0.22;
           drawBoundedSliceTo(lowCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
+          if (isCaveCutaway) lowCtx.globalAlpha = 1.0;
 
           // Brilho animado na superfície da água (z = -2 profunda, z = -1 rasa)
           if (z === -2 || z === -1) {
@@ -607,7 +625,7 @@
           }
 
           // 4b. Recorte matemático de oclusão 3D em entityCanvas
-          if (entityStarted) {
+          if (entityStarted && !isCaveCutaway) {
             entityCtx.globalCompositeOperation = 'destination-out';
             drawBoundedSliceTo(entityCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
             entityCtx.globalCompositeOperation = 'source-over';
@@ -661,7 +679,10 @@
         if (shList) {
           for (const sh of shList) {
             const c = getCellAt(sh.x, sh.y);
-            const onTerrain = c && Math.abs(sh.groundZ - c.h) <= 1.2;
+            const onTerrain = c && (
+              Math.abs(sh.groundZ - c.h) <= 1.2 ||
+              (c.hasCave && Math.abs(sh.groundZ - c.caveFloor) <= 1.2)
+            );
             const targetShadowCtx = onTerrain ? lowCtx : entityCtx;
             const sp = project(sh.x, sh.y, sh.groundZ + 0.3);
             targetShadowCtx.fillStyle = `rgba(38, 22, 14, ${sh.alpha})`;
@@ -675,7 +696,9 @@
         const gSlice = z <= Z_GRASS_MAX ? grassTipSlices[z] : null;
         if (gSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
           const grassOff = Math.round(Math.sin(animTime * 4.5 + (z * 0.7)) * grassAmp + grassLean);
+          if (isCaveCutaway) lowCtx.globalAlpha = 0.22;
           drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, grassOff);
+          if (isCaveCutaway) lowCtx.globalAlpha = 1.0;
         }
 
         // 4c-bis. Partículas 3D na fatia Z (ocluídas por falésias mais altas!)

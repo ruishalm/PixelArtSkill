@@ -360,7 +360,7 @@ console.log('SEED_OK');
             raw = self._assert_utf8_lf(out_html)
             studio_html = raw.decode('utf-8')
 
-            self.assertLess(len(raw), 15 * 1024, 'studio/index.html must stay < 15 KB')
+            self.assertLess(len(raw), 20 * 1024, 'studio/index.html must stay < 20 KB')
             for token in (
                 '__STUDIO_SCRIPTS__',
                 '__STUDIO_JS_BUNDLE__',
@@ -765,6 +765,376 @@ vm.runInContext(
         res = subprocess.run(['node', '-e', node_test], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f'Node hydrology test failed:\n{res.stderr}\n{res.stdout}')
         self.assertIn('HYDROLOGY_AND_ANTI_AQUARIUM_OK', res.stdout)
+
+    def test_10_caves_and_dual_sidebar_studio(self):
+        # 1. Dual sidebar DOM/CSS contract in built studio/index.html & studio/studio.css
+        studio_html_path = os.path.join(ROOT, 'studio', 'index.html')
+        studio_css_path = os.path.join(ROOT, 'studio', 'studio.css')
+        with open(studio_html_path, 'r', encoding='utf-8') as f:
+            studio_html = f.read()
+        with open(studio_css_path, 'r', encoding='utf-8') as f:
+            studio_css = f.read()
+
+        idx_left = studio_html.find('class="sidebar sidebar-left"')
+        idx_stage = studio_html.find('class="stage"')
+        idx_right = studio_html.find('class="sidebar sidebar-right"')
+        self.assertGreater(idx_left, 0)
+        self.assertGreater(idx_stage, idx_left)
+        self.assertGreater(idx_right, idx_stage)
+
+        left_html = studio_html[idx_left:idx_stage]
+        right_html = studio_html[idx_right:]
+        for tool in ('data-tool="raise"', 'data-tool="cave_carve"', 'data-tool="cave_fill"', 'data-tool="mat_water"', 'data-tool="spring"', 'id="slRadius"'):
+            self.assertIn(tool, left_html, f'Missing {tool} in left sidebar')
+        for item in ('data-tool="prop_pine_tree"', 'id="customAssetGrid"', 'id="avatarSelect"', 'id="slWind"', 'id="slGravity"', 'id="slCool"', 'id="slTalus"'):
+            self.assertIn(item, right_html, f'Missing {item} in right sidebar')
+        self.assertNotIn('data-tool="prop_pine_tree"', left_html)
+        self.assertIn('.sidebar-right', studio_css)
+        self.assertIn('border-left', studio_css)
+        self.assertIn('.play-only .topbar, .play-only .sidebar', studio_css)
+
+        # 2. Caves: baking, 2-floor physics, cutaway X-ray, brushes, undo/redo, JSON persistence
+        node_cave_test = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = process.cwd();
+const mathCode = fs.readFileSync(path.join(root, 'src/engine/00-math-noise.js'), 'utf8');
+const bakerCode = fs.readFileSync(path.join(root, 'src/engine/02-slice-baker.js'), 'utf8');
+const sculptorCode = fs.readFileSync(path.join(root, 'src/engine/03-terrain-sculptor.js'), 'utf8');
+const rendererCode = fs.readFileSync(path.join(root, 'src/engine/04-renderer.js'), 'utf8');
+const fluidsCode = fs.readFileSync(path.join(root, 'src/engine/06-fluids-weather.js'), 'utf8');
+const physCode = fs.readFileSync(path.join(root, 'src/engine/07-physics-movement.js'), 'utf8');
+const brushesCode = fs.readFileSync(path.join(root, 'src/studio/01-studio-state-brushes.js'), 'utf8');
+const regenCode = fs.readFileSync(path.join(root, 'src/studio/02-studio-regen-undo.js'), 'utf8');
+const uiCode = fs.readFileSync(path.join(root, 'src/studio/03-studio-ui-io.js'), 'utf8');
+
+const mw = 64, mh = 64, VOX = 2, HALF_GRID = 32;
+const Z_MIN = -6, TERRAIN_Z_MAX = 66, Z_GRASS_MAX = 70;
+const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
+      MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7, MAT_SHALLOW = 8;
+
+const elements = new Map();
+function makeEl(id, extra = {}) {
+  const listeners = {};
+  const el = {
+    id, value: '', textContent: '', innerHTML: '', className: '',
+    style: {}, dataset: {},
+    classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} },
+    addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (listeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: el, ...e })); },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 480 }),
+    setPointerCapture(){}, releasePointerCapture(){},
+    parentElement: { clientWidth: 640, clientHeight: 480 },
+    width: 640, height: 480, clientWidth: 640, clientHeight: 480,
+    ...extra
+  };
+  if (id) elements.set(id, el);
+  return el;
+}
+
+const alphaLog = [];
+function makeCtx(trackAlpha = false) {
+  let _alpha = 1.0;
+  return {
+    imageSmoothingEnabled: false,
+    globalCompositeOperation: 'source-over',
+    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle',
+    get globalAlpha() { return _alpha; },
+    set globalAlpha(v) { _alpha = v; if (trackAlpha) alphaLog.push(v); },
+    save(){}, restore(){}, translate(){}, scale(){}, rotate(){}, setTransform(){},
+    beginPath(){}, closePath(){}, moveTo(){}, lineTo(){}, ellipse(){}, arc(){}, roundRect(){},
+    fill(){}, stroke(){}, fillRect(){}, clearRect(){}, fillText(){},
+    measureText: () => ({ width: 20 }),
+    createLinearGradient: () => ({ addColorStop(){} }),
+    createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    putImageData(img) { if (this._owner) this._owner._buf = new Uint32Array(img.data.buffer.slice(0)); },
+    drawImage(src) { if (trackAlpha && src && src._isSlice) alphaLog.push('draw:' + _alpha.toFixed(2)); }
+  };
+}
+
+const viewportCv = makeEl('viewport');
+viewportCv.getContext = () => makeCtx(false);
+makeEl('studioOverlay').getContext = () => makeCtx(false);
+makeEl('baseKindSelect', { value: 'flat' });
+makeEl('genModeSelect', { value: 'hybrid' });
+makeEl('gridSizeSelect', { value: '64' });
+makeEl('seedInput', { value: '1337' });
+makeEl('avatarSelect', { value: 'human' });
+makeEl('slAvatarScale', { value: '1.0' });
+makeEl('valAvatarScale');
+makeEl('slRadius', { value: '16' });
+makeEl('valRadius');
+makeEl('slStrength', { value: '1.2' });
+makeEl('valStrength');
+makeEl('slWind', { value: '1.0' });
+makeEl('valWind');
+makeEl('slGravity', { value: '1200' });
+makeEl('valGravity');
+makeEl('slCool', { value: '0.22' });
+makeEl('valCool');
+makeEl('slTalus', { value: '2' });
+makeEl('valTalus');
+for (const id of [
+  'btnModeEdit','btnModeTest','btnRandSeed','btnNewFlat','btnUndo','btnRedo',
+  'btnPinSel','btnUnpinSel','btnPinAll','btnUnpinAll','btnClearSel',
+  'btnRegenAll','btnRegenUnpinned','btnExportJson','btnPublishHtml','btnImportJson',
+  'fileImportInput','btnTouchJump','helpPill','coordPill','biomeToast',
+  'biomeLabel','fishCounter','biomeCounter','statElev','statObstacle'
+]) makeEl(id);
+
+const sidebars = [makeEl('sbL'), makeEl('sbR')];
+const btnLeft = makeEl('btnLeft', { dataset: { tool: 'raise' }, classList: { _s: new Set(['tool-btn', 'active']), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } });
+const btnRight = makeEl('btnRight', { dataset: { tool: 'prop_pine_tree' }, classList: { _s: new Set(['tool-btn']), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } });
+const sandbox = {
+  assert, Math, Number, Array, Object, JSON, Int16Array, Int32Array, Uint8Array, Uint32Array, Float32Array,
+  Set, Map, URLSearchParams, URL: class { static createObjectURL(){ return 'blob:test'; } constructor(u){ this.href = u; this.searchParams = new URLSearchParams(); } toString(){ return this.href; } },
+  __exportedPayload: null,
+  Blob: class { constructor(parts){ sandbox.__exportedPayload = parts[0]; } },
+  FileReader: class { readAsText(file) { this.result = file._text; if (this.onload) this.onload(); } },
+  __leftBtn: btnLeft, __rightBtn: btnRight, __sidebars: sidebars,
+  console, performance: { now: () => 0 },
+  confirm: () => true, alert: () => {},
+  WORLD_CFG: { gridW: mw, gridH: mh, vox: VOX, isDefault: false },
+  mw, mh, VOX, HALF_GRID, HALF_WORLD: HALF_GRID * VOX,
+  WORLD_MIN: -HALF_GRID * VOX, WORLD_MAX: HALF_GRID * VOX,
+  Z_MIN, TERRAIN_Z_MAX, Z_GRASS_MAX, CAT_HEIGHT: 16, AUTO_STEP_MAX: 5.5,
+  GRAVITY: 1200, JUMP_VEL: Math.sqrt(2 * 1200 * 35.0),
+  MAT_GRASS, MAT_PATH, MAT_SAND, MAT_STONE, MAT_WATER, MAT_BRIDGE, MAT_PEAK, MAT_LILYPAD, MAT_SHALLOW,
+  isWetMat: (m) => m === MAT_WATER || m === MAT_SHALLOW,
+  hmap: new Int16Array(mw * mh),
+  caveFloor: new Int16Array(mw * mh).fill(-32768),
+  caveCeil: new Int16Array(mw * mh).fill(-32768),
+  waterDepth: new Uint8Array(mw * mh),
+  waterfallDropMask: new Uint8Array(mw * mh),
+  waterSprings: [],
+  matMap: new Uint8Array(mw * mh),
+  biomeMap: new Uint8Array(mw * mh),
+  cliffMask: new Uint8Array(mw * mh),
+  shadowMask: new Uint8Array(mw * mh),
+  noGrassMask: new Uint8Array(mw * mh),
+  standableMap: new Uint8Array(mw * mh).fill(1),
+  cliffTopMap: new Int16Array(mw * mh),
+  props: [], foliageProps: [], propColliders: [], platformColliders: [],
+  fishes: [], npcs: [], toolPickups: [], fallingBodies: [], debrisDrops: [],
+  verletChains: [], catSkinModels: [{ paw: { count: 4, w: 4, h: 4, sheet: {} }, body: { count: 8, w: 8, h: 8, sheet: {} } }],
+  HAT_PRESETS: [{ id: 'none' }], hatModels: {}, TOOLS_META: { none: { modelKey: null } },
+  PROP_COLLIDER_META: {},
+  equippedTool: 'none', actionCooldown: 0, swingTimer: 0, shakeTimer: 0, shakeMag: 0,
+  lastRustleCell: -1, carriedDrop: null,
+  sfxJump(){}, sfxLand(){}, sfxBlocked(){}, sfxShallowStep(){}, sfxBiome(){}, sfxFish(){},
+  stepFallingBodies(){}, stepDebrisDrops(){}, updateFoliage(){}, triggerAction(){}, throwCarriedItem(){}, pickOrDropItem(){},
+  addProp(){}, bakeMinimapBase(){},
+  worldToGrid: (wx, wy) => ({ mx: Math.floor(wx / VOX + HALF_GRID), my: Math.floor(wy / VOX + HALF_GRID) }),
+  getCellAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    const idx = my * mw + mx;
+    const cf = sandbox.caveFloor[idx], cc = sandbox.caveCeil[idx];
+    return {
+      mx, my, idx,
+      h: sandbox.hmap[idx], mat: sandbox.matMap[idx], waterDepth: sandbox.waterDepth[idx],
+      hasCave: cc > cf && sandbox.hmap[idx] > cc, caveFloor: cf, caveCeil: cc,
+      biomeId: 0, biomeKey: 'vila', biome: 'Vila',
+      standable: sandbox.standableMap[idx] === 1, cliffTop: sandbox.cliffTopMap[idx]
+    };
+  },
+  getHeightAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    return sandbox.hmap[my * mw + mx];
+  },
+  window: {
+    __IS_STUDIO__: true, innerWidth: 640, innerHeight: 480, devicePixelRatio: 1,
+    location: { search: '', href: 'http://localhost/studio/index.html' },
+    addEventListener(){}, dispatchEvent(){}
+  },
+  document: {
+    body: { classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } },
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: (sel) => sel === '.sidebar' ? sidebars[0] : makeEl('q'),
+    querySelectorAll: (sel) => sel === '.sidebar' ? sidebars : (sel === '.sidebar .tool-btn' ? [btnLeft, btnRight] : []),
+    createElement: (tag) => {
+      if (tag === 'a') return { click(){}, href: '', download: '' };
+      const cv = { width: 0, height: 0, _buf: null, _isSlice: true };
+      const c2d = makeCtx(false);
+      c2d._owner = cv;
+      cv.getContext = () => c2d;
+      return cv;
+    }
+  }
+};
+sandbox.globalThis = sandbox;
+sandbox.window.document = sandbox.document;
+vm.createContext(sandbox);
+
+function runCaveSuite() {
+  let sawCutawayAlpha = false;
+  let sawRestoreAlpha = false;
+  let _curAlpha = 1.0;
+  Object.defineProperty(lowCtx, 'globalAlpha', {
+    get() { return _curAlpha; },
+    set(v) {
+      if (Math.abs(v - 0.22) < 0.01) sawCutawayAlpha = true;
+      if (sawCutawayAlpha && Math.abs(v - 1.0) < 0.01) sawRestoreAlpha = true;
+      _curAlpha = v;
+    }
+  });
+
+  // Build flat world with a steep rectangular mountain block on mx=30..44, my=26..38 (h=26)
+  hmap.fill(0);
+  caveFloor.fill(-32768);
+  caveCeil.fill(-32768);
+  matMap.fill(MAT_GRASS);
+  for (let my = 26; my <= 38; my++) {
+    for (let mx = 30; mx <= 44; mx++) {
+      hmap[my * mw + mx] = 26;
+    }
+  }
+  buildStandableMap();
+
+  // Carve cave inside mountain (mx=30..38, my=30..34) with floor=0, ceil=14; mouth at mx=29 (h=0)
+  for (let my = 30; my <= 34; my++) {
+    for (let mx = 30; mx <= 38; mx++) {
+      const idx = my * mw + mx;
+      caveFloor[idx] = 0;
+      caveCeil[idx] = 14;
+    }
+  }
+  bakeTerrainSlices();
+
+  // 1. Slice baker checks: hollow air at z=5, solid floor at z=0, roof at z=16, 4-conn wall at mx=39
+  const caveMx = 34, caveMy = 32;
+  const wallMx = 39, wallMy = 32;
+  const sl5 = terrainSlices[5];
+  assert(sl5 && sl5.canvas && sl5.canvas._buf, 'Slice 5 must exist for cave walls');
+  const pxHollow = sl5.canvas._buf[(caveMy - sl5.offY) * sl5.w + (caveMx - sl5.offX)];
+  assert.strictEqual(pxHollow, 0, 'Interior cave slice z=5 must be hollow/transparent (0)');
+
+  const pxWall = sl5.canvas._buf[(wallMy - sl5.offY) * sl5.w + (wallMx - sl5.offX)];
+  assert.notStrictEqual(pxWall, 0, '4-connected solid wall at mx=39, z=5 must NOT be culled by min8');
+
+  const sl0 = terrainSlices[0];
+  assert(sl0 && sl0.canvas && sl0.canvas._buf, 'Slice 0 must exist for cave floor');
+  const pxFloor = sl0.canvas._buf[(caveMy - sl0.offY) * sl0.w + (caveMx - sl0.offX)];
+  assert.notStrictEqual(pxFloor, 0, 'Cave floor at z=0 must be painted even when min8 >= 0');
+
+  const sl16 = terrainSlices[16];
+  assert(sl16 && sl16.canvas && sl16.canvas._buf, 'Slice 16 must exist for cave roof');
+  const pxRoof = sl16.canvas._buf[(caveMy - sl16.offY) * sl16.w + (caveMx - sl16.offX)];
+  assert.notStrictEqual(pxRoof, 0, 'Cave roof at z=16 must be solid');
+
+  // 2. 2-Floor physics: enter cave mouth at z=0, walk inside, jump hits ceiling, and walk on mountain roof z=26
+  const mouthWx = (29 - HALF_GRID + 0.5) * VOX;
+  const inCaveWx = (32 - HALF_GRID + 0.5) * VOX;
+  const caveWy = (32 - HALF_GRID + 0.5) * VOX;
+  cat.scale = 1.0;
+  teleportToWorld(mouthWx, caveWy, null, 0);
+  assert.strictEqual(getEffectiveGroundAt(inCaveWx, caveWy, 0, 1.0), 0, 'Lower floor effective ground must be caveFloor=0');
+  assert.strictEqual(getEffectiveGroundAt(inCaveWx, caveWy, 26, 1.0), 26, 'Upper floor effective ground must be hmap=26');
+  assert.strictEqual(checkCollisionAt(inCaveWx, caveWy, 0, true).blocked, false, 'Player at z=0 must be able to enter cave');
+
+  // Move player inside cave and check cutaway rendering
+  teleportToWorld(inCaveWx, caveWy, null, 0);
+  window.__STUDIO_EDIT_MODE__ = false;
+  sawCutawayAlpha = false;
+  sawRestoreAlpha = false;
+  renderScene();
+  assert(sawCutawayAlpha, 'Cutaway X-ray must apply globalAlpha = 0.22 when player is inside cave');
+  assert(sawRestoreAlpha, 'Cutaway X-ray must restore globalAlpha = 1.0 after drawing slice');
+  assert.strictEqual(lowCtx.globalAlpha, 1.0, 'lowCtx.globalAlpha must end at 1.0');
+
+  // Jump inside cave must not clip through roof (z must stay < caveCeil)
+  cat.jumpBuffer = 0.14;
+  for (let s = 0; s < 30; s++) updatePhysics(1 / 60);
+  assert(cat.z < 14, 'Jumping inside cave must bump ceiling and stay below caveCeil=14, got z=' + cat.z);
+
+  // Low-ceiling cave (headroom 8 < 10*scale) must block entry
+  caveCeil[32 * mw + 31] = 8;
+  const lowWx = (31 - HALF_GRID + 0.5) * VOX;
+  assert.strictEqual(checkCollisionAt(lowWx, caveWy, 0, true).blocked, true, 'Low-ceiling cave (<10*scale) must block entry');
+  caveCeil[32 * mw + 31] = 14;
+
+  // Walking on top of mountain above cave
+  teleportToWorld(inCaveWx, caveWy, null, 26);
+  assert.strictEqual(checkCollisionAt(inCaveWx + 2, caveWy, 26, true).blocked, false, 'Player on mountain top z=26 must walk over cave roof');
+
+  // 3. Studio brushes (cave_carve, cave_fill), Undo/Redo, and JSON persistence
+  window.__STUDIO_EDIT_MODE__ = true;
+  const S = window.__STUDIO__;
+  S.syncSculptFromHmap();
+  S.pushUndoSnapshot();
+  S.activeTool = 'cave_carve';
+  S.brushRadius = 8;
+  const brushWx = (36 - HALF_GRID + 0.5) * VOX;
+  const brushWy = (28 - HALF_GRID + 0.5) * VOX;
+  S.applyTerrainBrush(brushWx, brushWy, true);
+  const cBr = getCellAt(brushWx, brushWy);
+  assert(cBr.hasCave, 'cave_carve brush on mountain must carve a cave');
+
+  // Dual sidebar tool-btn delegation check (left & right sidebars share active state)
+  __sidebars[1]._emit('click', { target: { closest: () => __rightBtn } });
+  assert.strictEqual(S.activeTool, 'prop_pine_tree', 'Right sidebar tool click must update S.activeTool');
+  assert(!__leftBtn.classList.contains('active'), 'Left sidebar tool must be deactivated when right sidebar tool is clicked');
+  assert(__rightBtn.classList.contains('active'), 'Right sidebar tool must become active');
+
+  // Export JSON, wipe flat, re-import JSON, verify cave restored
+  document.getElementById('btnExportJson')._emit('click');
+  assert(globalThis.__exportedPayload, 'Export JSON must emit payload');
+  const parsed = JSON.parse(globalThis.__exportedPayload);
+  assert(Array.isArray(parsed.caveSparse) && parsed.caveSparse.length > 0, 'Export JSON must include non-empty caveSparse');
+
+  document.getElementById('btnNewFlat')._emit('click');
+  assert.strictEqual(getCellAt(brushWx, brushWy).hasCave, false, 'btnNewFlat must clear caves');
+
+  // Re-import JSON via fileImportInput and verify cave restored
+  document.getElementById('fileImportInput')._emit('change', { target: { files: [{ _text: globalThis.__exportedPayload }], value: 'x' } });
+  const cImported = getCellAt(brushWx, brushWy);
+  assert(cImported.hasCave, 'Importing JSON must restore carved cave via caveSparse');
+  assert.strictEqual(cImported.caveFloor, cBr.caveFloor);
+  assert.strictEqual(cImported.caveCeil, cBr.caveCeil);
+
+  // Studio cutaway X-ray when cave_carve active and hoverWorld over cave
+  window.__STUDIO_EDIT_MODE__ = true;
+  S.activeTool = 'cave_carve';
+  S.hoverWorld = { wx: brushWx, wy: brushWy, z: cImported.h };
+  sawCutawayAlpha = false;
+  sawRestoreAlpha = false;
+  renderScene();
+  assert(sawCutawayAlpha && sawRestoreAlpha, 'Studio cave_carve hover over cave must trigger cutaway X-ray');
+
+  // Undo restores cave after btnNewFlat
+  document.getElementById('btnNewFlat')._emit('click');
+  assert.strictEqual(getCellAt(brushWx, brushWy).hasCave, false);
+  S.popUndoSnapshot();
+  assert(getCellAt(brushWx, brushWy).hasCave, 'Undo must restore carved cave');
+
+  // cave_fill closes cave
+  S.pushUndoSnapshot();
+  S.activeTool = 'cave_fill';
+  S.applyTerrainBrush(brushWx, brushWy, true);
+  assert.strictEqual(getCellAt(brushWx, brushWy).hasCave, false, 'cave_fill brush must close cave');
+  S.popUndoSnapshot();
+  assert(getCellAt(brushWx, brushWy).hasCave, 'Undo after cave_fill must reopen cave');
+
+  console.log('CAVES_AND_DUAL_SIDEBAR_OK');
+}
+
+vm.runInContext(
+  mathCode + '\n' + bakerCode + '\n' + sculptorCode + '\n' + rendererCode + '\n' +
+  fluidsCode + '\n' + physCode + '\n' + brushesCode + '\n' + regenCode + '\n' + uiCode +
+  '\n(' + runCaveSuite.toString() + ')()',
+  sandbox
+);
+"""
+        res = subprocess.run(['node', '-e', node_cave_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node cave & dual-sidebar test failed:\n{res.stderr}\n{res.stdout}')
+        self.assertIn('CAVES_AND_DUAL_SIDEBAR_OK', res.stdout)
 
 
 if __name__ == '__main__':

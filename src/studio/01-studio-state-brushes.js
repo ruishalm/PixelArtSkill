@@ -28,10 +28,12 @@
       S.genModeSel = document.getElementById('genModeSelect');
 
       let hoverWorld = null;
+      S.hoverWorld = null;
       let isPainting = false;
       let isOrbiting = false;
       let orbitLastX = 0;
       let flattenTargetZ = 0;
+      let caveTargetFloorZ = 0;
       let lastVecWorld = null;
       let selStartWorld = null;
       let terrainPaintedInStroke = false;
@@ -130,6 +132,34 @@
         if (activeTool === 'flatten' && isInitialClick) {
           const c = getCellAt(wx, wy);
           flattenTargetZ = c ? c.h : 0;
+        }
+        if (activeTool === 'cave_carve' && isInitialClick) {
+          const centerIdx = cy * mw + cx;
+          const centerH = hmap[centerIdx];
+          if (caveCeil[centerIdx] > caveFloor[centerIdx] && centerH > caveCeil[centerIdx]) {
+            caveTargetFloorZ = caveFloor[centerIdx];
+          } else {
+            let maxH = centerH;
+            const r2Init = rCells * rCells;
+            for (let my = my0; my <= my1; my++) {
+              const dy = my - cy;
+              for (let mx = mx0; mx <= mx1; mx++) {
+                const dx = mx - cx;
+                if (dx * dx + dy * dy <= r2Init) {
+                  const hv = hmap[my * mw + mx];
+                  if (hv > maxH) maxH = hv;
+                }
+              }
+            }
+            if (maxH >= centerH + 12) {
+              caveTargetFloorZ = Math.max(-1, centerH);
+            } else if (centerH >= 16) {
+              caveTargetFloorZ = Math.max(0, centerH - 18);
+            } else {
+              const hz = hoverWorld ? Math.round(hoverWorld.z) : centerH;
+              caveTargetFloorZ = Math.max(-1, Math.min(hz, centerH - 14));
+            }
+          }
         }
 
         if (activeTool === 'mat_water' || activeTool === 'mat_shallow') {
@@ -230,6 +260,14 @@
               pinnedMask[idx] = 1;
               strokeNeedsBreachCheck = true;
               terrainDirty = true;
+              if (caveCeil[idx] > caveFloor[idx] && hmap[idx] <= caveCeil[idx]) {
+                if (hmap[idx] - 3 > caveFloor[idx] + 3) {
+                  caveCeil[idx] = hmap[idx] - 3;
+                } else {
+                  caveFloor[idx] = -32768;
+                  caveCeil[idx] = -32768;
+                }
+              }
             } else if (activeTool === 'flatten') {
               const oldH = hmap[idx];
               sculptH[idx] = sculptH[idx] + (flattenTargetZ - sculptH[idx]) * Math.min(1, 0.35 * brushStrength * w);
@@ -250,6 +288,14 @@
                 }
               } else {
                 hmap[idx] = newH;
+              }
+              if (caveCeil[idx] > caveFloor[idx] && hmap[idx] <= caveCeil[idx]) {
+                if (hmap[idx] - 3 > caveFloor[idx] + 3) {
+                  caveCeil[idx] = hmap[idx] - 3;
+                } else {
+                  caveFloor[idx] = -32768;
+                  caveCeil[idx] = -32768;
+                }
               }
               pinnedMask[idx] = 1;
               strokeNeedsBreachCheck = true;
@@ -276,9 +322,44 @@
               } else {
                 hmap[idx] = newH;
               }
+              if (caveCeil[idx] > caveFloor[idx] && hmap[idx] <= caveCeil[idx]) {
+                if (hmap[idx] - 3 > caveFloor[idx] + 3) {
+                  caveCeil[idx] = hmap[idx] - 3;
+                } else {
+                  caveFloor[idx] = -32768;
+                  caveCeil[idx] = -32768;
+                }
+              }
               pinnedMask[idx] = 1;
               strokeNeedsBreachCheck = true;
               terrainDirty = true;
+            } else if (activeTool === 'cave_carve') {
+              const roofBase = isWetMat(matMap[idx]) ? getSolidBedAtIdx(idx) : hmap[idx];
+              if (roofBase >= caveTargetFloorZ + 12) {
+                caveFloor[idx] = caveTargetFloorZ;
+                caveCeil[idx] = Math.min(roofBase - 3, caveTargetFloorZ + 14);
+                pinnedMask[idx] = 1;
+                terrainDirty = true;
+              } else if (hmap[idx] > caveTargetFloorZ) {
+                hmap[idx] = caveTargetFloorZ;
+                sculptH[idx] = caveTargetFloorZ;
+                caveFloor[idx] = -32768;
+                caveCeil[idx] = -32768;
+                if (isWetMat(matMap[idx])) {
+                  waterDepth[idx] = 0;
+                  matMap[idx] = dryMatForHeight(caveTargetFloorZ);
+                  strokeNeedsBreachCheck = true;
+                }
+                pinnedMask[idx] = 1;
+                terrainDirty = true;
+              }
+            } else if (activeTool === 'cave_fill') {
+              if (caveCeil[idx] > caveFloor[idx]) {
+                caveFloor[idx] = -32768;
+                caveCeil[idx] = -32768;
+                pinnedMask[idx] = 1;
+                terrainDirty = true;
+              }
             } else if (activeTool.startsWith('mat_')) {
               let m = MAT_GRASS;
               if (activeTool === 'mat_sand') m = MAT_SAND;
@@ -300,6 +381,8 @@
             } else if (activeTool === 'eraser') {
               sculptH[idx] = 0;
               hmap[idx] = 0;
+              caveFloor[idx] = -32768;
+              caveCeil[idx] = -32768;
               matMap[idx] = MAT_GRASS;
               waterDepth[idx] = 0;
               pinnedMask[idx] = 0;
@@ -337,10 +420,11 @@
         if (terrainDirty) {
           terrainPaintedInStroke = true;
           expandStrokeBounds(mx0, my0, mx1, my1);
-          rebakeTerrainDirtyRect(mx0 - 1, my0 - 1, mx1 + 1, my1 + 1);
+          rebakeTerrainDirtyRect(mx0 - 2, my0 - 2, mx1 + 2, my1 + 2);
           bakeMinimapBase();
         }
       }
+      S.applyTerrainBrush = applyTerrainBrush;
 
       function applyVectorBrush(wx, wy) {
         const activeTool = S.activeTool;
@@ -433,6 +517,7 @@
         const hit = pickTerrainAtClient(clientX, clientY);
         if (!hit) return;
         hoverWorld = hit;
+        S.hoverWorld = hoverWorld;
         const activeTool = S.activeTool;
         if (activeTool === 'select_box') {
           if (isInitialClick) {
@@ -508,14 +593,21 @@
           return;
         }
         hoverWorld = pickTerrainAtClient(e.clientX, e.clientY);
+        S.hoverWorld = hoverWorld;
         if (hoverWorld) {
           const c = getCellAt(hoverWorld.wx, hoverWorld.wy);
+          const caveTxt = c && c.hasCave ? ` | Caverna ${c.caveFloor}..${c.caveCeil}` : '';
           document.getElementById('coordPill').textContent =
-            `wx: ${Math.round(hoverWorld.wx)}, wy: ${Math.round(hoverWorld.wy)}, z: ${hoverWorld.z.toFixed(1)} | ${c ? c.biome : ''}`;
+            `wx: ${Math.round(hoverWorld.wx)}, wy: ${Math.round(hoverWorld.wy)}, z: ${hoverWorld.z.toFixed(1)} | ${c ? c.biome : ''}${caveTxt}`;
         }
         if (isPainting) {
           handlePaintAt(e.clientX, e.clientY, false);
         }
+      });
+
+      canvas.addEventListener('pointerleave', () => {
+        hoverWorld = null;
+        S.hoverWorld = null;
       });
 
       window.addEventListener('pointerup', (e) => {
