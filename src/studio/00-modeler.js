@@ -185,6 +185,20 @@
       // ---------- Edição ----------
       const cell = () => editCv.width / N;
 
+      function getExtrudeZ() {
+        const el = document.getElementById('mExtrudeZ');
+        const v = el ? parseInt(el.value, 10) : 1;
+        return Math.max(1, Math.min(10, Number.isFinite(v) ? v : 1));
+      }
+      const extrudeEl = document.getElementById('mExtrudeZ');
+      const extrudeValEl = document.getElementById('mExtrudeZVal');
+      if (extrudeEl) {
+        const syncExt = () => { if (extrudeValEl) extrudeValEl.textContent = String(getExtrudeZ()); };
+        extrudeEl.addEventListener('input', syncExt);
+        extrudeEl.addEventListener('change', syncExt);
+        syncExt();
+      }
+
       function cellAt(e) {
         const r = editCv.getBoundingClientRect();
         const cs = cell();
@@ -195,21 +209,33 @@
       }
 
       function setVoxel(x, y, v) {
-        vol[curZ][y * N + x] = v;
-        if (document.getElementById('mMirror').checked) vol[curZ][y * N + (N - 1 - x)] = v;
+        const zEnd = Math.min(N - 1, curZ + getExtrudeZ() - 1);
+        const mirror = !!document.getElementById('mMirror')?.checked;
+        for (let z = curZ; z <= zEnd; z++) {
+          vol[z][y * N + x] = v;
+          if (mirror) vol[z][y * N + (N - 1 - x)] = v;
+        }
       }
 
       function floodFill(x, y, v) {
         const layer = vol[curZ];
         const target = layer[y * N + x];
         if (target === v) return;
+        const zEnd = Math.min(N - 1, curZ + getExtrudeZ() - 1);
+        const filled = [];
         const stack = [[x, y]];
         while (stack.length) {
           const [cx, cy] = stack.pop();
           if (cx < 0 || cy < 0 || cx >= N || cy >= N) continue;
-          if (layer[cy * N + cx] !== target) continue;
-          layer[cy * N + cx] = v;
+          const idx = cy * N + cx;
+          if (layer[idx] !== target) continue;
+          layer[idx] = v;
+          filled.push(idx);
           stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+        }
+        for (let z = curZ + 1; z <= zEnd; z++) {
+          const zLayer = vol[z];
+          for (let i = 0; i < filled.length; i++) zLayer[filled[i]] = v;
         }
       }
 
@@ -387,7 +413,10 @@
           pCtx.fillRect(Math.round(cx + o.rx * k), Math.round(baseY + o.ry * k * squash - o.z * k * 0.9), k + 0.5, k * 0.9 + 1);
         }
       }
-      (function loop(now) { drawPreview(now); requestAnimationFrame(loop); })();
+      (function loop(now) {
+        drawPreview(now);
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(loop);
+      })();
 
       // ---------- Biblioteca / import / export ----------
       function topUsedLayer() {
@@ -426,14 +455,38 @@
         destructible: '🪓',
         pickable: '🎒',
         foliage: '🌿',
-        fire: '🔥'
+        fire: '🔥',
+        avatar: '🧍'
       };
+
+      function syncAvatarOption(a, isAvatar) {
+        const avSel = document.getElementById('avatarSelect');
+        if (!avSel) return;
+        let opt = avSel.querySelector ? avSel.querySelector(`option[value="${a.key}"]`) : null;
+        if (!opt && avSel.options) {
+          for (let oi = 0; oi < avSel.options.length; oi++) {
+            if (avSel.options[oi] && avSel.options[oi].value === a.key) { opt = avSel.options[oi]; break; }
+          }
+        }
+        if (isAvatar) {
+          if (!opt && typeof document.createElement === 'function') {
+            opt = document.createElement('option');
+            opt.value = a.key;
+            if (avSel.appendChild) avSel.appendChild(opt);
+            else if (Array.isArray(avSel.options)) avSel.options.push(opt);
+          }
+          if (opt) opt.textContent = `🧍 ${a.name}`;
+        } else if (opt) {
+          if (opt.remove) opt.remove();
+          else if (opt.parentNode && opt.parentNode.removeChild) opt.parentNode.removeChild(opt);
+        }
+      }
 
       function addAssetButton(a) {
         const grid = document.getElementById('customAssetGrid');
         if (!grid) return;
         document.getElementById('customAssetEmpty').style.display = 'none';
-        const kind = a.kind || (a.solid ? 'solid' : 'decor');
+        const kind = a.kind || a.category || (a.solid ? 'solid' : 'decor');
         const label = `${KIND_ICONS[kind] || '🧱'} ${a.name}`;
         const existing = grid.querySelector(`[data-tool="prop_${a.key}"]`);
         if (existing) {
@@ -448,9 +501,15 @@
       }
 
       function registerAsset(a) {
-        const kind = a.kind || (a.solid ? 'solid' : 'decor');
+        const kind = a.kind || a.category || (a.solid ? 'solid' : 'decor');
         const model = buildSliceSheet(a.slices, a.pal);
         propModels[a.key] = model;
+        if (typeof window !== 'undefined') {
+          window.customAvatarModels = window.customAvatarModels || {};
+          if (kind === 'avatar') window.customAvatarModels[a.key] = model;
+          else delete window.customAvatarModels[a.key];
+        }
+        syncAvatarOption(a, kind === 'avatar');
         const colors = (a.pal || []).filter(c => c && !c.startsWith('rgba')).slice(0, 4);
         const leafColors = colors.length ? colors : ['#6BBF59', '#3F8F3A'];
         const isSolid = kind === 'solid' || kind === 'destructible' || kind === 'fire';
@@ -487,7 +546,7 @@
         } else if (typeof FOLIAGE_META !== 'undefined') {
           delete FOLIAGE_META[a.key];
         }
-        const saved = { ...a, kind, solid: isSolid };
+        const saved = { ...a, kind, category: kind, solid: isSolid };
         const i = customAssets.findIndex((x) => x.key === a.key);
         if (i >= 0) customAssets[i] = saved; else customAssets.push(saved);
         addAssetButton(saved);
@@ -514,8 +573,503 @@
           kind, solid: kind === 'solid' || kind === 'destructible' || kind === 'fire',
           hp, drops: 2, dropKey
         });
-        say(`"${name}" (${kind}) salvo na biblioteca (${slices.length} camadas). Use na aba 🌍 Mundo → Meus Modelos.`);
+        say(`"${name}" (${kind}) salvo na biblioteca (${slices.length} camadas). ${kind === 'avatar' ? 'Selecione em Avatar de Teste na aba 🌍 Mundo!' : 'Use na aba 🌍 Mundo → Meus Modelos.'}`);
       });
+
+      // ---------- Geradores Procedurais (100% SDF + mulberry32) ----------
+      function makeRng(seed) {
+        if (typeof mulberry32 === 'function') return mulberry32(seed >>> 0);
+        let t = seed >>> 0;
+        return () => {
+          t = (t + 0x6D2B79F5) | 0;
+          let r = Math.imul(t ^ (t >>> 15), 1 | t);
+          r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+          return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function applyPresetAndKind(presetKey, kindVal, suggestedName, dropKey) {
+        const nextPal = PAL_PRESETS[presetKey] || DEFAULT_PAL;
+        pal = nextPal.slice();
+        if (palPresetEl) palPresetEl.value = presetKey;
+        if (kindSel) kindSel.value = kindVal;
+        if (destrOptsEl) destrOptsEl.style.display = kindVal === 'destructible' ? 'flex' : 'none';
+        if (dropKey && document.getElementById('mDropKey')) document.getElementById('mDropKey').value = dropKey;
+        if (suggestedName && document.getElementById('mName')) document.getElementById('mName').value = suggestedName;
+        curColor = Math.min(Math.max(1, curColor), pal.length - 1);
+        const colEl = document.getElementById('mColor');
+        if (colEl && pal[curColor]) colEl.value = pal[curColor];
+      }
+
+      let charSeed = 1;
+      function generateCharacter(charType, headStyle, seed) {
+        const rng = makeRng(seed);
+        const vary = seed > 1;
+        applyPresetAndKind('character', 'avatar', `char_${charType}`);
+        for (let z = 0; z < N; z++) vol[z].fill(0);
+
+        const skinOpts = [1, 2, 3];
+        const shirtOpts = [8, 10, 12, 14, 13, 15];
+        const pantsOpts = [9, 5, 4, 11];
+        const hairOpts = [4, 5, 6, 13, 10, 14, 15];
+        const pick = (arr, def) => vary ? arr[Math.floor(rng() * arr.length)] : def;
+
+        const skinCol = pick(skinOpts, 1);
+        const skinShade = skinCol === 1 ? 2 : (skinCol === 2 ? 3 : 4);
+        const shirtCol = pick(shirtOpts, 8);
+        const pantsCol = pick(pantsOpts, 9);
+        const hairCol = pick(hairOpts, 4);
+        const bootCol = 5;
+        const eyeCol = 6;
+        const trimCol = vary ? pick([13, 10, 7, 14], 13) : 13;
+        const monMain = vary ? pick([12, 14, 15, 10, 9], 12) : 12;
+        const monDark = monMain === 12 ? 9 : (monMain === 14 ? 11 : 5);
+        const furMain = vary ? pick([3, 4, 13, 15, 10], 3) : 3;
+        const furLight = furMain === 3 ? 1 : 7;
+        const furDark = furMain === 3 ? 4 : 5;
+
+        const s = N / 24;
+        const cx = (N - 1) / 2;
+        const cy = (N - 1) / 2;
+        const hasBelt = vary ? rng() > 0.25 : true;
+        const hasCape = vary && rng() > 0.6;
+        const monsterEyeCol = vary ? pick([13, 10, 7], 13) : 13;
+
+        // Âncoras da cabeça para encaixar qualquer acessório (frente = +ly)
+        let headTopZ = 19.5, headCenterZ = 16.5, headCenterY = 0, headBackY = -2.8, headFrontY = 2.8, headRx = 3.1;
+        if (charType === 'chibi') {
+          headTopZ = 18.8; headCenterZ = 14.2; headCenterY = 0; headBackY = -4.4; headFrontY = 4.4; headRx = 5.0;
+        } else if (charType === 'quadruped') {
+          headTopZ = 14.8; headCenterZ = 11.4; headCenterY = 4.2; headBackY = 0.8; headFrontY = 7.6; headRx = 3.5;
+        } else if (charType === 'monster') {
+          headTopZ = 18.8; headCenterZ = 15.8; headCenterY = 0.5; headBackY = -2.5; headFrontY = 3.5; headRx = 3.8;
+        }
+
+        for (let z = 0; z < N; z++) {
+          const lz = z / s;
+          const layer = vol[z];
+          for (let y = 0; y < N; y++) {
+            const ly = (y - cy) / s;
+            for (let x = 0; x < N; x++) {
+              const lx = (x - cx) / s;
+              let c = 0;
+
+              if (charType === 'humanoid') {
+                if (lz < 2.0) {
+                  if (Math.abs(Math.abs(lx) - 2.3) <= 1.35 && ly >= -1.5 && ly <= 2.3) c = bootCol;
+                } else if (lz < 7.0) {
+                  if (Math.abs(Math.abs(lx) - 2.2) <= 1.2 && Math.abs(ly) <= 1.5) c = pantsCol;
+                } else if (lz < 13.5) {
+                  if (Math.abs(lx) <= 3.6 && Math.abs(ly) <= 2.0) {
+                    c = shirtCol;
+                    if (hasBelt && lz < 8.2) c = (Math.abs(lx) <= 0.8 && ly > 1.2) ? trimCol : bootCol;
+                    else if (lz >= 12.2 && Math.abs(lx) <= 1.5 && ly > 1.2) c = trimCol;
+                  } else if (Math.abs(lx) >= 3.8 && Math.abs(lx) <= 5.4 && Math.abs(ly) <= 1.3 && lz < 13.0) {
+                    c = lz < 9.2 ? skinCol : shirtCol;
+                  } else if (hasCape && ly < -2.0 && ly >= -3.1 && Math.abs(lx) <= 3.1 && lz >= 5.0 && lz < 13.2) {
+                    c = trimCol;
+                  }
+                } else if (lz < 19.5) {
+                  if (Math.abs(lx) <= 3.1 && Math.abs(ly) <= 2.8) {
+                    const corner = Math.abs(lx) > 2.5 && Math.abs(ly) > 2.2 && lz > 17.8;
+                    if (!corner) {
+                      c = lz < 14.3 ? skinShade : skinCol;
+                      if (lz >= 15.3 && lz <= 16.8 && ly >= 2.0 && Math.abs(Math.abs(lx) - 1.4) <= 0.6) c = eyeCol;
+                    }
+                  }
+                }
+              } else if (charType === 'chibi') {
+                if (lz < 1.6) {
+                  if (Math.abs(Math.abs(lx) - 2.1) <= 1.3 && ly >= -1.2 && ly <= 2.0) c = bootCol;
+                } else if (lz < 4.5) {
+                  if (Math.abs(Math.abs(lx) - 2.0) <= 1.1 && Math.abs(ly) <= 1.3) c = pantsCol;
+                } else if (lz < 9.5) {
+                  if (Math.abs(lx) <= 3.3 && Math.abs(ly) <= 2.0) {
+                    c = (hasBelt && lz < 5.6) ? bootCol : shirtCol;
+                    if (lz >= 8.2 && Math.abs(lx) <= 1.2 && ly > 1.2) c = trimCol;
+                  } else if (Math.abs(lx) >= 3.4 && Math.abs(lx) <= 4.9 && Math.abs(ly) <= 1.2 && lz >= 5.0 && lz < 9.0) {
+                    c = lz < 6.4 ? skinCol : shirtCol;
+                  }
+                } else if (lz < 18.8) {
+                  const e = (lx / 5.1) ** 2 + (ly / 4.4) ** 2 + ((lz - 14.2) / 4.7) ** 2;
+                  if (e <= 1.0) {
+                    c = skinCol;
+                    if (lz >= 12.2 && lz <= 14.6 && ly > 3.1 && Math.abs(Math.abs(lx) - 2.0) <= 0.75) {
+                      c = (lz > 13.7 && Math.abs(lx) > 1.8) ? 7 : eyeCol;
+                    } else if (lz >= 11.4 && lz <= 12.5 && ly > 3.0 && Math.abs(Math.abs(lx) - 3.3) <= 0.75) {
+                      c = 10;
+                    }
+                  }
+                }
+              } else if (charType === 'quadruped') {
+                if (lz < 5.0) {
+                  const fl = Math.hypot(Math.abs(lx) - 2.6, ly - 3.5);
+                  const bl = Math.hypot(Math.abs(lx) - 2.6, ly + 4.0);
+                  if (fl <= 1.35 || bl <= 1.35) c = lz < 1.3 ? 7 : furDark;
+                }
+                if (!c && lz >= 4.2 && lz < 9.8) {
+                  const eb = (lx / 3.8) ** 2 + ((ly + 0.5) / 5.7) ** 2 + ((lz - 6.8) / 3.0) ** 2;
+                  if (eb <= 1.0) c = (lz < 5.2 && Math.abs(lx) < 2.1) ? furLight : furMain;
+                }
+                if (!c && ly < -5.0 && ly >= -9.6 && Math.abs(lx) <= 1.1) {
+                  const tz = 7.4 + (-ly - 5.0) * 0.85;
+                  if (Math.abs(lz - tz) <= 1.2) c = ly < -8.2 ? 7 : furMain;
+                }
+                if (lz >= 8.0 && lz < 15.2) {
+                  const eh = (lx / 3.6) ** 2 + ((ly - 4.2) / 3.4) ** 2 + ((lz - 11.4) / 3.5) ** 2;
+                  if (eh <= 1.0) {
+                    c = furMain;
+                    if (lz >= 11.4 && lz <= 12.9 && ly >= 6.5 && Math.abs(Math.abs(lx) - 1.55) <= 0.65) c = eyeCol;
+                  } else if (lz >= 8.4 && lz < 11.2 && ly >= 6.2 && ly <= 8.5 && Math.abs(lx) <= 1.9) {
+                    c = (ly >= 7.7 && lz >= 9.9 && Math.abs(lx) <= 0.8) ? 6 : furLight;
+                  }
+                }
+              } else if (charType === 'monster') {
+                if (lz < 5.2) {
+                  if (Math.abs(Math.abs(lx) - 3.2) <= 1.8 && Math.abs(ly) <= 2.1) c = monDark;
+                } else if (lz < 14.5) {
+                  const et = (lx / 6.0) ** 2 + (ly / 3.6) ** 2 + ((lz - 9.8) / 4.9) ** 2;
+                  if (et <= 1.0) {
+                    c = monMain;
+                    if (Math.abs(lx) <= 1.5 && ly > 2.4 && Math.abs(lz - 10.2) <= 1.5) c = trimCol;
+                  } else if (Math.abs(lx) >= 5.6 && Math.abs(lx) <= 8.2 && Math.abs(ly) <= 2.0 && lz >= 3.5 && lz < 13.5) {
+                    c = lz < 6.0 ? monDark : monMain;
+                  }
+                }
+                if (lz >= 13.2 && lz < 18.8 && Math.abs(lx) <= 3.8 && Math.abs(ly - 0.5) <= 3.0) {
+                  c = monMain;
+                  if (lz >= 15.0 && lz <= 16.4 && ly >= 2.6 && Math.abs(Math.abs(lx) - 1.6) <= 0.8) c = monsterEyeCol;
+                  else if (lz >= 13.4 && lz <= 14.3 && ly >= 2.8 && Math.abs(Math.abs(lx) - 1.5) <= 0.6) c = 7;
+                }
+              }
+
+              // Acessórios de cabeça (adaptados às âncoras do arquétipo)
+              const dyH = ly - headCenterY;
+              const topLim = 23.6;
+              if (headStyle === 'short_hair') {
+                if (lz >= headTopZ - 1.2 && lz <= Math.min(topLim, headTopZ + 1.1) && Math.abs(lx) <= headRx + 0.3 && ly >= headBackY - 0.3 && ly <= headFrontY + 0.2) {
+                  c = hairCol;
+                } else if (ly <= headBackY + 0.9 && ly >= headBackY - 0.7 && Math.abs(lx) <= headRx + 0.2 && lz >= headCenterZ - 1.0 && lz <= headTopZ) {
+                  c = hairCol;
+                } else if (ly >= headFrontY - 0.7 && ly <= headFrontY + 0.4 && Math.abs(lx) <= headRx - 0.2 && lz >= headTopZ - 1.6 && lz <= headTopZ) {
+                  c = hairCol;
+                }
+              } else if (headStyle === 'long_hair') {
+                if (lz >= headTopZ - 1.2 && lz <= Math.min(topLim, headTopZ + 1.1) && Math.abs(lx) <= headRx + 0.5 && ly >= headBackY - 0.6 && ly <= headFrontY + 0.2) {
+                  c = hairCol;
+                } else if (ly <= headBackY + 0.8 && ly >= headBackY - 1.2 && Math.abs(lx) <= headRx + 0.5 && lz >= Math.max(4.0, headCenterZ - 7.5) && lz <= headTopZ + 0.6) {
+                  c = hairCol;
+                } else if (Math.abs(lx) >= headRx - 0.5 && Math.abs(lx) <= headRx + 1.1 && ly >= headBackY && ly <= headCenterY + 1.0 && lz >= Math.max(6.0, headCenterZ - 5.5) && lz <= headTopZ) {
+                  c = hairCol;
+                }
+              } else if (headStyle === 'mohawk') {
+                if (Math.abs(lx) <= 1.05 && ly >= headBackY && ly <= headFrontY && lz >= headTopZ - 0.6 && lz <= Math.min(topLim, headTopZ + 4.0)) {
+                  c = (lz > headTopZ + 2.2) ? trimCol : hairCol;
+                }
+              } else if (headStyle === 'helmet') {
+                const inHelmBox = Math.abs(lx) <= headRx + 0.9 && ly >= headBackY - 0.8 && ly <= headFrontY + 0.8;
+                const visorOpen = ly > headFrontY - 0.9 && lz < headTopZ - 0.6 && Math.abs(lx) <= headRx - 0.5;
+                if (inHelmBox && !visorOpen && lz >= headCenterZ - 0.4 && lz <= Math.min(topLim, headTopZ + 1.5)) {
+                  c = (lz >= headTopZ - 0.8 && ly > headFrontY - 0.4) ? 13 : 15;
+                } else if (Math.abs(lx) <= 0.8 && ly >= headBackY && ly <= headFrontY - 0.5 && lz > headTopZ + 1.4 && lz <= Math.min(topLim, headTopZ + 3.2)) {
+                  c = 10;
+                }
+              } else if (headStyle === 'wizard_hat') {
+                const radXZ = Math.hypot(lx, dyH);
+                if (lz >= headTopZ - 0.7 && lz <= headTopZ + 0.5 && radXZ <= headRx + 2.6) {
+                  c = trimCol === 13 ? 14 : trimCol;
+                } else if (lz > headTopZ + 0.5 && lz <= Math.min(topLim, headTopZ + 5.2)) {
+                  const hFrac = (lz - (headTopZ + 0.5)) / 4.7;
+                  const coneR = Math.max(0.6, (headRx + 0.4) * (1 - hFrac * 0.85));
+                  const bendY = dyH + hFrac * 1.4;
+                  if (Math.hypot(lx, bendY) <= coneR) c = lz <= headTopZ + 1.5 ? 13 : 14;
+                }
+              } else if (headStyle === 'ears') {
+                if (lz >= headTopZ - 0.6 && lz <= Math.min(topLim, headTopZ + 3.4) && Math.abs(dyH) <= 1.2) {
+                  const eOff = Math.abs(Math.abs(lx) - (headRx - 0.6));
+                  const halfW = Math.max(0.4, 1.4 - Math.max(0, lz - headTopZ) * 0.35);
+                  if (eOff <= halfW) {
+                    c = (eOff <= 0.45 && ly > headCenterY && lz < headTopZ + 2.0) ? 10 : (charType === 'quadruped' ? furMain : hairCol);
+                  }
+                }
+              }
+
+              if (c > 0) layer[y * N + x] = c;
+            }
+          }
+        }
+        voxCache = null;
+        renderPalette();
+        drawEdit();
+        say(`Personagem "${charType}" (${headStyle}) gerado com seed ${seed}! Retoque ou salve como Avatar.`);
+      }
+
+      const btnGenChar = document.getElementById('mBtnGenChar');
+      const btnVaryChar = document.getElementById('mBtnVaryChar');
+      if (btnGenChar) {
+        btnGenChar.addEventListener('click', () => {
+          const t = document.getElementById('mCharType')?.value || 'humanoid';
+          const h = document.getElementById('mCharHead')?.value || 'short_hair';
+          generateCharacter(t, h, charSeed);
+        });
+      }
+      if (btnVaryChar) {
+        btnVaryChar.addEventListener('click', () => {
+          charSeed++;
+          const t = document.getElementById('mCharType')?.value || 'humanoid';
+          const h = document.getElementById('mCharHead')?.value || 'short_hair';
+          generateCharacter(t, h, charSeed);
+        });
+      }
+
+      let propSeed = 100;
+      function generateProcProp(propKind, seed) {
+        const rng = makeRng(seed);
+        for (let z = 0; z < N; z++) vol[z].fill(0);
+        const s = N / 24;
+        const cx = (N - 1) / 2;
+        const cy = (N - 1) / 2;
+
+        if (propKind === 'gen_tree') {
+          applyPresetAndKind('foliage', 'foliage', `arvore_${seed}`);
+          const sakura = rng() > 0.65;
+          const leanX = (rng() - 0.5) * 4.2;
+          const leanY = (rng() - 0.5) * 4.2;
+          const trunkTop = 14 + rng() * 3;
+          const lobes = Array.from({ length: 4 + Math.floor(rng() * 3) }, (_, i) => ({
+            x: leanX * 0.8 + (i === 0 ? 0 : (rng() - 0.5) * 8.5),
+            y: leanY * 0.8 + (i === 0 ? 0 : (rng() - 0.5) * 8.5),
+            z: (i === 0 ? 17.5 : 12.0 + rng() * 7.0),
+            rx: 4.5 + rng() * 3.0,
+            ry: 4.5 + rng() * 3.0,
+            rz: 3.4 + rng() * 2.5
+          }));
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            const tz = Math.min(1, lz / trunkTop);
+            const tx = leanX * tz * tz;
+            const ty = leanY * tz * tz;
+            const tr = lz < 2.2 ? (3.2 - lz * 0.45) : 1.9 * (1 - 0.35 * tz);
+            for (let y = 0; y < N; y++) {
+              const ly = (y - cy) / s;
+              for (let x = 0; x < N; x++) {
+                const lx = (x - cx) / s;
+                let c = 0;
+                const dTrunk = Math.hypot(lx - tx, ly - ty);
+                if (lz <= trunkTop && dTrunk <= tr) {
+                  c = (lx - tx < 0) ? 14 : 15;
+                }
+                for (let k = 0; k < lobes.length; k++) {
+                  const lb = lobes[k];
+                  const wobble = Math.sin(lx * 0.9 + k) * Math.cos(ly * 0.9 - k) * 0.14;
+                  const d = ((lx - lb.x) / lb.rx) ** 2 + ((ly - lb.y) / lb.ry) ** 2 + ((lz - lb.z) / lb.rz) ** 2 + wobble;
+                  if (d <= 1.0) {
+                    const topness = (lz - (lb.z - lb.rz)) / (2 * lb.rz);
+                    if (sakura) c = topness > 0.72 ? 12 : (topness > 0.42 ? 10 : 9);
+                    else c = topness > 0.74 ? 6 : (topness > 0.44 ? 4 : 2);
+                  }
+                }
+                if (c > 0) vol[z][y * N + x] = c;
+              }
+            }
+          }
+        } else if (propKind === 'gen_rock') {
+          applyPresetAndKind('stone', 'destructible', `rocha_${seed}`, 'stone_chunk');
+          const isCrystal = rng() > 0.45;
+          if (isCrystal) {
+            const spires = Array.from({ length: 4 + Math.floor(rng() * 3) }, (_, i) => ({
+              ox: (i === 0 ? 0 : (rng() - 0.5) * 9.0),
+              oy: (i === 0 ? 0 : (rng() - 0.5) * 9.0),
+              tiltX: (rng() - 0.5) * 0.32,
+              tiltY: (rng() - 0.5) * 0.32,
+              h: i === 0 ? 19 : 11 + rng() * 7,
+              r: i === 0 ? 3.4 : 2.1 + rng() * 1.4
+            }));
+            for (let z = 0; z < N; z++) {
+              const lz = z / s;
+              for (let y = 0; y < N; y++) {
+                const ly = (y - cy) / s;
+                for (let x = 0; x < N; x++) {
+                  const lx = (x - cx) / s;
+                  let c = 0;
+                  if (lz < 5.0 && (lx / 8.5) ** 2 + (ly / 8.0) ** 2 + (lz / 5.2) ** 2 <= 1.0) c = lz > 3.5 ? 11 : 10;
+                  for (let k = 0; k < spires.length; k++) {
+                    const sp = spires[k];
+                    if (lz <= sp.h) {
+                      const sx = lx - sp.ox - lz * sp.tiltX;
+                      const sy = ly - sp.oy - lz * sp.tiltY;
+                      const taper = Math.max(0.25, 1 - Math.max(0, lz - sp.h * 0.65) / (sp.h * 0.38));
+                      if (Math.abs(sx) + Math.abs(sy) <= sp.r * 1.35 * taper) {
+                        c = lz > sp.h * 0.72 ? 8 : (sx + sy > 0 ? 6 : 4);
+                      }
+                    }
+                  }
+                  if (c > 0) vol[z][y * N + x] = c;
+                }
+              }
+            }
+          } else {
+            const pA = rng() * 6.28, pB = rng() * 6.28;
+            const rx = 7.2 + rng() * 2.5, ry = 6.8 + rng() * 2.5, rz = 11.0 + rng() * 4.5;
+            for (let z = 0; z < N; z++) {
+              const lz = z / s;
+              for (let y = 0; y < N; y++) {
+                const ly = (y - cy) / s;
+                for (let x = 0; x < N; x++) {
+                  const lx = (x - cx) / s;
+                  const facet = Math.abs(Math.sin(lx * 0.55 + pA) * Math.cos(ly * 0.55 + pB)) * 0.22;
+                  const d = (lx / rx) ** 2 + (ly / ry) ** 2 + ((lz - 2.0) / rz) ** 2 + facet;
+                  if (d <= 1.0 && lz >= 0) {
+                    vol[z][y * N + x] = lz > rz * 0.85 ? 14 : (lz > rz * 0.5 ? 6 : 3);
+                  }
+                }
+              }
+            }
+          }
+        } else if (propKind === 'gen_house') {
+          applyPresetAndKind('default', 'solid', `casinha_${seed}`);
+          const roofCol = [12, 2, 6, 3][Math.floor(rng() * 4)];
+          const wallCol = rng() > 0.4 ? 14 : 1;
+          const chimSide = rng() > 0.5 ? 4.5 : -4.5;
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let y = 0; y < N; y++) {
+              const ly = (y - cy) / s;
+              for (let x = 0; x < N; x++) {
+                const lx = (x - cx) / s;
+                let c = 0;
+                if (lz < 2.0 && Math.abs(lx) <= 8.5 && Math.abs(ly) <= 7.5) {
+                  c = 10;
+                } else if (lz >= 2.0 && lz < 11.5 && Math.abs(lx) <= 7.5 && Math.abs(ly) <= 6.5) {
+                  const corner = Math.abs(lx) >= 6.2 && Math.abs(ly) >= 5.2;
+                  c = corner ? 4 : wallCol;
+                  if (ly >= 5.5 && Math.abs(lx) <= 1.8 && lz <= 8.0) c = (Math.abs(lx) < 0.8 && lz >= 4.0 && lz <= 5.0) ? 13 : 5;
+                  else if (Math.abs(lx) >= 6.4 && Math.abs(ly) <= 1.6 && lz >= 5.2 && lz <= 8.2) c = 13;
+                  else if (ly >= 5.5 && Math.abs(Math.abs(lx) - 4.4) <= 1.1 && lz >= 5.8 && lz <= 8.4) c = 13;
+                } else if (lz >= 11.0 && lz <= 20.5) {
+                  const span = 9.2 - (lz - 11.0) * 0.95;
+                  if (span >= 0.4 && Math.abs(lx) <= span && Math.abs(ly) <= 8.2) {
+                    c = (Math.abs(lx) >= span - 1.2 || Math.abs(ly) >= 7.2) ? roofCol : (Math.abs(ly) <= 6.5 ? wallCol : roofCol);
+                  }
+                }
+                if (Math.abs(lx - chimSide) <= 1.2 && Math.abs(ly + 3.5) <= 1.2 && lz >= 12.0 && lz <= 21.8) c = 11;
+                if (c > 0) vol[z][y * N + x] = c;
+              }
+            }
+          }
+        } else if (propKind === 'gen_chest') {
+          applyPresetAndKind('default', 'solid', `bau_${seed}`);
+          const woodMain = rng() > 0.5 ? 6 : 7;
+          const woodTrim = 4;
+          const metalCol = rng() > 0.35 ? 10 : 15;
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let y = 0; y < N; y++) {
+              const ly = (y - cy) / s;
+              for (let x = 0; x < N; x++) {
+                const lx = (x - cx) / s;
+                let c = 0;
+                if (lz < 7.0 && Math.abs(lx) <= 8.2 && Math.abs(ly) <= 5.6) {
+                  const strap = Math.abs(Math.abs(lx) - 5.2) <= 0.9 || Math.abs(lx) >= 7.2 || Math.abs(ly) >= 4.6;
+                  c = strap ? (lz >= 5.8 ? metalCol : woodTrim) : woodMain;
+                } else if (lz >= 7.0 && lz <= 13.5 && Math.abs(lx) <= 8.2) {
+                  const arch = (ly / 5.6) ** 2 + ((lz - 7.0) / 6.2) ** 2;
+                  if (arch <= 1.0) {
+                    const strap = Math.abs(Math.abs(lx) - 5.2) <= 0.9 || Math.abs(lx) >= 7.2;
+                    c = strap ? metalCol : woodMain;
+                  }
+                }
+                if (ly >= 5.0 && ly <= 6.4 && Math.abs(lx) <= 1.5 && lz >= 5.2 && lz <= 8.4) c = 13;
+                if (c > 0) vol[z][y * N + x] = c;
+              }
+            }
+          }
+        } else if (propKind === 'gen_mushroom') {
+          applyPresetAndKind('default', 'foliage', `cogumelo_${seed}`);
+          const capCol = [12, 2, 13, 8][Math.floor(rng() * 4)];
+          const leanX = (rng() - 0.5) * 2.4;
+          const spots = Array.from({ length: 6 }, () => ({
+            ang: rng() * Math.PI * 2,
+            r: 2.2 + rng() * 5.2,
+            rad: 1.3 + rng() * 0.9
+          }));
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let y = 0; y < N; y++) {
+              const ly = (y - cy) / s;
+              for (let x = 0; x < N; x++) {
+                const lx = (x - cx) / s;
+                let c = 0;
+                const sx = lx - leanX * Math.min(1, lz / 11.0);
+                if (lz <= 11.5 && Math.hypot(sx, ly) <= (lz < 2.5 ? 3.5 - lz * 0.35 : 2.3)) {
+                  c = lz < 1.2 && Math.hypot(sx, ly) > 2.4 ? 8 : 1;
+                }
+                const capD = ((lx - leanX) / 8.8) ** 2 + (ly / 8.8) ** 2 + ((lz - 11.0) / 8.2) ** 2;
+                if (lz >= 10.5 && capD <= 1.0) {
+                  c = capCol;
+                  for (let k = 0; k < spots.length; k++) {
+                    const sp = spots[k];
+                    const px = leanX + Math.cos(sp.ang) * sp.r;
+                    const py = Math.sin(sp.ang) * sp.r;
+                    if (Math.hypot(lx - px, ly - py) <= sp.rad) c = 14;
+                  }
+                }
+                if (c > 0) vol[z][y * N + x] = c;
+              }
+            }
+          }
+        } else if (propKind === 'gen_sword') {
+          applyPresetAndKind('default', 'pickable', `espada_${seed}`);
+          const gemCol = [12, 2, 13][Math.floor(rng() * 3)];
+          const guardW = 4.6 + rng() * 1.6;
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let y = 0; y < N; y++) {
+              const ly = (y - cy) / s;
+              for (let x = 0; x < N; x++) {
+                const lx = (x - cx) / s;
+                let c = 0;
+                if (lz < 5.5 && (lx / 6.4) ** 2 + (ly / 5.8) ** 2 + (lz / 5.5) ** 2 <= 1.0) {
+                  c = lz > 3.8 ? 11 : 10;
+                }
+                if (lz >= 4.0 && lz < 15.2 && Math.abs(lx) <= 1.4 && Math.abs(ly) <= 0.7) {
+                  c = Math.abs(lx) < 0.7 ? 14 : 11;
+                } else if (lz >= 15.0 && lz <= 16.6 && Math.abs(lx) <= guardW && Math.abs(ly) <= 1.2) {
+                  c = 13;
+                } else if (lz > 16.6 && lz <= 20.5 && Math.abs(lx) <= 0.9 && Math.abs(ly) <= 0.9) {
+                  c = 4;
+                } else if (lz > 20.5 && lz <= 22.6 && Math.hypot(lx, ly) <= 1.6) {
+                  c = gemCol;
+                }
+                if (c > 0) vol[z][y * N + x] = c;
+              }
+            }
+          }
+        }
+        voxCache = null;
+        renderPalette();
+        drawEdit();
+        say(`Prop "${propKind}" gerado (seed ${seed})! Clique novamente para nova variação.`);
+      }
+
+      const procPropsBox = document.getElementById('mProcProps');
+      if (procPropsBox) {
+        procPropsBox.addEventListener('click', (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest('[data-genprop]') : null;
+          const kind = btn && btn.dataset ? btn.dataset.genprop : null;
+          if (!kind) return;
+          propSeed++;
+          generateProcProp(kind, propSeed);
+        });
+      }
+
+      const btnOpenSide = document.getElementById('btnOpenModelerSide');
+      if (btnOpenSide) {
+        btnOpenSide.addEventListener('click', () => {
+          const tm = document.getElementById('btnTabModeler');
+          if (tm) tm.click();
+        });
+      }
 
       function downloadJson(filename, obj) {
         const a = document.createElement('a');
@@ -563,7 +1117,7 @@
                 for (let x = 0; x < N; x++) vol[z][y * N + x] = parseInt(row[x], 36) || 0;
               }
             if (d.name) document.getElementById('mName').value = d.name;
-            const impKind = d.kind || (d.solid ? 'solid' : 'decor');
+            const impKind = d.kind || d.category || (d.solid ? 'solid' : 'decor');
             kindSel.value = impKind;
             if (destrOptsEl) destrOptsEl.style.display = impKind === 'destructible' ? 'flex' : 'none';
             if (d.hp && document.getElementById('mHp')) document.getElementById('mHp').value = String(d.hp);
@@ -603,7 +1157,13 @@
       window.StudioModeler = {
         exportAssets: () => customAssets.map((a) => ({ ...a })),
         importAssets: (list) => { (list || []).forEach((a) => { try { registerAsset(a); } catch (e) { console.error(e); } }); },
-        registerAsset
+        registerAsset,
+        generateCharacter,
+        generateProcProp,
+        getVol: () => vol,
+        setZ,
+        setTool: (t) => { tool = t; },
+        applyCell: (x, y) => applyTool({ x, y })
       };
 
       // modelo inicial: uma "caixa de madeira" simples para o usuário ver o fluxo funcionando

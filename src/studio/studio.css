@@ -18,6 +18,9 @@ body {
   padding: 0 12px;
   gap: 10px;
   z-index: 30;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 .brand {
   font-weight: 800;
@@ -25,12 +28,14 @@ body {
   color: #FDE68A;
   letter-spacing: -0.2px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .top-group {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 .mode-switch {
   display: flex;
@@ -38,6 +43,7 @@ body {
   border: 1px solid #57534E;
   border-radius: 8px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .mode-btn {
   border: none;
@@ -47,6 +53,7 @@ body {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 .mode-btn.active-edit { background: #D97706; color: #FFFBEB; }
 .mode-btn.active-test { background: #16A34A; color: #F0FDF4; }
