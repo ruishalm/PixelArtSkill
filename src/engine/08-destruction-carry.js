@@ -562,10 +562,11 @@
         if (dc && isWetMat(dc.mat)) {
           let subVol = 1.0;
           if (isHeavy) {
-            // Pedregulho (densidade > 1): afunda até o leito deslocando seu volume inteiro
+            // Pedregulho (densidade > 1): afunda até o leito sólido (bedZ) deslocando seu volume inteiro
+            const bedZ = waterBedZ(dc);
             dr.vz -= 180 * dt;
-            dr.z = Math.max(dc.h, dr.z + dr.vz * dt);
-            if (dr.z <= dc.h + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
+            dr.z = Math.max(bedZ, dr.z + dr.vz * dt);
+            if (dr.z <= bedZ + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
           } else {
             // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer + nível local
             const baseSurfZ = waterSurfZ(dc);

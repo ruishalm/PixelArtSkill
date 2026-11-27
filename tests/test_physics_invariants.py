@@ -512,6 +512,206 @@ console.log('SEED_OK');
                 target = os.path.normpath(os.path.join(base_dir, ref))
                 self.assertTrue(os.path.exists(target), f'Broken link in {rel_html}: {ref} -> {target}')
 
+    def test_09_mountain_lakes_drainage_and_anti_aquarium(self):
+        node_test = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = process.cwd();
+const mathCode = fs.readFileSync(path.join(root, 'src/engine/00-math-noise.js'), 'utf8');
+const bakerCode = fs.readFileSync(path.join(root, 'src/engine/02-slice-baker.js'), 'utf8');
+const sculptorCode = fs.readFileSync(path.join(root, 'src/engine/03-terrain-sculptor.js'), 'utf8');
+const fluidsCode = fs.readFileSync(path.join(root, 'src/engine/06-fluids-weather.js'), 'utf8');
+
+const mw = 64, mh = 64, VOX = 2, HALF_GRID = 32;
+const Z_MIN = -6, TERRAIN_Z_MAX = 66, Z_GRASS_MAX = 70;
+const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
+      MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7, MAT_SHALLOW = 8;
+
+const fakeCanvases = [];
+const sandbox = {
+  assert, Math, Number, Array, Int16Array, Int32Array, Uint8Array, Uint32Array, Float32Array,
+  Set, Map, URLSearchParams, console, performance: { now: () => 0 },
+  WORLD_CFG: { gridW: mw, gridH: mh, vox: VOX, isDefault: false },
+  mw, mh, VOX, HALF_GRID, HALF_WORLD: HALF_GRID * VOX,
+  Z_MIN, TERRAIN_Z_MAX, Z_GRASS_MAX, AUTO_STEP_MAX: 5.5,
+  MAT_GRASS, MAT_PATH, MAT_SAND, MAT_STONE, MAT_WATER, MAT_BRIDGE, MAT_PEAK, MAT_LILYPAD, MAT_SHALLOW,
+  isWetMat: (m) => m === MAT_WATER || m === MAT_SHALLOW,
+  hmap: new Int16Array(mw * mh),
+  waterDepth: new Uint8Array(mw * mh),
+  waterfallDropMask: new Uint8Array(mw * mh),
+  waterSprings: [],
+  matMap: new Uint8Array(mw * mh),
+  biomeMap: new Uint8Array(mw * mh),
+  cliffMask: new Uint8Array(mw * mh),
+  shadowMask: new Uint8Array(mw * mh),
+  noGrassMask: new Uint8Array(mw * mh),
+  standableMap: new Uint8Array(mw * mh),
+  cliffTopMap: new Int16Array(mw * mh),
+  props: [],
+  debrisDrops: [],
+  cat: { x: 0, y: 0, z: 0, onGround: true, scale: 1 },
+  camX: 0, camY: 0,
+  RIVER_SEGMENTS: [],
+  PROP_COLLIDER_META: {},
+  getBridgeAt: () => null,
+  getBridgeDeckZ: () => 0,
+  getCellAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    const idx = my * mw + mx;
+    return { mx, my, idx, h: sandbox.hmap[idx], mat: sandbox.matMap[idx], waterDepth: sandbox.waterDepth[idx] };
+  },
+  getHeightAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    return sandbox.hmap[my * mw + mx];
+  },
+  worldToGrid: (wx, wy) => ({ mx: Math.floor(wx / VOX + HALF_GRID), my: Math.floor(wy / VOX + HALF_GRID) }),
+  window: { __IS_STUDIO__: true, location: { search: '' } },
+  document: {
+    createElement: () => {
+      const cv = {
+        width: 0, height: 0, _buf: null,
+        getContext: () => ({
+          createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+          putImageData: (img) => { cv._buf = new Uint32Array(img.data.buffer.slice(0)); }
+        })
+      };
+      fakeCanvases.push(cv);
+      return cv;
+    }
+  }
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+function runTestsInVm() {
+  function resetIslandWithMountain() {
+    hmap.fill(-6);
+    matMap.fill(MAT_WATER);
+    waterDepth.fill(0);
+    waterfallDropMask.fill(0);
+    waterSprings.length = 0;
+    for (let my = 10; my <= 54; my++) {
+      for (let mx = 10; mx <= 54; mx++) {
+        const d = Math.hypot(mx - 32, my - 32);
+        const idx = my * mw + mx;
+        if (d <= 14) {
+          hmap[idx] = 20;
+          matMap[idx] = MAT_GRASS;
+        } else if (d <= 22) {
+          const h = Math.round(20 * (1 - (d - 14) / 8) - 2);
+          hmap[idx] = Math.max(-6, h);
+          matMap[idx] = h > -2 ? (h <= 2 ? MAT_SAND : MAT_GRASS) : MAT_WATER;
+        }
+      }
+    }
+  }
+
+  // A. Cratera fechada na montanha: preenche até spillZ - 1 com centro fundo e borda rasa
+  resetIslandWithMountain();
+  for (let my = 27; my <= 37; my++) {
+    for (let mx = 27; mx <= 37; mx++) {
+      const d = Math.hypot(mx - 32, my - 32);
+      if (d <= 4.5) {
+        const idx = my * mw + mx;
+        hmap[idx] = Math.round(12 + d * 1.4);
+      }
+    }
+  }
+  applyWaterBrushHydrology(32, 32, 2, 'mat_water');
+  const centerIdx = 32 * mw + 32;
+  assert.strictEqual(matMap[centerIdx], MAT_WATER, 'Center of deep mountain crater should be MAT_WATER');
+  assert.strictEqual(hmap[centerIdx], 19, 'Crater surface should level at spillZ - 1 = 19');
+  assert.strictEqual(waterDepth[centerIdx], 7, 'Crater center waterDepth should be 19 - 12 = 7');
+  const edgeIdx = 32 * mw + 36;
+  assert.strictEqual(matMap[edgeIdx], MAT_SHALLOW, 'Shallow crater edge should be MAT_SHALLOW');
+  assert(waterDepth[edgeIdx] >= 1 && waterDepth[edgeIdx] <= 2, 'Shallow edge depth 1..2');
+  assert.strictEqual(matMap[32 * mw + 40], MAT_GRASS, 'Outer mountain rim must stay dry');
+
+  // B. Anti-Aquário: parede lateral exposta abaixo da superfície sem cachoeira ativa deve ser ROCHA sólida
+  resetIslandWithMountain();
+  const aqIdx = 32 * mw + 32;
+  hmap[aqIdx] = 20;
+  matMap[aqIdx] = MAT_WATER;
+  waterDepth[aqIdx] = 5; // bedZ = 15
+  hmap[32 * mw + 33] = 4;
+  matMap[32 * mw + 33] = MAT_GRASS;
+  bakeTerrainSlices();
+  assert.strictEqual(waterfallDropMask[aqIdx], 0, 'Dry drop next to lake must NOT trigger waterfall curtain');
+  const sl18 = terrainSlices[18];
+  assert(sl18 && sl18.canvas && sl18.canvas._buf, 'Slice 18 should be baked');
+  const px18 = sl18.canvas._buf[(32 - sl18.offY) * sl18.w + (32 - sl18.offX)];
+  const r18 = px18 & 255, g18 = (px18 >>> 8) & 255, b18 = (px18 >>> 16) & 255;
+  assert(r18 > 40 && b18 < 180 && Math.abs(r18 - b18) < 40, 'Exposed lake wall at z=18 must be solid rock, got rgb(' + r18 + ',' + g18 + ',' + b18 + ')');
+
+  // C. Nascente (spring) em montanha com queda abrupta + encosta suave: escoa até o mar, gera cachoeira e -∇h
+  resetIslandWithMountain();
+  for (let mx = 32; mx <= 38; mx++) hmap[32 * mw + mx] = 20 - Math.floor((mx - 32) / 3);
+  hmap[32 * mw + 39] = 6;
+  matMap[32 * mw + 39] = MAT_GRASS;
+  for (let mx = 40; mx <= 50; mx++) {
+    const h = Math.max(-3, 6 - (mx - 39));
+    hmap[32 * mw + mx] = h;
+    matMap[32 * mw + mx] = h <= -2 ? MAT_WATER : MAT_GRASS;
+  }
+  placeSpringHydrology(32, 32);
+  computeWaterfallDrops();
+  assert(waterfallDrops.length >= 1, 'Steep drop (18 -> 6) must create dynamic waterfall drop');
+  let reachedSea = false;
+  for (let mx = 45; mx <= 52; mx++) {
+    const idx = 32 * mw + mx;
+    if (isWetMat(matMap[idx]) && hmap[idx] <= -2) reachedSea = true;
+  }
+  assert(reachedSea, 'Spring drainage must reach sea level (Z <= -2)');
+  const wxSlope = (42 - HALF_GRID + 0.5) * VOX;
+  const wySlope = (32 - HALF_GRID + 0.5) * VOX;
+  const flow = sampleBaseWaterFlow(wxSlope, wySlope);
+  assert(flow.speed > 5 && flow.vx > 0, 'Sloped mountain stream must flow downhill (+x), got vx=' + flow.vx + ', speed=' + flow.speed);
+
+  // D. Rompimento de barragem: baixar a borda do lago da cratera drena o lago e escoa pelo corte
+  resetIslandWithMountain();
+  for (let my = 27; my <= 37; my++) {
+    for (let mx = 27; mx <= 37; mx++) {
+      const d = Math.hypot(mx - 32, my - 32);
+      if (d <= 4.5) hmap[my * mw + mx] = Math.round(12 + d * 1.4);
+    }
+  }
+  applyWaterBrushHydrology(32, 32, 2, 'mat_water');
+  assert.strictEqual(hmap[32 * mw + 32], 19);
+  for (let mx = 37; mx <= 50; mx++) {
+    const h = Math.max(-3, 10 - (mx - 37));
+    hmap[32 * mw + mx] = h;
+    matMap[32 * mw + mx] = h <= -2 ? MAT_WATER : MAT_GRASS;
+  }
+  const breachRes = drainBreachedLakesInRect(35, 30, 39, 34);
+  assert(breachRes.changed, 'Dam breach must detect and drain lake');
+  assert(!isWetMat(matMap[centerIdx]), 'Lake bed at Z=12 must drain dry when breach is at Z=10');
+
+  // E. Escoamento ao subir terreno do mar (elevação > -2 vira solo seco)
+  const seaIdx = 5 * mw + 5;
+  hmap[seaIdx] = 5;
+  matMap[seaIdx] = MAT_WATER;
+  waterDepth[seaIdx] = 0;
+  assert(drainElevatedWetCell(seaIdx), 'Elevated uncontained sea cell must drain');
+  assert.strictEqual(matMap[seaIdx], MAT_GRASS, 'Drained cell at Z=5 must become MAT_GRASS');
+  assert.strictEqual(waterDepth[seaIdx], 0);
+
+  console.log('HYDROLOGY_AND_ANTI_AQUARIUM_OK');
+}
+vm.runInContext(
+  mathCode + '\n' + bakerCode + '\n' + sculptorCode + '\n' + fluidsCode + '\n(' + runTestsInVm.toString() + ')()',
+  sandbox
+);
+"""
+        res = subprocess.run(['node', '-e', node_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node hydrology test failed:\n{res.stderr}\n{res.stdout}')
+        self.assertIn('HYDROLOGY_AND_ANTI_AQUARIUM_OK', res.stdout)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
