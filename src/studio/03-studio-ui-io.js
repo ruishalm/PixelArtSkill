@@ -213,7 +213,12 @@
             removePropObj(p);
           }
         }
-        rebakeTerrainDirtyRect(mx0 - 1, my0 - 1, mx1 + 1, my1 + 1);
+        if (typeof drainBreachedLakesInRect === 'function') {
+          drainBreachedLakesInRect(mx0, my0, mx1, my1, idx => { sculptH[idx] = hmap[idx]; pinnedMask[idx] = 1; });
+        }
+        if (typeof buildStandableMap === 'function') buildStandableMap();
+        if (typeof initFlowStreaks === 'function') initFlowStreaks();
+        bakeTerrainSlices();
         bakeMinimapBase();
         S.selectionBox = null;
       });

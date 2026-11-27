@@ -136,7 +136,7 @@
           const cellKey = cy * mw + cx;
           if (!isInitialClick && cellKey === lastWaterCellKey) return;
           lastWaterCellKey = cellKey;
-          const b = applyWaterBrushHydrology(cx, cy, rCells, activeTool, touchHydroIdx);
+          const b = applyWaterBrushHydrology(cx, cy, rCells, activeTool, touchHydroIdx, isInitialClick);
           terrainPaintedInStroke = true;
           const bx0 = Math.max(1, Math.min(mx0, b.minMx) - 1);
           const by0 = Math.max(1, Math.min(my0, b.minMy) - 1);
@@ -200,7 +200,9 @@
               const oldH = hmap[idx];
               sculptH[idx] = Math.max(Z_MIN, sculptH[idx] - brushStrength * 1.4 * w);
               const newH = Math.round(sculptH[idx]);
-              if (isWetMat(matMap[idx]) && oldH >= 0 && waterDepth[idx] > 0) {
+              const isContained = oldH >= 0 && waterDepth[idx] > 0 &&
+                hmap[idx - 1] >= oldH && hmap[idx + 1] >= oldH && hmap[idx - mw] >= oldH && hmap[idx + mw] >= oldH;
+              if (isWetMat(matMap[idx]) && isContained) {
                 const drop = Math.max(0, oldH - newH);
                 if (drop > 0) {
                   const newBed = Math.max(Z_MIN, getSolidBedAtIdx(idx) - drop);
@@ -210,8 +212,20 @@
                   matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
                 }
               } else {
+                const prevWet = isWetMat(matMap[idx]);
+                const bed = prevWet ? getSolidBedAtIdx(idx) : oldH;
                 hmap[idx] = newH;
-                if (newH <= -2 && isWetMat(matMap[idx])) waterDepth[idx] = 0;
+                if (newH <= -2 && prevWet) {
+                  waterDepth[idx] = 0;
+                } else if (prevWet) {
+                  if (newH <= bed) {
+                    waterDepth[idx] = 0;
+                    matMap[idx] = dryMatForHeight(newH);
+                  } else {
+                    waterDepth[idx] = Math.min(255, newH - bed);
+                    matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
+                  }
+                }
               }
               pinnedMask[idx] = 1;
               strokeNeedsBreachCheck = true;
@@ -227,14 +241,12 @@
                   matMap[idx] = dryMatForHeight(newH);
                 } else {
                   const bed = getSolidBedAtIdx(idx);
-                  hmap[idx] = newH;
-                  if (newH <= bed) {
-                    waterDepth[idx] = 0;
-                    matMap[idx] = dryMatForHeight(newH);
-                  } else {
-                    waterDepth[idx] = newH - bed;
+                  if (newH < bed) {
+                    waterDepth[idx] = Math.min(255, oldH - newH);
                     matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
                   }
+                  hmap[idx] = oldH;
+                  sculptH[idx] = oldH;
                 }
               } else {
                 hmap[idx] = newH;
@@ -254,14 +266,12 @@
                   matMap[idx] = dryMatForHeight(newH);
                 } else {
                   const bed = getSolidBedAtIdx(idx);
-                  hmap[idx] = newH;
-                  if (newH <= bed) {
-                    waterDepth[idx] = 0;
-                    matMap[idx] = dryMatForHeight(newH);
-                  } else {
-                    waterDepth[idx] = newH - bed;
+                  if (newH < bed) {
+                    waterDepth[idx] = Math.min(255, oldH - newH);
                     matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
                   }
+                  hmap[idx] = oldH;
+                  sculptH[idx] = oldH;
                 }
               } else {
                 hmap[idx] = newH;
@@ -275,6 +285,7 @@
               else if (activeTool === 'mat_peak') m = MAT_PEAK;
               else if (activeTool === 'mat_path') m = MAT_PATH;
               if (isWetMat(matMap[idx])) {
+                if (hmap[idx] >= 0) strokeNeedsBreachCheck = true;
                 hmap[idx] = getSolidBedAtIdx(idx);
                 sculptH[idx] = hmap[idx];
                 waterDepth[idx] = 0;

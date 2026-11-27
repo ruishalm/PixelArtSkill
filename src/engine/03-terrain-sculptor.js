@@ -70,6 +70,7 @@
             if (blended > hmap[idx]) hmap[idx] = blended;
             if (biome !== null && bestD < halfWidth * 0.9) biomeMap[idx] = biome;
             if (mat !== null && rawH > 2) matMap[idx] = mat;
+            else if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
             if (isCliff && bestD < halfWidth * 0.85) cliffMask[idx] = 1;
           }
         }
@@ -162,6 +163,7 @@
             }
             if (biome !== null && d < effR * 0.92) biomeMap[idx] = biome;
             if (mat !== null && val > 1) matMap[idx] = mat;
+            else if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
           }
         }
       }
@@ -233,6 +235,7 @@
             }
             if (biome !== null && effNd <= 1.0 + rimNorm * 0.6) biomeMap[idx] = biome;
             if (mat !== null && (effNd <= 1.0 || targetH >= 2 || (lowerAllowed && targetH >= 0))) matMap[idx] = mat;
+            else if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
           }
         }
       }
@@ -372,6 +375,7 @@
             } else {
               const s = 1 - (d - effR) / 12;
               hmap[idx] = Math.max(hmap[idx], Math.round(targetH * s * s));
+              if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
               if (biome !== null) biomeMap[idx] = biome;
             }
           }
@@ -846,16 +850,22 @@
       const clampedSurf = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX - 1, surfZ));
       const clampedBed = Math.max(Z_MIN, Math.min(clampedSurf, bedZ));
       if (clampedSurf <= -2) {
-        hmap[idx] = Math.min(-2, clampedBed <= -4 ? clampedBed : -4);
-        waterDepth[idx] = 0;
-        matMap[idx] = preferredMat === MAT_SHALLOW ? MAT_SHALLOW : MAT_WATER;
+        if (preferredMat === MAT_SHALLOW) {
+          hmap[idx] = -2;
+          waterDepth[idx] = 0;
+          matMap[idx] = MAT_SHALLOW;
+        } else {
+          hmap[idx] = Math.min(-4, clampedBed <= -4 ? clampedBed : -4);
+          waterDepth[idx] = 0;
+          matMap[idx] = MAT_WATER;
+        }
       } else {
         const depth = Math.max(1, Math.min(255, clampedSurf - clampedBed));
         hmap[idx] = clampedSurf;
         waterDepth[idx] = depth;
         matMap[idx] = preferredMat === MAT_SHALLOW
           ? MAT_SHALLOW
-          : (preferredMat === MAT_WATER ? (depth >= 3 ? MAT_WATER : MAT_SHALLOW) : (depth >= 3 ? MAT_WATER : MAT_SHALLOW));
+          : (depth >= 3 ? MAT_WATER : MAT_SHALLOW);
       }
       if (onTouchIdx) onTouchIdx(idx);
     }
@@ -949,7 +959,7 @@
       return { minMx, minMy, maxMx, maxMy };
     }
 
-    function traceSteepestStream(startMx, startMy, onTouchIdx = null, maxSteps = 2200) {
+    function traceSteepestStream(startMx, startMy, onTouchIdx = null, maxSteps = 4096) {
       const sStamp = _nextStreamStamp();
       let curIdx = startMy * mw + startMx;
       let minMx = startMx, minMy = startMy, maxMx = startMx, maxMy = startMy;
@@ -968,7 +978,7 @@
       let steps = 0;
       let legCount = 0;
 
-      while (steps < maxSteps && legCount < 18) {
+      while (steps < maxSteps && legCount < 1024) {
         legCount++;
         while (steps < maxSteps) {
           steps++;
@@ -1072,7 +1082,7 @@
         // Hit a local minimum or flat shelf: find basin spillover or flat path to next drop
         const cmx = curIdx % mw;
         const cmy = (curIdx / mw) | 0;
-        const res = findBasinOrOutlet(cmx, cmy, 5000);
+        const res = findBasinOrOutlet(cmx, cmy, 8000);
         if (res.type === 'sea') {
           paintWetCell(curIdx, -2, getSolidBedAtIdx(curIdx), MAT_SHALLOW, onTouchIdx);
           expandBounds(curIdx);
@@ -1090,13 +1100,16 @@
             for (let i = 0; i < res.basinCells.length; i++) {
               _streamVisit[res.basinCells[i]] = sStamp;
             }
-          } else if (res.pathToSaddle.length > 0) {
+          }
+          if (res.pathToSaddle.length > 0) {
             for (let i = 0; i < res.pathToSaddle.length; i++) {
               const pIdx = res.pathToSaddle[i];
               _streamVisit[pIdx] = sStamp;
               const pBed = getSolidBedAtIdx(pIdx);
-              paintWetCell(pIdx, pBed + 1, pBed, MAT_SHALLOW, onTouchIdx);
-              expandBounds(pIdx);
+              if (res.basinCells.length === 0 || pBed >= res.spillZ) {
+                paintWetCell(pIdx, pBed + 1, pBed, MAT_SHALLOW, onTouchIdx);
+                expandBounds(pIdx);
+              }
             }
           }
           if (res.saddleIdx >= 0 && res.saddleIdx !== res.outletIdx) {
@@ -1122,7 +1135,7 @@
       return { minMx, minMy, maxMx, maxMy };
     }
 
-    function applyWaterBrushHydrology(cx, cy, rCells, toolId, onTouchIdx = null) {
+    function applyWaterBrushHydrology(cx, cy, rCells, toolId, onTouchIdx = null, isInitialClick = true) {
       const prefMat = toolId === 'mat_shallow' ? MAT_SHALLOW : MAT_WATER;
       const cIdx = cy * mw + cx;
       const bedC = getSolidBedAtIdx(cIdx);
@@ -1157,15 +1170,22 @@
       }
 
       // 2. Acima do nível do mar: detectar se está dentro de uma bacia/cratera fechada
-      const res = findBasinOrOutlet(cx, cy, 4096);
-      if (res.type === 'spill' && res.basinCells.length > 0) {
-        const targetSurf = res.spillZ - bedC >= 2 ? (res.spillZ - 1) : res.spillZ;
+      const res = findBasinOrOutlet(cx, cy, 16384);
+      const hasRealOutlet = res.type === 'spill' && res.outletIdx >= 0 &&
+        (getSolidBedAtIdx(res.outletIdx) < res.spillZ || res.spillZ <= -2);
+      if (hasRealOutlet && res.basinCells.length > 0) {
+        let minBasinBed = bedC;
+        for (let i = 0; i < res.basinCells.length; i++) {
+          const b = getSolidBedAtIdx(res.basinCells[i]);
+          if (b < minBasinBed) minBasinBed = b;
+        }
+        const targetSurf = res.spillZ - minBasinBed >= 2 ? (res.spillZ - 1) : res.spillZ;
         const alreadyFilled = isWetMat(matMap[cIdx]) && hmap[cIdx] >= targetSurf;
         if (!alreadyFilled) {
           const b = fillBasinCells(res.basinCells, targetSurf, toolId === 'mat_shallow' ? MAT_SHALLOW : null, onTouchIdx);
           mergeBounds(b);
-        } else {
-          // Bacia já cheia: transborda pela fenda mais baixa até o nível do mar!
+        } else if (isInitialClick) {
+          // Segundo clique em bacia já cheia: transborda pela fenda mais baixa até o nível do mar!
           const b = fillBasinCells(res.basinCells, res.spillZ, toolId === 'mat_shallow' ? MAT_SHALLOW : null, onTouchIdx);
           mergeBounds(b);
           if (res.saddleIdx >= 0) {
@@ -1179,14 +1199,35 @@
         return { minMx, minMy, maxMx, maxMy };
       }
 
-      if (res.type === 'spill' && res.basinCells.length === 0) {
-        // Encosta aberta / fenda: escoa morro abaixo até o mar!
-        mergeBounds(traceSteepestStream(cx, cy, onTouchIdx));
-        return { minMx, minMy, maxMx, maxMy };
+      if (hasRealOutlet && res.basinCells.length === 0 && getSolidBedAtIdx(res.outletIdx) < bedC) {
+        // Só escoa se não estiver apenas arrastando a borda de uma lagoa já aberta em platô plano
+        const draggingIntoFlatPond = !isInitialClick && isWetMat(matMap[res.outletIdx]);
+        if (!draggingIntoFlatPond) {
+          // Encosta aberta / fenda: escoa morro abaixo até o mar!
+          mergeBounds(traceSteepestStream(cx, cy, onTouchIdx));
+          return { minMx, minMy, maxMx, maxMy };
+        }
       }
 
-      // 3. Planície/platô plano sem borda ao redor: cria lagoa rasa local encaixada no terreno
+      // 3. Planície/platô plano sem borda ao redor: cria/expande lagoa rasa sem perfurar o solo repetidamente
       const r2 = rCells * rCells;
+      let pondSurfZ = isWetMat(matMap[cIdx]) && hmap[cIdx] >= 0 ? hmap[cIdx] : null;
+      if (pondSurfZ === null) {
+        for (let my = minMy; my <= maxMy && pondSurfZ === null; my++) {
+          const dy = my - cy;
+          for (let mx = minMx; mx <= maxMx; mx++) {
+            const dx = mx - cx;
+            if (dx * dx + dy * dy > r2) continue;
+            const idx = my * mw + mx;
+            if (isWetMat(matMap[idx]) && hmap[idx] >= 0) {
+              pondSurfZ = hmap[idx];
+              break;
+            }
+          }
+        }
+      }
+      if (pondSurfZ === null) pondSurfZ = bedC >= 0 ? bedC - 1 : -1;
+
       for (let my = minMy; my <= maxMy; my++) {
         const dy = my - cy;
         for (let mx = minMx; mx <= maxMx; mx++) {
@@ -1195,12 +1236,19 @@
           if (d2 > r2) continue;
           const idx = my * mw + mx;
           const edgeDist = rCells - Math.sqrt(d2);
-          const origBed = getSolidBedAtIdx(idx);
-          const surfZ = origBed >= 0 ? origBed - 1 : -1;
           let depth = edgeDist >= 2.0 ? 3 : (edgeDist >= 0.8 ? 2 : 1);
           if (toolId === 'mat_shallow') depth = Math.min(2, depth);
-          const bedZ = Math.max(Z_MIN, surfZ - depth);
-          paintWetCell(idx, surfZ, bedZ, depth >= 3 && toolId !== 'mat_shallow' ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
+          if (isWetMat(matMap[idx])) {
+            if (hmap[idx] === pondSurfZ && depth > waterDepth[idx]) {
+              const bedZ = Math.max(Z_MIN, pondSurfZ - depth);
+              paintWetCell(idx, pondSurfZ, bedZ, depth >= 3 && toolId !== 'mat_shallow' ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
+            }
+            continue;
+          }
+          const origBed = getSolidBedAtIdx(idx);
+          if (origBed < pondSurfZ) continue;
+          const bedZ = Math.max(Z_MIN, pondSurfZ - depth);
+          paintWetCell(idx, pondSurfZ, bedZ, depth >= 3 && toolId !== 'mat_shallow' ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
         }
       }
       return { minMx, minMy, maxMx, maxMy };
@@ -1224,7 +1272,7 @@
       const x1 = Math.min(mw - 2, mx1 + 1);
       const y0 = Math.max(1, my0 - 1);
       const y1 = Math.min(mh - 2, my1 + 1);
-      const nOff = [-1, 1, -mw, mw];
+      const nOff8 = [-1, 1, -mw, mw, -mw - 1, -mw + 1, mw - 1, mw + 1];
       let changed = false;
       let minMx = x0, minMy = y0, maxMx = x1, maxMy = y1;
       const expand = (b) => {
@@ -1241,49 +1289,52 @@
           const idx = my * mw + mx;
           if (!isWetMat(matMap[idx]) || hmap[idx] < 0) continue;
           const wSurf = hmap[idx];
+          if (seenLakes.has(idx)) continue;
 
           let hasLowerWet = false;
           let breachIdx = -1;
           let breachH = wSurf;
-          for (let k = 0; k < 4; k++) {
-            const nb = idx + nOff[k];
+          for (let k = 0; k < 8; k++) {
+            const nb = idx + nOff8[k];
             if (isWetMat(matMap[nb])) {
               if (hmap[nb] < wSurf) hasLowerWet = true;
-            } else if (hmap[nb] < breachH) {
+            } else if (k < 4 && hmap[nb] < breachH) {
               breachH = hmap[nb];
               breachIdx = nb;
             }
           }
-          if (hasLowerWet || breachIdx < 0 || seenLakes.has(idx)) continue;
+          if (hasLowerWet || breachIdx < 0) continue;
 
-          // Coleta o lago conectado na cota wSurf e verifica se tem profundidade real (>= 2)
+          // Coleta o lago conectado na cota wSurf
           const queue = [idx];
           const lakeCells = [];
           seenLakes.add(idx);
           let minRim = breachH;
           let minRimIdx = breachIdx;
           let maxLakeDepth = waterDepth[idx];
-          while (queue.length > 0 && lakeCells.length < 4096) {
+          while (queue.length > 0 && lakeCells.length < 16384) {
             const cur = queue.pop();
             lakeCells.push(cur);
             if (waterDepth[cur] > maxLakeDepth) maxLakeDepth = waterDepth[cur];
-            for (let k = 0; k < 4; k++) {
-              const nb = cur + nOff[k];
+            for (let k = 0; k < 8; k++) {
+              const nb = cur + nOff8[k];
               const nmx = nb % mw;
               const nmy = (nb / mw) | 0;
               if (nmx <= 0 || nmx >= mw - 1 || nmy <= 0 || nmy >= mh - 1) continue;
               if (isWetMat(matMap[nb])) {
-                if (!seenLakes.has(nb) && hmap[nb] === wSurf) {
+                if (hmap[nb] < wSurf) hasLowerWet = true;
+                else if (k < 4 && !seenLakes.has(nb) && hmap[nb] === wSurf) {
                   seenLakes.add(nb);
                   queue.push(nb);
                 }
-              } else if (hmap[nb] < minRim) {
+              } else if (k < 4 && hmap[nb] < minRim) {
                 minRim = hmap[nb];
                 minRimIdx = nb;
               }
             }
           }
-          if (maxLakeDepth < 2) continue;
+          if (hasLowerWet) continue;
+          if (maxLakeDepth < 2 && lakeCells.length < 4) continue;
 
           const newSurf = Math.max(Z_MIN, minRim);
           for (let i = 0; i < lakeCells.length; i++) {
