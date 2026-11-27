@@ -170,6 +170,9 @@
               if (nearPinned > 0) {
                 const avg = (copyH[i - 1] + copyH[i + 1] + copyH[i - mw] + copyH[i + mw]) * 0.25;
                 hmap[i] = copyH[i] * 0.45 + avg * 0.55;
+                if (isWetMat(matMap[i]) && hmap[i] > -2 && typeof drainElevatedWetCell === 'function') {
+                  drainElevatedWetCell(i);
+                }
               }
             }
           }
