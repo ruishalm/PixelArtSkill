@@ -40,6 +40,7 @@
   </div>
   <div class="top-group top-group-right">
    <button id="btnExportJson" class="btn" title="Exportar cena e modelos (.json)">💾 Exportar</button>
+   <button id="btnExportZip" class="btn accent" title="Baixar projeto completo (.zip) com index.html, pastas de assets separadas por tipo e scripts">📦 .zip</button>
    <button id="btnPublishHtml" class="btn accent" title="Gera um .html autocontido que abre direto em modo Testar">🚀 Publicar</button>
    <button id="btnImportJson" class="btn" title="Importar cena (.json)">📂 Importar</button>
    <input id="fileImportInput" type="file" accept=".json" style="display:none" />
@@ -176,6 +177,17 @@
      <div class="slider-head"><span>Talus Areia</span><span id="valTalus">2</span></div>
      <input id="slTalus" type="range" min="1" max="5" step="1" value="2" />
     </div>
+   </div>
+   <div>
+    <div class="sec-title">Scripts (Mod / Gameplay)</div>
+    <div class="mrow" style="margin-bottom:4px;">
+     <button id="btnPresetBlink" class="btn" style="flex:1;" title="Inserir exemplo de Blink (Mini-Teleport 10u na tecla B ou Shift)">⚡ Blink 10u</button>
+     <button id="btnLoadScriptFile" class="btn" title="Carregar arquivo .js externo">📂 .js</button>
+     <button id="btnRunScript" class="btn accent" title="Compilar e ativar script no modo Testar">▶️ Aplicar</button>
+     <input id="fileScriptInput" type="file" accept=".js,.txt" style="display:none" />
+    </div>
+    <textarea id="customScriptInput" class="mtxt" rows="4" style="width:100%;font-family:monospace;font-size:10px;resize:vertical;" placeholder="// Ex: VoxelEngine.onKeyDown(code => { if (code==='KeyB') VoxelEngine.teleportForward(10); });"></textarea>
+    <div id="scriptStatusMsg" style="font-size:10px;color:#86EFAC;min-height:13px;margin-top:2px;"></div>
    </div>
   </aside>
  </div>
