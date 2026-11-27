@@ -360,7 +360,7 @@ console.log('SEED_OK');
             raw = self._assert_utf8_lf(out_html)
             studio_html = raw.decode('utf-8')
 
-            self.assertLess(len(raw), 20 * 1024, 'studio/index.html must stay < 20 KB')
+            self.assertLess(len(raw), 28 * 1024, 'studio/index.html must stay < 28 KB')
             for token in (
                 '__STUDIO_SCRIPTS__',
                 '__STUDIO_JS_BUNDLE__',
@@ -1200,6 +1200,306 @@ vm.runInContext(
         res = subprocess.run(['node', '-e', node_cave_test], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f'Node cave & dual-sidebar test failed:\n{res.stderr}\n{res.stdout}')
         self.assertIn('CAVES_AND_DUAL_SIDEBAR_OK', res.stdout)
+
+    def test_11_modular_tree_studio_and_2d_to_3d_math_converter(self):
+        # 1. Verify 3-column Modeler layout, topbar hiding, and Section 8.1 / 8.2 DOM+CSS contract
+        studio_html_path = os.path.join(ROOT, 'studio', 'index.html')
+        studio_css_path = os.path.join(ROOT, 'studio', 'studio.css')
+        with open(studio_html_path, 'r', encoding='utf-8') as f:
+            studio_html = f.read()
+        with open(studio_css_path, 'r', encoding='utf-8') as f:
+            studio_css = f.read()
+
+        self.assertIn('world-only-top', studio_html)
+        self.assertIn('body.in-modeler .world-only-top', studio_css)
+        self.assertIn('.topbar::-webkit-scrollbar', studio_css)
+
+        idx_mleft = studio_html.find('class="m-sidebar-left"')
+        idx_mcenter = studio_html.find('class="m-stage-center"')
+        idx_mright = studio_html.find('class="m-sidebar-right"')
+        self.assertGreater(idx_mleft, 0)
+        self.assertGreater(idx_mcenter, idx_mleft)
+        self.assertGreater(idx_mright, idx_mcenter)
+
+        center_html = studio_html[idx_mcenter:idx_mright]
+        self.assertIn('id="mEditCanvas"', center_html)
+        self.assertIn('id="mPreviewCanvas"', center_html)
+
+        right_html = studio_html[idx_mright:]
+        for req_id in (
+            'id="mRightTabs"', 'id="mTabChars"', 'id="mTabTrees"', 'id="mTabConv2d"',
+            'id="mTreeBranch"', 'id="mTreeThick"', 'id="mTreeCurve"', 'id="mTreeCrown"',
+            'id="mTreeFlowerPct"', 'id="mTreeFruitPct"',
+            'id="mTreeColTrunk"', 'id="mTreeColLeaf"', 'id="mTreeColFlower"', 'id="mTreeColFruit"',
+            'id="mBtnGenModularTree"',
+            'id="m2dFrontCanvas"', 'id="m2dSideCanvas"', 'id="m2dMode"',
+            'id="m2dThickness"', 'id="mBtnConvert2d3d"', 'id="m2dLoadPreset"'
+        ):
+            self.assertIn(req_id, right_html, f'Missing {req_id} in modeler right sidebar')
+
+        # 2. Execute src/studio/00-modeler.js in Node VM and verify Section 8.1 & 8.2 algorithms
+        node_mod_test = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = process.cwd();
+const mathCode = fs.readFileSync(path.join(root, 'src/engine/00-math-noise.js'), 'utf8');
+const modelerCode = fs.readFileSync(path.join(root, 'src/studio/00-modeler.js'), 'utf8');
+
+const elements = new Map();
+function makeEl(id, extra = {}) {
+  const listeners = {};
+  const el = {
+    id, value: '', textContent: '', innerHTML: '', className: '',
+    checked: false, style: {}, dataset: {},
+    options: [{ textContent: 'Opt' }], selectedIndex: 0,
+    classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} },
+    addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (listeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: el, ...e })); },
+    appendChild(child) { this._children = this._children || []; this._children.push(child); },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 384, height: 384 }),
+    setPointerCapture(){}, releasePointerCapture(){},
+    width: 384, height: 384,
+    ...extra
+  };
+  if (id) elements.set(id, el);
+  return el;
+}
+function make2dCtx() {
+  return {
+    fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, font: '', imageSmoothingEnabled: false,
+    clearRect(){}, fillRect(){}, strokeRect(){}, beginPath(){}, moveTo(){}, lineTo(){}, ellipse(){}, fill(){}, stroke(){}, fillText(){},
+    drawImage(){}, getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) })
+  };
+}
+
+makeEl('modelerView');
+makeEl('mEditCanvas', { width: 384, height: 384, getContext: () => make2dCtx() });
+makeEl('mPreviewCanvas', { width: 300, height: 300, getContext: () => make2dCtx() });
+makeEl('m2dFrontCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
+makeEl('m2dSideCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
+makeEl('mSize', { value: '24' });
+makeEl('mZ', { value: '0', max: '23' });
+makeEl('mZLabel');
+makeEl('mMirror', { checked: true });
+makeEl('mOnion', { checked: true });
+makeEl('mExtrudeZ', { value: '1' });
+makeEl('mExtrudeZVal');
+makeEl('mPalPreset', { value: 'default', options: [{ textContent: 'Default' }], selectedIndex: 0 });
+makeEl('mPalette');
+makeEl('mColor', { value: '#4F83C2' });
+makeEl('mAutoSpin', { checked: false });
+makeEl('mRefHuman', { checked: false });
+makeEl('mName', { value: 'meu_modelo' });
+makeEl('mKind', { value: 'decor' });
+makeEl('mDestrOpts');
+makeEl('mHp', { value: '3' });
+makeEl('mDropKey', { value: 'stone_chunk' });
+makeEl('mMsg');
+makeEl('mTreeBranch', { value: '3' });
+makeEl('mTreeThick', { value: '2' });
+makeEl('mTreeThickVal');
+makeEl('mTreeCurve', { value: '1' });
+makeEl('mTreeCurveVal');
+makeEl('mTreeCrown', { value: 'spheres' });
+makeEl('mTreeFlowerPct', { value: '25' });
+makeEl('mTreeFlowerPctVal');
+makeEl('mTreeFruitPct', { value: '20' });
+makeEl('mTreeFruitPctVal');
+makeEl('mTreeColTrunk', { value: '#7C4D2B' });
+makeEl('mTreeColLeaf', { value: '#3F8F3A' });
+makeEl('mTreeColFlower', { value: '#F472B6' });
+makeEl('mTreeColFruit', { value: '#EF4444' });
+makeEl('m2dPreset', { value: 'sword' });
+makeEl('m2dMode', { value: 'edt_blade' });
+makeEl('m2dThickness', { value: '10' });
+makeEl('m2dThicknessVal');
+for (const id of [
+  'mBtnAutoShade','mZUp','mZDown','mCopyDown','mCopyUp','mBtnClearLayer','mBtnNew',
+  'mBtnSave','mBtnExport','mBtnImport','mFileImport','btnTabWorld','btnTabModeler',
+  'mBtnGenModularTree','m2dFromSlice','m2dCopyFrontToSide','m2dClear','m2dImportImg','m2dFileImg',
+  'm2dLoadPreset','mBtnConvert2d3d','mRightTabs','mTabChars','mTabTrees','mTabConv2d',
+  'mBtnGenChar','mBtnVaryChar','mProcProps','btnOpenModelerSide'
+]) makeEl(id);
+
+const workspaceEl = makeEl('workspaceMock');
+const bodyClassList = { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} };
+const sandbox = {
+  assert, Math, Number, Array, Object, JSON, Int16Array, Uint8Array, Float32Array, Set, Map,
+  URLSearchParams, Event: class { constructor(t){ this.type = t; } }, console, confirm: () => true,
+  propModels: {}, PROP_COLLIDER_META: {}, DESTRUCTIBLE_META: {}, FOLIAGE_META: {},
+  buildSliceSheet: () => ({ count: 1, w: 24, h: 24, sheet: {} }),
+  window: { dispatchEvent(){}, customAvatarModels: {}, location: { search: '' } },
+  document: {
+    body: { classList: bodyClassList },
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: (sel) => sel === '.workspace' ? workspaceEl : null,
+    querySelectorAll: () => [],
+    createElement: () => makeEl('')
+  }
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+
+function runModelerTests() {
+  // 1. Topbar body.in-modeler class toggles on tab switch
+  document.getElementById('btnTabModeler')._emit('click');
+  assert(document.body.classList.contains('in-modeler'), 'btnTabModeler must add body.in-modeler');
+  document.getElementById('btnTabWorld')._emit('click');
+  assert(!document.body.classList.contains('in-modeler'), 'btnTabWorld must remove body.in-modeler');
+
+  const M = window.StudioModeler;
+  const N = M.getSize();
+  assert.strictEqual(N, 24);
+
+  // 2. Section 8.1: Modular Tree Studio (trifurcated + spheres + flowers + fruits)
+  document.getElementById('mBtnGenModularTree')._emit('click');
+  let vol = M.getVol();
+  let trunkCount = 0, leafCount = 0, flowerCount = 0, fruitCount = 0;
+  for (let z = 0; z < N; z++) {
+    for (let i = 0; i < vol[z].length; i++) {
+      const v = vol[z][i];
+      if (v >= 1 && v <= 3) trunkCount++;
+      else if (v >= 4 && v <= 7) leafCount++;
+      else if (v === 8 || v === 9) flowerCount++;
+      else if (v === 10 || v === 11) fruitCount++;
+    }
+  }
+  assert(trunkCount > 30, 'Modular tree must generate trunk & branches');
+  assert(leafCount > 100, 'Modular tree must generate crown foliage');
+  assert(flowerCount > 0, 'flowerPct=25 must place flowers on outer crown surface');
+  assert(fruitCount > 0, 'fruitPct=20 must place fruits on outer crown surface');
+  assert.strictEqual(document.getElementById('mKind').value, 'foliage');
+
+  // Single trunk + pine cones + 0% flowers/fruits
+  M.generateModularTree({ branchCount: 1, crownType: 'cones', flowerPct: 0, fruitPct: 0 }, 301);
+  let coneLeaves = 0, zeroFlowFruit = 0;
+  for (let z = 0; z < N; z++) {
+    for (let i = 0; i < vol[z].length; i++) {
+      const v = vol[z][i];
+      if (v >= 4 && v <= 7) coneLeaves++;
+      if (v >= 8 && v <= 11) zeroFlowFruit++;
+    }
+  }
+  assert(coneLeaves > 80, 'Conical pine crown must generate foliage');
+  assert.strictEqual(zeroFlowFruit, 0, '0% flower/fruit must place zero flowers/fruits');
+
+  // Multi-branch + weeping willow reaches lower Z layers
+  M.generateModularTree({ branchCount: 4, crownType: 'weeping', flowerPct: 0, fruitPct: 0 }, 302);
+  let lowWillowLeaves = 0;
+  for (let z = 4; z <= 10; z++) {
+    for (let i = 0; i < vol[z].length; i++) if (vol[z][i] >= 4 && vol[z][i] <= 7) lowWillowLeaves++;
+  }
+  assert(lowWillowLeaves > 15, 'Weeping willow crown must drape tendrils down to Z=4..10');
+
+  // Dead tree ('none') has trunk/branches and zero leaves
+  M.generateModularTree({ branchCount: 3, crownType: 'none', flowerPct: 20, fruitPct: 20 }, 303);
+  let deadTrunk = 0, deadLeaves = 0;
+  for (let z = 0; z < N; z++) {
+    for (let i = 0; i < vol[z].length; i++) {
+      if (vol[z][i] >= 1 && vol[z][i] <= 3) deadTrunk++;
+      if (vol[z][i] >= 4) deadLeaves++;
+    }
+  }
+  assert(deadTrunk > 40 && deadLeaves === 0, 'crownType=none must produce bare branches with zero leaves');
+
+  // 3. Section 8.2: Mathematical 2D -> 3D Converter
+  // Empty 2D guard
+  document.getElementById('m2dClear')._emit('click');
+  const emptyRes = M.convert2dTo3d('edt_blade', 10);
+  assert.strictEqual(emptyRes.ok, false, 'Empty 2D canvas must return ok=false');
+
+  // 3a. edt_blade on sword preset: sharp 1-voxel outer edges + thicker interior crossguard
+  document.getElementById('m2dPreset').value = 'sword';
+  document.getElementById('m2dLoadPreset')._emit('click');
+  const bladeRes = M.convert2dTo3d('edt_blade', 10);
+  assert(bladeRes.ok && bladeRes.voxels > 80, 'edt_blade must convert sword silhouette to 3D');
+  // At blade upper tip/edge (z=16), edge pixel should be thinner in Y than center
+  let minSpan = 99, maxSpan = 0;
+  for (let z = 0; z < N; z++) {
+    for (let x = 0; x < N; x++) {
+      let yCnt = 0;
+      for (let y = 0; y < N; y++) if (vol[z][y * N + x] > 0) yCnt++;
+      if (yCnt > 0) {
+        if (yCnt < minSpan) minSpan = yCnt;
+        if (yCnt > maxSpan) maxSpan = yCnt;
+      }
+    }
+  }
+  assert.strictEqual(minSpan, 1, 'edt_blade must keep sharp 1-voxel edges');
+  assert(maxSpan >= 3, 'edt_blade interior must thicken beyond 1 voxel');
+
+  // 3b. edt_organic on solid rectangle: rounded elliptical profile
+  const bufs = M.get2dBuffers();
+  bufs.front2D.fill(0);
+  for (let z = 4; z <= 19; z++) for (let x = 6; x <= 17; x++) bufs.front2D[z * N + x] = 2;
+  const orgRes = M.convert2dTo3d('edt_organic', 12);
+  assert(orgRes.ok && orgRes.voxels > 200, 'edt_organic must inflate volume');
+  let edgeY = 0, centerY = 0;
+  for (let y = 0; y < N; y++) {
+    if (vol[4][y * N + 6] > 0) edgeY++;
+    if (vol[12][y * N + 12] > 0) centerY++;
+  }
+  assert(centerY > edgeY, 'edt_organic center must be thicker than corner edge');
+
+  // 3c. lathe (360 revolution) on vase preset: rotational symmetry around central Z axis
+  document.getElementById('m2dPreset').value = 'vase';
+  document.getElementById('m2dLoadPreset')._emit('click');
+  const latheRes = M.convert2dTo3d('lathe', 10);
+  assert(latheRes.ok && latheRes.voxels > 300, 'lathe must revolve vase into 3D');
+  // At belly z=8, verify X-diameter equals Y-diameter (360 symmetry)
+  let xMinL = N, xMaxL = -1, yMinL = N, yMaxL = -1;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (vol[8][y * N + x] > 0) {
+      if (x < xMinL) xMinL = x; if (x > xMaxL) xMaxL = x;
+      if (y < yMinL) yMinL = y; if (y > yMaxL) yMaxL = y;
+    }
+  }
+  assert.strictEqual(xMaxL - xMinL, yMaxL - yMinL, 'lathe must produce equal X and Y diameters');
+  assert((xMaxL - xMinL) >= 8, 'lathe vase belly must span wide circular cross-section');
+
+  // 3d. visual_hull (Front x Side intersection) on creature preset
+  document.getElementById('m2dPreset').value = 'creature';
+  document.getElementById('m2dLoadPreset')._emit('click');
+  const hullRes = M.convert2dTo3d('visual_hull', 10);
+  assert(hullRes.ok && hullRes.voxels > 200, 'visual_hull must intersect Front and Side silhouettes');
+  // Every filled voxel (x, y, z) must be inside BOTH front2D[z, x] AND side2D[z, y]
+  for (let z = 0; z < N; z++) {
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        if (vol[z][y * N + x] > 0) {
+          assert(bufs.front2D[z * N + x] > 0, `Visual hull voxel (${x},${y},${z}) outside front2D`);
+          assert(bufs.side2D[z * N + y] > 0, `Visual hull voxel (${x},${y},${z}) outside side2D`);
+        }
+      }
+    }
+  }
+  // Verify snout in side2D (y > 16 at z=13) projects in 3D only within front2D head width
+  let snoutVoxels = 0;
+  for (let x = 0; x < N; x++) if (vol[13][17 * N + x] > 0) snoutVoxels++;
+  assert(snoutVoxels > 0 && snoutVoxels < 10, 'Visual hull must preserve side snout within front head bounds');
+
+  // 3e. Copy Slice -> Front and Front -> Side buttons
+  document.getElementById('m2dClear')._emit('click');
+  M.setZ(13);
+  document.getElementById('m2dFromSlice')._emit('click');
+  document.getElementById('m2dCopyFrontToSide')._emit('click');
+  let copiedCount = 0;
+  for (let i = 0; i < bufs.side2D.length; i++) if (bufs.side2D[i] > 0) copiedCount++;
+  assert(copiedCount > 0, 'm2dFromSlice + m2dCopyFrontToSide must populate side2D');
+
+  console.log('MODULAR_TREE_AND_2D3D_OK');
+}
+
+vm.runInContext(mathCode + '\n' + modelerCode + '\n(' + runModelerTests.toString() + ')()', sandbox);
+"""
+        res = subprocess.run(['node', '-e', node_mod_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node modeler 8.1/8.2 test failed:\n{res.stderr}\n{res.stdout}')
+        self.assertIn('MODULAR_TREE_AND_2D3D_OK', res.stdout)
 
 
 if __name__ == '__main__':
