@@ -443,7 +443,7 @@
       });
 
       // ---------- Preview 3D Real da Engine (Sprite-Stacking + silhueta 1px #3B2219 + aro curZ) ----------
-      const PREV_LW = 96, PREV_LH = 96;
+      const PREV_LW = 100, PREV_LH = 100;
       let prevLowCv = null, prevLowCtx = null;
       let prevEntCv = null, prevEntCtx = null;
       let prevSilCv = null, prevSilCtx = null;
@@ -485,17 +485,11 @@
           shadedMap.set(key, idx);
           return idx;
         };
-        const cv = document.createElement('canvas');
-        cv.width = N * count;
-        cv.height = N;
-        const cx = cv.getContext ? cv.getContext('2d') : null;
-        if (cx) cx.imageSmoothingEnabled = false;
-
+        const shColors = [];
         for (let z = 0; z < count; z++) {
           const layer = vol[z];
           const zFrac = count > 1 ? z / (count - 1) : 0.5;
           const zFactor = 0.90 + zFrac * 0.16;
-          const offX = z * N;
           const rows = [];
           for (let y = 0; y < N; y++) {
             let rowStr = '';
@@ -503,10 +497,7 @@
               const v = layer[y * N + x];
               if (v > 0 && pal[v]) {
                 const shHex = shadeHex(pal[v], zFactor);
-                if (cx) {
-                  cx.fillStyle = shHex;
-                  cx.fillRect(offX + x, y, 1, 1);
-                }
+                shColors.push({ z, y, x, shHex });
                 rowStr += getShadedIdx(shHex).toString(36);
               } else {
                 rowStr += '0';
@@ -516,11 +507,23 @@
           }
           shadedSlices.push(rows);
         }
-        if (typeof buildSliceSheet === 'function' && (!cx || shadedPal.length <= 36)) {
+        if (typeof buildSliceSheet === 'function' && shadedPal.length <= 36) {
           const built = buildSliceSheet(shadedSlices, shadedPal);
           if (built && built.count === count && built.sheet && built.w === N) {
             prevSheetModel = built;
             return prevSheetModel;
+          }
+        }
+        const cv = document.createElement('canvas');
+        cv.width = N * count;
+        cv.height = N;
+        const cx = cv.getContext ? cv.getContext('2d') : null;
+        if (cx) {
+          cx.imageSmoothingEnabled = false;
+          for (let i = 0; i < shColors.length; i++) {
+            const p = shColors[i];
+            cx.fillStyle = p.shHex;
+            cx.fillRect(p.z * N + p.x, p.y, 1, 1);
           }
         }
         prevSheetModel = { sheet: cv, count, w: N, h: N };
@@ -1126,8 +1129,8 @@
         const torsoH = torsoHRaw * vFit;
         const torsoTop = legTop + torsoH;
         const headH = headHRaw * vFit;
-        const headTopZ = Math.min(22.2, torsoTop + headH);
-        const headCenterZ = (torsoTop + headTopZ) * 0.5;
+        let headTopZ = Math.min(22.2, torsoTop + headH);
+        let headCenterZ = (torsoTop + headTopZ) * 0.5;
 
         const torsoHalfW = rawTorsoHalfW * (isDwarf ? 1.18 : (isMonster ? 1.32 : (isChibi ? 0.92 : 1.0)));
         const torsoDepth = isDwarf ? 2.4 : (isMonster ? 3.2 : (isBipedBeast ? 3.4 : (isLizard ? 4.8 : (isQuad ? 5.2 : 2.0))));
@@ -1135,12 +1138,21 @@
         const legR = isDwarf ? 1.35 : (isMonster ? 1.7 : (isBipedBeast ? 0.95 : 1.12));
 
         let headCenterY = 0;
-        let headRx = Math.min(5.8, headS * (isChibi ? 0.78 : (isMonster ? 0.62 : (isLizard ? 0.46 : 0.52))));
-        let headRy = Math.min(4.8, headS * (isChibi ? 0.68 : (isLizard ? 0.72 : 0.48)));
-        if (isBipedBeast) { headCenterY = 2.6; headRx = Math.min(4.4, headS * 0.52); headRy = Math.min(4.2, headS * 0.50); }
-        else if (isLizard) { headCenterY = 5.4; }
-        else if (isQuad) { headCenterY = 4.2; }
-        else if (isMonster) { headCenterY = 0.4; }
+        let headRx = Math.min(5.8, headS * (isChibi ? 0.78 : (isMonster ? 0.62 : (isLizard ? 0.44 : 0.52))));
+        let headRy = Math.min(4.8, headS * (isChibi ? 0.68 : (isLizard ? 0.60 : 0.48)));
+        if (isBipedBeast) {
+          headCenterY = 2.6;
+          headRx = Math.min(4.4, headS * 0.52);
+          headRy = Math.min(4.2, headS * 0.50);
+        } else if (isLizard) {
+          headCenterY = 4.6;
+          headCenterZ = legTop + torsoH * 0.85;
+          headTopZ = Math.min(22.2, headCenterZ + headH * 0.52);
+        } else if (isQuad) {
+          headCenterY = 4.2;
+        } else if (isMonster) {
+          headCenterY = 0.4;
+        }
         const headBackY = headCenterY - headRy;
         const headFrontY = headCenterY + headRy;
 
@@ -1151,8 +1163,9 @@
 
         const drawBody = (partMode === 'full' || partMode === 'body_only');
         const withEquips = (partMode === 'full');
-        const effTorso = withEquips ? torsoStyle : (partMode === 'outfit_only' ? (torsoStyle === 'none' ? 'armor' : torsoStyle) : 'none');
-        const effLegs = withEquips ? legsStyle : (partMode === 'outfit_only' ? (legsStyle === 'none' ? 'greaves' : legsStyle) : 'none');
+        const emptyOutfit = (torsoStyle === 'none' && legsStyle === 'none');
+        const effTorso = withEquips ? torsoStyle : (partMode === 'outfit_only' ? (emptyOutfit ? 'armor' : torsoStyle) : 'none');
+        const effLegs = withEquips ? legsStyle : (partMode === 'outfit_only' ? (emptyOutfit ? 'greaves' : legsStyle) : 'none');
         const effHead = withEquips ? headStyle : (partMode === 'headgear_only' && hatStyle === 'none' ? headStyle : 'none');
         const effHat = withEquips ? hatStyle : (partMode === 'headgear_only' ? (hatStyle === 'none' && headStyle === 'none' ? 'helmet' : hatStyle) : 'none');
         const effBack = withEquips ? backStyle : (partMode === 'back_only' ? (backStyle === 'none' ? 'cape' : backStyle) : 'none');
@@ -1169,7 +1182,7 @@
               for (const sx of [-1, 1]) {
                 const px = sx * legSep;
                 // 3 dedos com garras na frente
-                boxL(px - 1.1, px + 1.1, -0.3, 2.3, 0, 0.9, (lx, ly) => (Math.abs(lx - px) < 0.45 || Math.abs(Math.abs(lx - px) - 0.85) < 0.35 || ly < 0.8) ? EQUIP : 0);
+                boxL(px - 1.1, px + 1.1, -0.4, 2.4, 0, 0.9, (lx, ly) => (Math.abs(lx - px) < 0.45 || Math.abs(Math.abs(lx - px) - 0.85) < 0.35 || ly < 0.8) ? EQUIP : 0);
                 // Canela bípede inclinada
                 for (let lz = 0.8; lz <= legTop; lz += 0.5) {
                   const ky = 0.2 - (lz / legTop) * 1.0;
@@ -1180,12 +1193,16 @@
               }
               // Corpo inclinado (+ly frente mais alta, -ly trás mais baixa)
               ellipL(0, 0.4, legTop + torsoH * 0.48, torsoHalfW, torsoDepth, torsoH * 0.52, (lx, ly, lz) => {
+                if (effTorso !== 'none' && lz > legTop + 1.4 && Math.abs(lx) <= torsoHalfW * 0.85) {
+                  if (effTorso === 'armor') return (Math.abs(lx) < 1.2 && ly > 1.0) ? EQUIP : ARMOR;
+                  return SHIRT;
+                }
                 if (lz < legTop + 1.4 && Math.abs(lx) < torsoHalfW * 0.6) return SKIN_L;
                 return ly > 1.2 && lz > legTop + 2.0 ? SKIN_L : SKIN;
               });
               // Asinhas / Bracinhos curtos nas laterais
               for (const sx of [-1, 1]) {
-                ellipL(sx * (torsoHalfW + 0.5), 0.6, legTop + torsoH * 0.52, 0.9, 1.9, 1.2, SKIN_D);
+                ellipL(sx * (torsoHalfW + 0.5), 0.6, legTop + torsoH * 0.52, 0.9, 1.9, 1.2, effTorso === 'armor' ? ARMOR_L : SKIN_D);
               }
               // Cauda traseira inclinada para trás/cima
               for (let t = 0; t <= 1; t += 0.08) {
@@ -1228,27 +1245,35 @@
               // Corpo alongado e barriga clara
               ellipL(0, 0, legTop + torsoH * 0.52, torsoHalfW * 0.92, torsoDepth, torsoH * 0.56, (lx, ly, lz) => {
                 if (lz < legTop + 1.2 && Math.abs(lx) < torsoHalfW * 0.58) return SKIN_L;
-                if (Math.abs(lx) < 0.75 && lz > legTop + torsoH * 0.82 && (Math.round(ly * 1.4) & 1) === 0) return HAIR;
+                if (effTorso !== 'none' && lz > legTop + torsoH * 0.35 && Math.abs(ly) < torsoDepth * 0.55) {
+                  return effTorso === 'armor' ? ARMOR : SHIRT;
+                }
                 return SKIN;
               });
+              // Escamas / crista dorsal ao longo do dorso
+              for (let ly = -3.2; ly <= 3.6; ly += 1.4) {
+                boxL(-0.55, 0.55, ly - 0.35, ly + 0.35, torsoTop - 0.3, torsoTop + 0.8, HAIR);
+              }
               // Cauda longa sinuosa em S (-ly)
               for (let t = 0; t <= 1; t += 0.04) {
-                const ty = -3.8 - t * 7.2;
-                const tx = Math.sin(t * Math.PI * 1.4) * 1.9;
-                const tz = legTop + 1.6 - t * 0.8 + Math.sin(t * Math.PI) * 0.7;
+                const ty = -3.6 - t * 6.8;
+                const tx = Math.sin(t * Math.PI * 1.4) * 1.8;
+                const tz = legTop + 1.6 - t * 0.7 + Math.sin(t * Math.PI) * 0.6;
                 const tr = Math.max(0.45, 1.85 * (1 - t * 0.78));
                 ellipL(tx, ty, tz, tr, 0.85, tr * 0.85, (lx, ly, lz) => (Math.abs(lx - tx) < 0.45 && lz > tz + tr * 0.45 && (Math.round(t * 14) & 1) === 0) ? HAIR : (t > 0.65 ? SKIN_D : SKIN));
               }
+              // Pescoço conectando tronco à cabeça reptiliana
+              ellipL(0, 2.8, legTop + torsoH * 0.68, torsoHalfW * 0.52, 2.0, torsoH * 0.46, (lx, ly, lz) => lz < legTop + 1.5 ? SKIN_L : SKIN);
               // Cabeça reptiliana + focinho alongado
-              ellipL(0, headCenterY, headCenterZ, headRx, headRy * 1.15, headH * 0.52, (lx, ly, lz) => {
+              ellipL(0, headCenterY, headCenterZ, headRx, headRy * 1.05, headH * 0.52, (lx, ly, lz) => {
                 if (lz >= headCenterZ - 0.1 && lz <= headCenterZ + 1.0 && Math.abs(Math.abs(lx) - headRx * 0.75) <= 0.55 && ly >= headCenterY - 0.2 && ly <= headCenterY + 1.2) {
                   return Math.abs(lx) > headRx * 0.7 ? EQUIP_L : EYE;
                 }
                 return lz < headCenterZ - 0.5 ? SKIN_L : SKIN;
               });
               for (let t = 0; t <= 1; t += 0.12) {
-                const sy = headFrontY - 0.4 + t * 2.8;
-                const sw = Math.max(0.65, headRx * 0.78 * (1 - t * 0.5));
+                const sy = Math.min(10.6, headFrontY - 0.4 + t * 2.5);
+                const sw = Math.max(0.65, headRx * 0.76 * (1 - t * 0.5));
                 const sh = Math.max(0.55, headH * 0.36 * (1 - t * 0.4));
                 ellipL(0, sy, headCenterZ - 0.2, sw, 0.8, sh, (lx, ly, lz) => (t > 0.78 && Math.abs(Math.abs(lx) - 0.5) < 0.35 && lz > headCenterZ) ? SKIN_D : SKIN);
               }
@@ -1381,7 +1406,7 @@
             for (const sx of [-1, 1]) {
               boxL(sx * (headRx - 0.4), sx * (headRx + 1.0), headBackY, headCenterY + 1.0, Math.max(5.0, headCenterZ - 5.5), headTopZ, HAIR);
             }
-          } else if (effHead === 'mohawk') {
+          } else if (effHead === 'mohawk' && !isBipedBeast) {
             boxL(-0.95, 0.95, headBackY - 0.2, headFrontY + 0.2, headTopZ - 0.6, Math.min(topLim, headTopZ + 3.6), (lx, ly, lz) => (lz > headTopZ + 1.8) ? EQUIP : HAIR);
           } else if (effHead === 'ponytail') {
             boxL(-headRx - 0.3, headRx + 0.3, headBackY - 0.3, headFrontY + 0.2, headTopZ - 1.2, Math.min(topLim, headTopZ + 0.9), HAIR);
@@ -1448,17 +1473,21 @@
 
         // --- 4. Costas (Capa / Mochila / Asas) ---
         if (effBack !== 'none') {
-          const bY = -torsoDepth - 0.7;
+          const isLongBack = (isQuad || isLizard);
+          const bY = isLongBack ? -0.6 : (-torsoDepth - 0.7);
+          const bZTop = isLongBack ? Math.min(22.0, torsoTop + 1.2) : torsoTop;
           if (effBack === 'cape') {
             for (let lz = Math.max(1.5, legTop - 3.5); lz <= torsoTop - 0.2; lz += 0.5) {
               const frac = (torsoTop - lz) / Math.max(1, torsoTop - 1.5);
               const w = torsoHalfW * (0.85 + frac * 0.28);
-              const yOff = bY - frac * 1.1;
+              const yOff = -torsoDepth - 0.7 - frac * 1.1;
               boxL(-w, w, yOff - 0.6, yOff + 0.4, lz, lz + 0.6, (lz > torsoTop - 1.5 ? EQUIP : ARMOR));
             }
           } else if (effBack === 'backpack') {
-            boxL(-torsoHalfW * 0.75, torsoHalfW * 0.75, bY - 2.3, bY + 0.2, legTop + 0.8, torsoTop - 0.5, (lx, ly, lz) => {
-              if (lz > torsoTop - 1.6) return EQUIP;
+            const z0 = isLongBack ? torsoTop - 0.4 : legTop + 0.8;
+            const z1 = isLongBack ? Math.min(22.0, torsoTop + 3.2) : torsoTop - 0.5;
+            boxL(-torsoHalfW * 0.75, torsoHalfW * 0.75, bY - 2.3, bY + 0.2, z0, z1, (lx, ly, lz) => {
+              if (lz > z1 - 1.1) return EQUIP;
               return ly < bY - 1.6 ? PANTS_D : WOOD;
             });
           } else if (effBack === 'wings') {
@@ -1466,7 +1495,7 @@
               for (let t = 0; t <= 1; t += 0.08) {
                 const wx = sx * (torsoHalfW * 0.6 + t * 5.2);
                 const wy = bY - 0.6 - t * 1.6;
-                const wz = torsoTop - 1.2 + Math.sin(t * Math.PI * 0.7) * 4.5;
+                const wz = bZTop - 1.2 + Math.sin(t * Math.PI * 0.7) * 4.5;
                 boxL(wx - 0.7, wx + 0.7, wy - 0.5, wy + 0.5, wz - 2.2 * (1 - t * 0.4), wz + 0.9, t < 0.2 ? ARMOR_D : ARMOR_L);
               }
             }
@@ -1572,11 +1601,34 @@
         'mCharBack', 'mCharRHand', 'mCharLHand',
         'mCharColSkin', 'mCharColHair', 'mCharColShirt', 'mCharColPants', 'mCharColArmor', 'mCharColEquip'
       ];
+      const syncCharDefaultsForType = (cType) => {
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+        const curHead = document.getElementById('mCharHead')?.value;
+        const curTorso = document.getElementById('mCharTorso')?.value;
+        const curLegs = document.getElementById('mCharLegs')?.value;
+        const humanHairs = ['short_hair', 'long_hair', 'ponytail', 'beard'];
+        if (cType === 'biped_beast') {
+          if (humanHairs.includes(curHead) || curHead === 'ears') setVal('mCharHead', 'mohawk');
+          if (curTorso === 'shirt') setVal('mCharTorso', 'none');
+          if (curLegs === 'pants') setVal('mCharLegs', 'none');
+        } else if (cType === 'lizard' || cType === 'quadruped') {
+          if (humanHairs.includes(curHead)) setVal('mCharHead', cType === 'quadruped' ? 'ears' : 'none');
+          if (curTorso === 'shirt') setVal('mCharTorso', 'none');
+          if (curLegs === 'pants') setVal('mCharLegs', 'none');
+        } else {
+          if (curHead === 'none') setVal('mCharHead', 'short_hair');
+          if (curTorso === 'none') setVal('mCharTorso', 'shirt');
+          if (curLegs === 'none') setVal('mCharLegs', 'pants');
+        }
+      };
       charControlIds.forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
         const evName = (el.type === 'range' || el.type === 'color') ? 'input' : 'change';
-        el.addEventListener(evName, () => generateCharacter({}, charSeed));
+        el.addEventListener(evName, () => {
+          if (id === 'mCharType') syncCharDefaultsForType(el.value);
+          generateCharacter({}, charSeed);
+        });
       });
 
       const btnGenChar = document.getElementById('mBtnGenChar');
@@ -1590,16 +1642,32 @@
           const rng = makeRng(charSeed);
           const pick = (arr) => arr[Math.floor(rng() * arr.length)];
           const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+          const cType = document.getElementById('mCharType')?.value || 'humanoid';
           setVal('mCharColSkin', pick(['#F2C9A0', '#D9A173', '#8D5524', '#6BBF59', '#93C5FD', '#FCA5A5']));
           setVal('mCharColHair', pick(['#5B3A22', '#1F2937', '#D97706', '#DC2626', '#9333EA', '#FDE68A']));
           setVal('mCharColShirt', pick(['#3B82F6', '#EF4444', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899']));
           setVal('mCharColPants', pick(['#374151', '#1E3A8A', '#78350F', '#1F2937', '#4B5563']));
           setVal('mCharColArmor', pick(['#9CA3AF', '#D97706', '#475569', '#DC2626', '#6366F1']));
           setVal('mCharColEquip', pick(['#F59E0B', '#38BDF8', '#EF4444', '#A855F7', '#FDE047']));
-          setVal('mCharHead', pick(['short_hair', 'long_hair', 'mohawk', 'ponytail', 'ears', 'horns', 'beard', 'none']));
-          setVal('mCharHat', pick(['none', 'helmet', 'wizard_hat', 'crown', 'hood', 'straw_hat']));
-          setVal('mCharTorso', pick(['shirt', 'tunic', 'armor', 'vest']));
-          setVal('mCharBack', pick(['none', 'cape', 'backpack', 'wings']));
+          if (cType === 'biped_beast') {
+            setVal('mCharHead', pick(['mohawk', 'horns', 'none']));
+            setVal('mCharHat', pick(['none', 'none', 'crown', 'helmet']));
+            setVal('mCharTorso', pick(['none', 'none', 'armor']));
+            setVal('mCharLegs', 'none');
+            setVal('mCharBack', pick(['none', 'wings', 'cape']));
+          } else if (cType === 'lizard' || cType === 'quadruped') {
+            setVal('mCharHead', pick(cType === 'quadruped' ? ['ears', 'horns', 'none'] : ['none', 'horns', 'mohawk']));
+            setVal('mCharHat', pick(['none', 'none', 'crown', 'helmet']));
+            setVal('mCharTorso', pick(['none', 'none', 'armor']));
+            setVal('mCharLegs', 'none');
+            setVal('mCharBack', pick(['none', 'wings', 'backpack']));
+          } else {
+            setVal('mCharHead', pick(['short_hair', 'long_hair', 'mohawk', 'ponytail', 'ears', 'horns', 'beard', 'none']));
+            setVal('mCharHat', pick(['none', 'helmet', 'wizard_hat', 'crown', 'hood', 'straw_hat']));
+            setVal('mCharTorso', pick(['shirt', 'tunic', 'armor', 'vest']));
+            setVal('mCharLegs', pick(['pants', 'shorts', 'robe', 'greaves']));
+            setVal('mCharBack', pick(['none', 'cape', 'backpack', 'wings']));
+          }
           generateCharacter({}, charSeed);
         });
       }
