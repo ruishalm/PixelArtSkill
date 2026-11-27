@@ -49,19 +49,21 @@
   </div>
  </header>
  <div class="workspace">
-  <aside class="sidebar">
+  <aside class="sidebar sidebar-left">
    <div>
-    <div class="sec-title">Relevo &amp; Borracha</div>
+    <div class="sec-title">Relevo &amp; Cavernas</div>
     <div class="tool-grid">
      <button class="tool-btn active" data-tool="raise">⛰️ Subir</button>
      <button class="tool-btn" data-tool="lower">🕳️ Descer</button>
      <button class="tool-btn" data-tool="flatten">📐 Aplainar</button>
      <button class="tool-btn" data-tool="smooth">〰️ Suavizar</button>
+     <button class="tool-btn" data-tool="cave_carve">⛏️ Caverna</button>
+     <button class="tool-btn" data-tool="cave_fill">🧱 Fechar Cav.</button>
      <button class="tool-btn" data-tool="eraser" style="grid-column: span 2;">🧽 Borracha (Zera Relevo/Props/Pin)</button>
     </div>
    </div>
    <div>
-    <div class="sec-title">Materiais</div>
+    <div class="sec-title">Materiais &amp; Água</div>
     <div class="tool-grid">
      <button class="tool-btn" data-tool="mat_grass">🌿 Grama</button>
      <button class="tool-btn" data-tool="mat_sand">🏖️ Areia</button>
@@ -99,23 +101,6 @@
     </div>
    </div>
    <div>
-    <div class="sec-title">Props (Nascem Fixos)</div>
-    <div class="tool-grid">
-     <button class="tool-btn" data-tool="prop_pine_tree">🌲 Pinheiro</button>
-     <button class="tool-btn" data-tool="prop_sakura_oak">🌸 Cerejeira</button>
-     <button class="tool-btn" data-tool="prop_campfire">🔥 Fogueira</button>
-     <button class="tool-btn" data-tool="prop_wood_log">🪵 Tora</button>
-     <button class="tool-btn" data-tool="prop_boulder_large">🪨 Pedregulho</button>
-     <button class="tool-btn" data-tool="prop_cozy_cabin">🏡 Cabana</button>
-     <button class="tool-btn" data-tool="prop_erase">🗑️ Apagar Prop</button>
-    </div>
-   </div>
-   <div>
-    <div class="sec-title">Meus Modelos (do Modelador)</div>
-    <div class="tool-grid" id="customAssetGrid"></div>
-    <div id="customAssetEmpty" style="font-size:10px;color:#78716C;">Nenhum ainda — crie na aba 🧱 Modelador.</div>
-   </div>
-   <div>
     <div class="sec-title">Pincel</div>
     <div class="slider-row">
      <div class="slider-head"><span>Raio</span><span id="valRadius">16</span></div>
@@ -125,6 +110,36 @@
      <div class="slider-head"><span>Força</span><span id="valStrength">1.2</span></div>
      <input id="slStrength" type="range" min="0.2" max="3.0" step="0.1" value="1.2" />
     </div>
+   </div>
+  </aside>
+  <main class="stage">
+   <canvas id="viewport"></canvas>
+   <canvas id="studioOverlay"></canvas>
+   <div class="help-pill" id="helpPill">Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira</div>
+   <div class="coord-pill" id="coordPill">wx: 0, wy: 0, z: 0</div>
+   <div class="biome-toast" id="biomeToast"></div>
+   <div class="minimap-wrap">
+    <canvas id="minimapCanvas" width="120" height="120"></canvas>
+    <div class="mm-label" id="biomeLabel">Vila da Clareira</div>
+   </div>
+  </main>
+  <aside class="sidebar sidebar-right">
+   <div>
+    <div class="sec-title">Props &amp; Assets (Nascem Fixos)</div>
+    <div class="tool-grid">
+     <button class="tool-btn" data-tool="prop_pine_tree">🌲 Pinheiro</button>
+     <button class="tool-btn" data-tool="prop_sakura_oak">🌸 Cerejeira</button>
+     <button class="tool-btn" data-tool="prop_campfire">🔥 Fogueira</button>
+     <button class="tool-btn" data-tool="prop_wood_log">🪵 Tora</button>
+     <button class="tool-btn" data-tool="prop_boulder_large">🪨 Pedregulho</button>
+     <button class="tool-btn" data-tool="prop_cozy_cabin">🏡 Cabana</button>
+     <button class="tool-btn" data-tool="prop_erase" style="grid-column: span 2;">🗑️ Apagar Prop</button>
+    </div>
+   </div>
+   <div>
+    <div class="sec-title">Meus Modelos (do Modelador)</div>
+    <div class="tool-grid" id="customAssetGrid"></div>
+    <div id="customAssetEmpty" style="font-size:10px;color:#78716C;">Nenhum ainda — crie na aba 🧱 Modelador.</div>
    </div>
    <div>
     <div class="sec-title">Avatar de Teste</div>
@@ -160,17 +175,6 @@
     </div>
    </div>
   </aside>
-  <main class="stage">
-   <canvas id="viewport"></canvas>
-   <canvas id="studioOverlay"></canvas>
-   <div class="help-pill" id="helpPill">Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira</div>
-   <div class="coord-pill" id="coordPill">wx: 0, wy: 0, z: 0</div>
-   <div class="biome-toast" id="biomeToast"></div>
-   <div class="minimap-wrap">
-    <canvas id="minimapCanvas" width="120" height="120"></canvas>
-    <div class="mm-label" id="biomeLabel">Vila da Clareira</div>
-   </div>
-  </main>
  </div>
  <section id="modelerView" class="modeler">
   <div class="mpanel">

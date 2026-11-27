@@ -29,12 +29,14 @@
           : 'Testar: WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Volte p/ Editar';
       });
 
-      document.querySelector('.sidebar').addEventListener('click', (e) => {
-        const btn = e.target.closest('.tool-btn');
-        if (!btn || !btn.dataset.tool) return;
-        document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        S.activeTool = btn.dataset.tool;
+      document.querySelectorAll('.sidebar').forEach((sb) => {
+        sb.addEventListener('click', (e) => {
+          const btn = e.target.closest('.tool-btn');
+          if (!btn || !btn.dataset.tool) return;
+          document.querySelectorAll('.sidebar .tool-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          S.activeTool = btn.dataset.tool;
+        });
       });
 
       const bindSlider = (id, valId, fmt, fn) => {
@@ -89,6 +91,8 @@
         S.pushUndoSnapshot();
         if (baseKindSel) baseKindSel.value = 'flat';
         hmap.fill(0);
+        caveFloor.fill(-32768);
+        caveCeil.fill(-32768);
         waterDepth.fill(0);
         waterSprings.length = 0;
         syncSculptFromHmap();
@@ -196,6 +200,8 @@
             const idx = my * mw + mx;
             sculptH[idx] = 0;
             hmap[idx] = 0;
+            caveFloor[idx] = -32768;
+            caveCeil[idx] = -32768;
             waterDepth[idx] = 0;
             matMap[idx] = MAT_GRASS;
             pinnedMask[idx] = 0;
@@ -251,6 +257,12 @@
             flowSparse.push([i, +customFlowVx[i].toFixed(2), +customFlowVy[i].toFixed(2)]);
           }
         }
+        const caveSparse = [];
+        for (let i = 0; i < caveFloor.length; i++) {
+          if (caveCeil[i] > caveFloor[i] && hmap[i] > caveCeil[i]) {
+            caveSparse.push([i, caveFloor[i], caveCeil[i]]);
+          }
+        }
         return {
           version: 3,
           gridW: mw,
@@ -263,6 +275,7 @@
           tuning: { ...ENGINE_TUNING, gravity: GRAVITY },
           customAssets: window.StudioModeler ? window.StudioModeler.exportAssets() : [],
           pinnedCells,
+          caveSparse,
           springs: waterSprings.map(sp => ({ wx: +sp.wx.toFixed(1), wy: +sp.wy.toFixed(1), z: sp.z || 0 })),
           windSparse,
           flowSparse,
@@ -301,6 +314,8 @@
         if (data.baseKind && baseKindSel) baseKindSel.value = data.baseKind;
         if (data.generationMode && genModeSel) genModeSel.value = data.generationMode;
         S.regenWorld(data.seed || DEFAULT_WORLD_SEED, false, data.baseKind || null);
+        caveFloor.fill(-32768);
+        caveCeil.fill(-32768);
         waterDepth.fill(0);
         waterSprings.length = 0;
         if (Array.isArray(data.pinnedCells)) {
@@ -311,6 +326,13 @@
             hmap[idx] = h;
             matMap[idx] = m;
             waterDepth[idx] = wd;
+          }
+        }
+        if (Array.isArray(data.caveSparse)) {
+          for (const [idx, cf, cc] of data.caveSparse) {
+            if (idx < 0 || idx >= caveFloor.length) continue;
+            caveFloor[idx] = cf;
+            caveCeil[idx] = cc;
           }
         }
         if (Array.isArray(data.springs)) {

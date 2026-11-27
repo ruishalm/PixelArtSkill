@@ -36,6 +36,8 @@
     function isWetMat(m) { return m === MAT_WATER || m === MAT_SHALLOW; }
 
     const hmap = new Int16Array(mw * mh);
+    const caveFloor = new Int16Array(mw * mh).fill(-32768);
+    const caveCeil = new Int16Array(mw * mh).fill(-32768);
     const waterDepth = new Uint8Array(mw * mh); // profundidade de água abaixo de hmap[idx] (bedZ = hmap[idx] - waterDepth[idx])
     const waterfallDropMask = new Uint8Array(mw * mh); // 1 = célula de crista/cortina ativa de cachoeira
     const waterSprings = []; // nascentes persistentes: [{ wx, wy, z }]
@@ -90,6 +92,8 @@
     function initOrganicWorld() {
       // Base inicial: plano verde Z=0
       hmap.fill(0);
+      caveFloor.fill(-32768);
+      caveCeil.fill(-32768);
       waterDepth.fill(0);
       waterfallDropMask.fill(0);
       waterSprings.length = 0;
@@ -555,12 +559,18 @@
       if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
       const idx = my * mw + mx;
       const b = biomeMap[idx];
+      const cf = caveFloor[idx];
+      const cc = caveCeil[idx];
+      const hasCave = cc > cf && hmap[idx] > cc;
       return {
         mx, my, idx,
         h: hmap[idx],
         mat: matMap[idx],
         waterDepth: waterDepth[idx],
         bedZ: isWetMat(matMap[idx]) ? Math.max(Z_MIN, hmap[idx] - waterDepth[idx]) : hmap[idx],
+        hasCave,
+        caveFloor: cf,
+        caveCeil: cc,
         biomeId: b,
         biomeKey: BIOME_KEYS[b],
         biome: BIOME_NAMES[b],
