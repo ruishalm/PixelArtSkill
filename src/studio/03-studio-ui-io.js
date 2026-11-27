@@ -426,7 +426,7 @@
           const docClone = document.documentElement.cloneNode(true);
 
           const cloneBody = docClone.querySelector('body');
-          if (cloneBody) cloneBody.classList.remove('play-only');
+          if (cloneBody) cloneBody.classList.remove('play-only', 'in-modeler');
           const cloneWorkspace = docClone.querySelector('.workspace');
           if (cloneWorkspace) cloneWorkspace.style.display = '';
           const cloneModeler = docClone.querySelector('#modelerView');
@@ -501,6 +501,7 @@
       // Cena publicada (.html exportado): carrega o projeto embutido e abre direto em modo Testar
       if (window.__STUDIO_BOOT__) {
         document.getElementById('modelerView')?.classList.remove('show');
+        document.body.classList.remove('in-modeler');
         const ws = document.querySelector('.workspace');
         if (ws) ws.style.display = 'flex';
         try { loadProject(window.__STUDIO_BOOT__); } catch (err) { console.error(err); }
