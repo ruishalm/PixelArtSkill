@@ -70,6 +70,7 @@
             if (blended > hmap[idx]) hmap[idx] = blended;
             if (biome !== null && bestD < halfWidth * 0.9) biomeMap[idx] = biome;
             if (mat !== null && rawH > 2) matMap[idx] = mat;
+            else if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
             if (isCliff && bestD < halfWidth * 0.85) cliffMask[idx] = 1;
           }
         }
@@ -162,6 +163,7 @@
             }
             if (biome !== null && d < effR * 0.92) biomeMap[idx] = biome;
             if (mat !== null && val > 1) matMap[idx] = mat;
+            else if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
           }
         }
       }
@@ -233,6 +235,7 @@
             }
             if (biome !== null && effNd <= 1.0 + rimNorm * 0.6) biomeMap[idx] = biome;
             if (mat !== null && (effNd <= 1.0 || targetH >= 2 || (lowerAllowed && targetH >= 0))) matMap[idx] = mat;
+            else if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
           }
         }
       }
@@ -289,11 +292,13 @@
           if (nd <= 1.0) {
             hmap[idx] = waterH;
             matMap[idx] = MAT_WATER;
+            waterDepth[idx] = waterH >= 0 ? Math.max(2, Math.round(3 + (1 - nd) * 2)) : 0;
             biomeMap[idx] = biome;
             cliffMask[idx] = 1;
           } else if (nd <= 1.0 + rimNorm) {
             hmap[idx] = rimH;
             matMap[idx] = MAT_SAND;
+            waterDepth[idx] = 0;
             biomeMap[idx] = biome;
             cliffMask[idx] = 1;
           }
@@ -370,6 +375,7 @@
             } else {
               const s = 1 - (d - effR) / 12;
               hmap[idx] = Math.max(hmap[idx], Math.round(targetH * s * s));
+              if (hmap[idx] > -2 && isWetMat(matMap[idx])) matMap[idx] = dryMatForHeight(hmap[idx]);
               if (biome !== null) biomeMap[idx] = biome;
             }
           }
@@ -718,5 +724,654 @@
         }
       }
       return null;
+    }
+
+    // =========================================================================
+    // HIDROLOGIA: BACIAS, TRANSBORDO, ESCOAMENTO AO NÍVEL DO MAR & CACHOEIRAS
+    // =========================================================================
+    const HYDRO_HEAP_CAP = 32768;
+    let _hydroVisit = null;
+    let _hydroParent = null;
+    let _streamVisit = null;
+    let _hydroStamp = 1;
+    let _streamStamp = 1;
+    const _heapIdx = new Int32Array(HYDRO_HEAP_CAP);
+    const _heapKey = new Int16Array(HYDRO_HEAP_CAP);
+    const _heapSeq = new Uint32Array(HYDRO_HEAP_CAP);
+    let _heapLen = 0;
+    let _heapSeqCounter = 0;
+
+    function _ensureHydroBuffers() {
+      const n = mw * mh;
+      if (!_hydroVisit || _hydroVisit.length !== n) {
+        _hydroVisit = new Uint32Array(n);
+        _hydroParent = new Int32Array(n);
+        _streamVisit = new Uint32Array(n);
+        _hydroStamp = 1;
+        _streamStamp = 1;
+      }
+    }
+
+    function _nextHydroStamp() {
+      _ensureHydroBuffers();
+      _hydroStamp++;
+      if (_hydroStamp >= 0x7fffffff) {
+        _hydroVisit.fill(0);
+        _hydroStamp = 1;
+      }
+      return _hydroStamp;
+    }
+
+    function _nextStreamStamp() {
+      _ensureHydroBuffers();
+      _streamStamp++;
+      if (_streamStamp >= 0x7fffffff) {
+        _streamVisit.fill(0);
+        _streamStamp = 1;
+      }
+      return _streamStamp;
+    }
+
+    function _heapReset() {
+      _heapLen = 0;
+      _heapSeqCounter = 0;
+    }
+
+    function _heapLess(a, b) {
+      if (_heapKey[a] !== _heapKey[b]) return _heapKey[a] < _heapKey[b];
+      return _heapSeq[a] < _heapSeq[b];
+    }
+
+    function _heapPush(idx, key) {
+      if (_heapLen >= HYDRO_HEAP_CAP) return false;
+      let i = _heapLen++;
+      _heapIdx[i] = idx;
+      _heapKey[i] = key;
+      _heapSeq[i] = _heapSeqCounter++;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (!_heapLess(i, p)) break;
+        const ti = _heapIdx[p], tk = _heapKey[p], ts = _heapSeq[p];
+        _heapIdx[p] = _heapIdx[i]; _heapKey[p] = _heapKey[i]; _heapSeq[p] = _heapSeq[i];
+        _heapIdx[i] = ti; _heapKey[i] = tk; _heapSeq[i] = ts;
+        i = p;
+      }
+      return true;
+    }
+
+    function _heapPop() {
+      const idx = _heapIdx[0];
+      const key = _heapKey[0];
+      _heapLen--;
+      if (_heapLen > 0) {
+        _heapIdx[0] = _heapIdx[_heapLen];
+        _heapKey[0] = _heapKey[_heapLen];
+        _heapSeq[0] = _heapSeq[_heapLen];
+        let i = 0;
+        while (true) {
+          const l = (i << 1) + 1;
+          const r = l + 1;
+          let smallest = i;
+          if (l < _heapLen && _heapLess(l, smallest)) smallest = l;
+          if (r < _heapLen && _heapLess(r, smallest)) smallest = r;
+          if (smallest === i) break;
+          const ti = _heapIdx[i], tk = _heapKey[i], ts = _heapSeq[i];
+          _heapIdx[i] = _heapIdx[smallest]; _heapKey[i] = _heapKey[smallest]; _heapSeq[i] = _heapSeq[smallest];
+          _heapIdx[smallest] = ti; _heapKey[smallest] = tk; _heapSeq[smallest] = ts;
+          i = smallest;
+        }
+      }
+      return { idx, key };
+    }
+
+    function getSolidBedAtIdx(idx) {
+      if (!isWetMat(matMap[idx])) return hmap[idx];
+      if (waterDepth[idx] > 0) return Math.max(Z_MIN, hmap[idx] - waterDepth[idx]);
+      return Math.max(Z_MIN, hmap[idx]);
+    }
+
+    function dryMatForHeight(h) {
+      if (h >= 42) return MAT_PEAK;
+      if (h <= 2) return MAT_SAND;
+      return MAT_GRASS;
+    }
+
+    function drainElevatedWetCell(idx, onTouchIdx = null) {
+      if (!isWetMat(matMap[idx])) return false;
+      const h = hmap[idx];
+      if (h <= -2) return false;
+      waterDepth[idx] = 0;
+      matMap[idx] = dryMatForHeight(h);
+      if (onTouchIdx) onTouchIdx(idx);
+      return true;
+    }
+
+    function paintWetCell(idx, surfZ, bedZ, preferredMat = null, onTouchIdx = null) {
+      const clampedSurf = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX - 1, surfZ));
+      const clampedBed = Math.max(Z_MIN, Math.min(clampedSurf, bedZ));
+      if (clampedSurf <= -2) {
+        if (preferredMat === MAT_SHALLOW) {
+          hmap[idx] = -2;
+          waterDepth[idx] = 0;
+          matMap[idx] = MAT_SHALLOW;
+        } else {
+          hmap[idx] = Math.min(-4, clampedBed <= -4 ? clampedBed : -4);
+          waterDepth[idx] = 0;
+          matMap[idx] = MAT_WATER;
+        }
+      } else {
+        const depth = Math.max(1, Math.min(255, clampedSurf - clampedBed));
+        hmap[idx] = clampedSurf;
+        waterDepth[idx] = depth;
+        matMap[idx] = preferredMat === MAT_SHALLOW
+          ? MAT_SHALLOW
+          : (depth >= 3 ? MAT_WATER : MAT_SHALLOW);
+      }
+      if (typeof caveFloor !== 'undefined' && typeof caveCeil !== 'undefined' && caveCeil[idx] > caveFloor[idx]) {
+        const effTop = clampedSurf <= -2 ? clampedSurf : clampedBed;
+        if (effTop <= caveCeil[idx]) {
+          if (effTop - 3 > caveFloor[idx] + 3) {
+            caveCeil[idx] = effTop - 3;
+          } else {
+            caveFloor[idx] = -32768;
+            caveCeil[idx] = -32768;
+          }
+        }
+      }
+      if (onTouchIdx) onTouchIdx(idx);
+    }
+
+    function findBasinOrOutlet(seedMx, seedMy, maxCells = 6000) {
+      const sIdx = seedMy * mw + seedMx;
+      const seedBed = getSolidBedAtIdx(sIdx);
+      if (seedBed <= -2) {
+        return { type: 'sea', spillZ: -2, saddleIdx: -1, outletIdx: sIdx, basinCells: [], pathToSaddle: [] };
+      }
+
+      const stamp = _nextHydroStamp();
+      _heapReset();
+      _hydroVisit[sIdx] = stamp;
+      _hydroParent[sIdx] = -1;
+      _heapPush(sIdx, seedBed);
+
+      let maxLevel = seedBed;
+      const poppedIdx = [];
+      const poppedBed = [];
+      const nOff = [-1, 1, -mw, mw];
+
+      while (_heapLen > 0 && poppedIdx.length < maxCells) {
+        const cur = _heapPop();
+        const u = cur.idx;
+        const uBed = cur.key;
+        if (uBed > maxLevel) maxLevel = uBed;
+        poppedIdx.push(u);
+        poppedBed.push(uBed);
+
+        const ux = u % mw;
+        const uy = (u / mw) | 0;
+        if (ux === 0 || ux === mw - 1 || uy === 0 || uy === mh - 1 || uBed <= -2) {
+          const basinCells = [];
+          for (let i = 0; i < poppedIdx.length; i++) {
+            if (poppedBed[i] < maxLevel) basinCells.push(poppedIdx[i]);
+          }
+          const pathToSaddle = [];
+          let p = u;
+          while (p >= 0 && pathToSaddle.length < 512) {
+            pathToSaddle.push(p);
+            p = _hydroParent[p];
+          }
+          pathToSaddle.reverse();
+          return { type: 'spill', spillZ: maxLevel, saddleIdx: u, outletIdx: u, basinCells, pathToSaddle };
+        }
+
+        for (let k = 0; k < 4; k++) {
+          const v = u + nOff[k];
+          if (_hydroVisit[v] === stamp) continue;
+          const vBed = getSolidBedAtIdx(v);
+          if (vBed < maxLevel) {
+            const basinCells = [];
+            for (let i = 0; i < poppedIdx.length; i++) {
+              if (poppedBed[i] < maxLevel) basinCells.push(poppedIdx[i]);
+            }
+            const pathToSaddle = [];
+            let p = u;
+            while (p >= 0 && pathToSaddle.length < 512) {
+              pathToSaddle.push(p);
+              p = _hydroParent[p];
+            }
+            pathToSaddle.reverse();
+            return { type: 'spill', spillZ: maxLevel, saddleIdx: u, outletIdx: v, basinCells, pathToSaddle };
+          }
+          _hydroVisit[v] = stamp;
+          _hydroParent[v] = u;
+          if (!_heapPush(v, vBed)) {
+            break;
+          }
+        }
+      }
+
+      return { type: 'flat_or_huge', spillZ: maxLevel, saddleIdx: -1, outletIdx: -1, basinCells: poppedIdx, pathToSaddle: [] };
+    }
+
+    function fillBasinCells(basinCells, surfZ, preferredMat = null, onTouchIdx = null) {
+      let minMx = mw, minMy = mh, maxMx = -1, maxMy = -1;
+      for (let i = 0; i < basinCells.length; i++) {
+        const idx = basinCells[i];
+        const bed = getSolidBedAtIdx(idx);
+        if (bed >= surfZ) continue;
+        paintWetCell(idx, surfZ, bed, preferredMat, onTouchIdx);
+        const mx = idx % mw;
+        const my = (idx / mw) | 0;
+        if (mx < minMx) minMx = mx;
+        if (mx > maxMx) maxMx = mx;
+        if (my < minMy) minMy = my;
+        if (my > maxMy) maxMy = my;
+      }
+      return { minMx, minMy, maxMx, maxMy };
+    }
+
+    function traceSteepestStream(startMx, startMy, onTouchIdx = null, maxSteps = 4096) {
+      const sStamp = _nextStreamStamp();
+      let curIdx = startMy * mw + startMx;
+      let minMx = startMx, minMy = startMy, maxMx = startMx, maxMy = startMy;
+      const expandBounds = (idx) => {
+        const mx = idx % mw;
+        const my = (idx / mw) | 0;
+        if (mx < minMx) minMx = mx;
+        if (mx > maxMx) maxMx = mx;
+        if (my < minMy) minMy = my;
+        if (my > maxMy) maxMy = my;
+      };
+
+      const dxs = [-1, 1, 0, 0, -1, 1, -1, 1];
+      const dys = [0, 0, -1, 1, -1, -1, 1, 1];
+      let prevDx = 0, prevDy = 0;
+      let steps = 0;
+      let legCount = 0;
+
+      while (steps < maxSteps && legCount < 1024) {
+        legCount++;
+        while (steps < maxSteps) {
+          steps++;
+          const mx = curIdx % mw;
+          const my = (curIdx / mw) | 0;
+          if (mx <= 0 || mx >= mw - 1 || my <= 0 || my >= mh - 1) {
+            return { minMx, minMy, maxMx, maxMy };
+          }
+          _streamVisit[curIdx] = sStamp;
+          const curBed = getSolidBedAtIdx(curIdx);
+          if (curBed <= -2) {
+            paintWetCell(curIdx, -2, curBed, MAT_SHALLOW, onTouchIdx);
+            expandBounds(curIdx);
+            return { minMx, minMy, maxMx, maxMy };
+          }
+
+          let bestNb = -1;
+          let bestScore = -Infinity;
+          let bestBed = curBed;
+          let bestDx = 0, bestDy = 0;
+
+          for (let k = 0; k < 8; k++) {
+            const nx = mx + dxs[k];
+            const ny = my + dys[k];
+            if (nx < 0 || nx >= mw || ny < 0 || ny >= mh) continue;
+            const nIdx = ny * mw + nx;
+            if (_streamVisit[nIdx] === sStamp) continue;
+            const nBed = getSolidBedAtIdx(nIdx);
+            if (nBed >= curBed) continue;
+            const dist = k < 4 ? 1.0 : 1.414;
+            const slope = (curBed - nBed) / dist;
+            const align = (dxs[k] * prevDx + dys[k] * prevDy) > 0 ? 0.08 : 0;
+            const score = slope + align;
+            if (score > bestScore) {
+              bestScore = score;
+              bestNb = nIdx;
+              bestBed = nBed;
+              bestDx = dxs[k];
+              bestDy = dys[k];
+            }
+          }
+
+          if (bestNb < 0) break; // Local minimum or flat shelf
+
+          const drop = curBed - bestBed;
+          const isDrop = drop >= 3;
+          // Crest / stream cell
+          paintWetCell(curIdx, curBed + 1, curBed, isDrop ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
+          expandBounds(curIdx);
+
+          // Widen gentle stream slightly on flat/lower side cells without climbing walls
+          if (!isDrop) {
+            for (let k = 0; k < 4; k++) {
+              const sx = mx + dxs[k];
+              const sy = my + dys[k];
+              if (sx <= 0 || sx >= mw - 1 || sy <= 0 || sy >= mh - 1) continue;
+              const sIdx = sy * mw + sx;
+              if (isWetMat(matMap[sIdx])) continue;
+              const sBed = getSolidBedAtIdx(sIdx);
+              if (sBed <= curBed && sBed >= curBed - 1 && sBed > -2) {
+                paintWetCell(sIdx, sBed + 1, sBed, MAT_SHALLOW, onTouchIdx);
+                expandBounds(sIdx);
+              }
+            }
+          }
+
+          if (bestBed <= -2) {
+            paintWetCell(bestNb, -2, bestBed, MAT_SHALLOW, onTouchIdx);
+            expandBounds(bestNb);
+            return { minMx, minMy, maxMx, maxMy };
+          }
+
+          // Plunge pool at foot of a steep waterfall drop
+          if (isDrop) {
+            const bmx = bestNb % mw;
+            const bmy = (bestNb / mw) | 0;
+            const poolSurf = bestBed + 2;
+            for (let pdy = -1; pdy <= 1; pdy++) {
+              const py = bmy + pdy;
+              if (py <= 0 || py >= mh - 1) continue;
+              for (let pdx = -1; pdx <= 1; pdx++) {
+                const px = bmx + pdx;
+                if (px <= 0 || px >= mw - 1) continue;
+                const pIdx = py * mw + px;
+                const pBed = getSolidBedAtIdx(pIdx);
+                if (pBed <= bestBed + 1) {
+                  const isCenter = (pdx === 0 && pdy === 0);
+                  const d = isCenter ? 2 : 1;
+                  paintWetCell(pIdx, Math.max(poolSurf, pBed + d), Math.min(pBed, poolSurf - d), isCenter ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
+                  expandBounds(pIdx);
+                }
+              }
+            }
+          }
+
+          prevDx = bestDx;
+          prevDy = bestDy;
+          curIdx = bestNb;
+        }
+
+        // Hit a local minimum or flat shelf: find basin spillover or flat path to next drop
+        const cmx = curIdx % mw;
+        const cmy = (curIdx / mw) | 0;
+        const res = findBasinOrOutlet(cmx, cmy, 8000);
+        if (res.type === 'sea') {
+          paintWetCell(curIdx, -2, getSolidBedAtIdx(curIdx), MAT_SHALLOW, onTouchIdx);
+          expandBounds(curIdx);
+          break;
+        }
+        if (res.type === 'spill') {
+          if (res.basinCells.length > 0) {
+            const bBounds = fillBasinCells(res.basinCells, res.spillZ, null, onTouchIdx);
+            if (bBounds.maxMx >= 0) {
+              if (bBounds.minMx < minMx) minMx = bBounds.minMx;
+              if (bBounds.minMy < minMy) minMy = bBounds.minMy;
+              if (bBounds.maxMx > maxMx) maxMx = bBounds.maxMx;
+              if (bBounds.maxMy > maxMy) maxMy = bBounds.maxMy;
+            }
+            for (let i = 0; i < res.basinCells.length; i++) {
+              _streamVisit[res.basinCells[i]] = sStamp;
+            }
+          }
+          if (res.pathToSaddle.length > 0) {
+            for (let i = 0; i < res.pathToSaddle.length; i++) {
+              const pIdx = res.pathToSaddle[i];
+              _streamVisit[pIdx] = sStamp;
+              const pBed = getSolidBedAtIdx(pIdx);
+              if (res.basinCells.length === 0 || pBed >= res.spillZ) {
+                paintWetCell(pIdx, pBed + 1, pBed, MAT_SHALLOW, onTouchIdx);
+                expandBounds(pIdx);
+              }
+            }
+          }
+          if (res.saddleIdx >= 0 && res.saddleIdx !== res.outletIdx) {
+            const sBed = getSolidBedAtIdx(res.saddleIdx);
+            paintWetCell(res.saddleIdx, Math.max(res.spillZ, sBed + 1), sBed, MAT_SHALLOW, onTouchIdx);
+            expandBounds(res.saddleIdx);
+            _streamVisit[res.saddleIdx] = sStamp;
+          }
+          if (res.outletIdx < 0 || res.outletIdx === curIdx || _streamVisit[res.outletIdx] === sStamp) break;
+          curIdx = res.outletIdx;
+          prevDx = 0; prevDy = 0;
+        } else {
+          // Flat plain with no outlet within range: form a small terminal pool
+          const curBed = getSolidBedAtIdx(curIdx);
+          if (curBed > -2) {
+            paintWetCell(curIdx, curBed, Math.max(Z_MIN, curBed - 2), MAT_SHALLOW, onTouchIdx);
+            expandBounds(curIdx);
+          }
+          break;
+        }
+      }
+
+      return { minMx, minMy, maxMx, maxMy };
+    }
+
+    function applyWaterBrushHydrology(cx, cy, rCells, toolId, onTouchIdx = null, isInitialClick = true) {
+      const prefMat = toolId === 'mat_shallow' ? MAT_SHALLOW : MAT_WATER;
+      const cIdx = cy * mw + cx;
+      const bedC = getSolidBedAtIdx(cIdx);
+      let minMx = Math.max(1, cx - rCells - 1);
+      let maxMx = Math.min(mw - 2, cx + rCells + 1);
+      let minMy = Math.max(1, cy - rCells - 1);
+      let maxMy = Math.min(mh - 2, cy + rCells + 1);
+      const mergeBounds = (b) => {
+        if (!b || b.maxMx < 0) return;
+        if (b.minMx < minMx) minMx = b.minMx;
+        if (b.minMy < minMy) minMy = b.minMy;
+        if (b.maxMx > maxMx) maxMx = b.maxMx;
+        if (b.maxMy > maxMy) maxMy = b.maxMy;
+      };
+
+      // 1. Nível do mar ou abaixo (Z <= -2): pintura clássica sem afundar montanhas
+      if (bedC <= -2) {
+        const r2 = rCells * rCells;
+        for (let my = minMy; my <= maxMy; my++) {
+          const dy = my - cy;
+          for (let mx = minMx; mx <= maxMx; mx++) {
+            const dx = mx - cx;
+            if (dx * dx + dy * dy > r2) continue;
+            const idx = my * mw + mx;
+            const b = getSolidBedAtIdx(idx);
+            if (b <= -1) {
+              paintWetCell(idx, -2, Math.min(b, prefMat === MAT_SHALLOW ? -2 : -4), prefMat, onTouchIdx);
+            }
+          }
+        }
+        return { minMx, minMy, maxMx, maxMy };
+      }
+
+      // 2. Acima do nível do mar: detectar se está dentro de uma bacia/cratera fechada
+      const res = findBasinOrOutlet(cx, cy, 16384);
+      const hasRealOutlet = res.type === 'spill' && res.outletIdx >= 0 &&
+        (getSolidBedAtIdx(res.outletIdx) < res.spillZ || res.spillZ <= -2);
+      if (hasRealOutlet && res.basinCells.length > 0) {
+        let minBasinBed = bedC;
+        for (let i = 0; i < res.basinCells.length; i++) {
+          const b = getSolidBedAtIdx(res.basinCells[i]);
+          if (b < minBasinBed) minBasinBed = b;
+        }
+        const targetSurf = res.spillZ - minBasinBed >= 2 ? (res.spillZ - 1) : res.spillZ;
+        const alreadyFilled = isWetMat(matMap[cIdx]) && hmap[cIdx] >= targetSurf;
+        if (!alreadyFilled) {
+          const b = fillBasinCells(res.basinCells, targetSurf, toolId === 'mat_shallow' ? MAT_SHALLOW : null, onTouchIdx);
+          mergeBounds(b);
+        } else if (isInitialClick) {
+          // Segundo clique em bacia já cheia: transborda pela fenda mais baixa até o nível do mar!
+          const b = fillBasinCells(res.basinCells, res.spillZ, toolId === 'mat_shallow' ? MAT_SHALLOW : null, onTouchIdx);
+          mergeBounds(b);
+          if (res.saddleIdx >= 0) {
+            const sBed = getSolidBedAtIdx(res.saddleIdx);
+            paintWetCell(res.saddleIdx, Math.max(res.spillZ, sBed + 1), sBed, MAT_SHALLOW, onTouchIdx);
+          }
+          if (res.outletIdx >= 0) {
+            mergeBounds(traceSteepestStream(res.outletIdx % mw, (res.outletIdx / mw) | 0, onTouchIdx));
+          }
+        }
+        return { minMx, minMy, maxMx, maxMy };
+      }
+
+      if (hasRealOutlet && res.basinCells.length === 0 && getSolidBedAtIdx(res.outletIdx) < bedC) {
+        // Só escoa se não estiver apenas arrastando a borda de uma lagoa já aberta em platô plano
+        const draggingIntoFlatPond = !isInitialClick && isWetMat(matMap[res.outletIdx]);
+        if (!draggingIntoFlatPond) {
+          // Encosta aberta / fenda: escoa morro abaixo até o mar!
+          mergeBounds(traceSteepestStream(cx, cy, onTouchIdx));
+          return { minMx, minMy, maxMx, maxMy };
+        }
+      }
+
+      // 3. Planície/platô plano sem borda ao redor: cria/expande lagoa rasa sem perfurar o solo repetidamente
+      const r2 = rCells * rCells;
+      let pondSurfZ = isWetMat(matMap[cIdx]) && hmap[cIdx] >= 0 ? hmap[cIdx] : null;
+      if (pondSurfZ === null) {
+        for (let my = minMy; my <= maxMy && pondSurfZ === null; my++) {
+          const dy = my - cy;
+          for (let mx = minMx; mx <= maxMx; mx++) {
+            const dx = mx - cx;
+            if (dx * dx + dy * dy > r2) continue;
+            const idx = my * mw + mx;
+            if (isWetMat(matMap[idx]) && hmap[idx] >= 0) {
+              pondSurfZ = hmap[idx];
+              break;
+            }
+          }
+        }
+      }
+      if (pondSurfZ === null) pondSurfZ = bedC >= 0 ? bedC - 1 : -1;
+
+      for (let my = minMy; my <= maxMy; my++) {
+        const dy = my - cy;
+        for (let mx = minMx; mx <= maxMx; mx++) {
+          const dx = mx - cx;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+          const idx = my * mw + mx;
+          const edgeDist = rCells - Math.sqrt(d2);
+          let depth = edgeDist >= 2.0 ? 3 : (edgeDist >= 0.8 ? 2 : 1);
+          if (toolId === 'mat_shallow') depth = Math.min(2, depth);
+          if (isWetMat(matMap[idx])) {
+            if (hmap[idx] === pondSurfZ && depth > waterDepth[idx]) {
+              const bedZ = Math.max(Z_MIN, pondSurfZ - depth);
+              paintWetCell(idx, pondSurfZ, bedZ, depth >= 3 && toolId !== 'mat_shallow' ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
+            }
+            continue;
+          }
+          const origBed = getSolidBedAtIdx(idx);
+          if (origBed < pondSurfZ) continue;
+          const bedZ = Math.max(Z_MIN, pondSurfZ - depth);
+          paintWetCell(idx, pondSurfZ, bedZ, depth >= 3 && toolId !== 'mat_shallow' ? MAT_WATER : MAT_SHALLOW, onTouchIdx);
+        }
+      }
+      return { minMx, minMy, maxMx, maxMy };
+    }
+
+    function placeSpringHydrology(cx, cy, onTouchIdx = null) {
+      const cIdx = cy * mw + cx;
+      const bedC = getSolidBedAtIdx(cIdx);
+      paintWetCell(cIdx, bedC > -2 ? bedC + 1 : -2, bedC, MAT_WATER, onTouchIdx);
+      const b = traceSteepestStream(cx, cy, onTouchIdx);
+      return {
+        minMx: Math.min(Math.max(1, cx - 2), b.minMx),
+        minMy: Math.min(Math.max(1, cy - 2), b.minMy),
+        maxMx: Math.max(Math.min(mw - 2, cx + 2), b.maxMx),
+        maxMy: Math.max(Math.min(mh - 2, cy + 2), b.maxMy)
+      };
+    }
+
+    function drainBreachedLakesInRect(mx0, my0, mx1, my1, onTouchIdx = null) {
+      const x0 = Math.max(1, mx0 - 1);
+      const x1 = Math.min(mw - 2, mx1 + 1);
+      const y0 = Math.max(1, my0 - 1);
+      const y1 = Math.min(mh - 2, my1 + 1);
+      const nOff8 = [-1, 1, -mw, mw, -mw - 1, -mw + 1, mw - 1, mw + 1];
+      let changed = false;
+      let minMx = x0, minMy = y0, maxMx = x1, maxMy = y1;
+      const expand = (b) => {
+        if (!b || b.maxMx < 0) return;
+        if (b.minMx < minMx) minMx = b.minMx;
+        if (b.minMy < minMy) minMy = b.minMy;
+        if (b.maxMx > maxMx) maxMx = b.maxMx;
+        if (b.maxMy > maxMy) maxMy = b.maxMy;
+      };
+
+      const seenLakes = new Set();
+      for (let my = y0; my <= y1; my++) {
+        for (let mx = x0; mx <= x1; mx++) {
+          const idx = my * mw + mx;
+          if (!isWetMat(matMap[idx]) || hmap[idx] < 0) continue;
+          const wSurf = hmap[idx];
+          if (seenLakes.has(idx)) continue;
+
+          let hasLowerWet = false;
+          let breachIdx = -1;
+          let breachH = wSurf;
+          for (let k = 0; k < 8; k++) {
+            const nb = idx + nOff8[k];
+            if (isWetMat(matMap[nb])) {
+              if (hmap[nb] < wSurf) hasLowerWet = true;
+            } else if (k < 4 && hmap[nb] < breachH) {
+              breachH = hmap[nb];
+              breachIdx = nb;
+            }
+          }
+          if (hasLowerWet || breachIdx < 0) continue;
+
+          // Coleta o lago conectado na cota wSurf
+          const queue = [idx];
+          const lakeCells = [];
+          seenLakes.add(idx);
+          let minRim = breachH;
+          let minRimIdx = breachIdx;
+          let maxLakeDepth = waterDepth[idx];
+          while (queue.length > 0 && lakeCells.length < 16384) {
+            const cur = queue.pop();
+            lakeCells.push(cur);
+            if (waterDepth[cur] > maxLakeDepth) maxLakeDepth = waterDepth[cur];
+            for (let k = 0; k < 8; k++) {
+              const nb = cur + nOff8[k];
+              const nmx = nb % mw;
+              const nmy = (nb / mw) | 0;
+              if (nmx <= 0 || nmx >= mw - 1 || nmy <= 0 || nmy >= mh - 1) continue;
+              if (isWetMat(matMap[nb])) {
+                if (hmap[nb] < wSurf) hasLowerWet = true;
+                else if (k < 4 && !seenLakes.has(nb) && hmap[nb] === wSurf) {
+                  seenLakes.add(nb);
+                  queue.push(nb);
+                }
+              } else if (k < 4 && hmap[nb] < minRim) {
+                minRim = hmap[nb];
+                minRimIdx = nb;
+              }
+            }
+          }
+          if (hasLowerWet) continue;
+          if (maxLakeDepth < 2 && lakeCells.length < 4) continue;
+
+          const newSurf = Math.max(Z_MIN, minRim);
+          for (let i = 0; i < lakeCells.length; i++) {
+            const c = lakeCells[i];
+            const bed = getSolidBedAtIdx(c);
+            if (bed >= newSurf) {
+              hmap[c] = bed;
+              waterDepth[c] = 0;
+              matMap[c] = dryMatForHeight(bed);
+              if (onTouchIdx) onTouchIdx(c);
+            } else {
+              paintWetCell(c, newSurf, bed, null, onTouchIdx);
+            }
+            const cmx = c % mw;
+            const cmy = (c / mw) | 0;
+            if (cmx < minMx) minMx = cmx;
+            if (cmx > maxMx) maxMx = cmx;
+            if (cmy < minMy) minMy = cmy;
+            if (cmy > maxMy) maxMy = cmy;
+          }
+          if (minRimIdx >= 0) {
+            expand(traceSteepestStream(minRimIdx % mw, (minRimIdx / mw) | 0, onTouchIdx));
+          }
+          changed = true;
+        }
+      }
+      return { changed, minMx, minMy, maxMx, maxMy };
     }
 

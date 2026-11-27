@@ -274,6 +274,10 @@
         dr.carried = false;
         dr.x = cat.x + fx * 7 * (cat.scale || 1);
         dr.y = cat.y + fy * 7 * (cat.scale || 1);
+        const dropCell = getCellAt(dr.x, dr.y) || getCellAt(cat.x, cat.y);
+        if (dropCell && dropCell.hasCave && cat.z < dropCell.caveCeil - 2) {
+          dr.z = Math.min(cat.z + 4 * (cat.scale || 1), dropCell.caveCeil - 3.5);
+        }
         dr.vx = fx * 14;
         dr.vy = fy * 14;
         dr.vz = 10;
@@ -345,6 +349,10 @@
       dr.carried = false;
       dr.x = cat.x + fx * 6 * (cat.scale || 1);
       dr.y = cat.y + fy * 6 * (cat.scale || 1);
+      const throwCell = getCellAt(dr.x, dr.y) || getCellAt(cat.x, cat.y);
+      if (throwCell && throwCell.hasCave && cat.z < throwCell.caveCeil - 2) {
+        dr.z = Math.min(cat.z + 4 * (cat.scale || 1), throwCell.caveCeil - 3.5);
+      }
       dr.vx = fx * 110;
       dr.vy = fy * 110;
       dr.vz = 85;
@@ -539,9 +547,15 @@
       }
       if (dr.carried) {
         const S = cat.scale || 1;
+        const customAv = (typeof cat.avatar === 'string' && cat.avatar.startsWith('custom_'))
+          ? ((typeof customAvatarModels !== 'undefined' && customAvatarModels[cat.avatar]) ||
+             (typeof window !== 'undefined' && window.customAvatarModels && window.customAvatarModels[cat.avatar]) ||
+             propModels[cat.avatar])
+          : null;
+        const carryH = cat.avatar === 'human' ? 31 : (customAv ? (customAv.count + 3) : 17);
         dr.x = cat.x - Math.sin(cat.selfAngle) * 4 * S;
         dr.y = cat.y + Math.cos(cat.selfAngle) * 4 * S;
-        dr.z = cat.z + (cat.avatar === 'human' ? 31 : 17) * S;
+        dr.z = cat.z + carryH * S;
         dr.vx = 0; dr.vy = 0; dr.vz = 0;
         dr.selfAngle = cat.selfAngle;
         dr.inWater = false;
@@ -562,10 +576,11 @@
         if (dc && isWetMat(dc.mat)) {
           let subVol = 1.0;
           if (isHeavy) {
-            // Pedregulho (densidade > 1): afunda até o leito deslocando seu volume inteiro
+            // Pedregulho (densidade > 1): afunda até o leito sólido (bedZ) deslocando seu volume inteiro
+            const bedZ = waterBedZ(dc);
             dr.vz -= 180 * dt;
-            dr.z = Math.max(dc.h, dr.z + dr.vz * dt);
-            if (dr.z <= dc.h + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
+            dr.z = Math.max(bedZ, dr.z + dr.vz * dt);
+            if (dr.z <= bedZ + 0.1) { dr.vz = 0; dr.vx *= 0.2; dr.vy *= 0.2; }
           } else {
             // Tora (densidade < 1): Empuxo de Arquimedes acoplado ao WaveBuffer + nível local
             const baseSurfZ = waterSurfZ(dc);
@@ -599,6 +614,7 @@
           dr.vy = ny * pushSpd;
           dr.spin = (Math.random() - 0.5) * 3.0;
         }
+        const prevDrZ = dr.z;
         dr.vz -= GRAVITY * 0.45 * dt;
         dr.x += dr.vx * dt;
         dr.y += dr.vy * dt;
@@ -609,7 +625,12 @@
           debrisDrops.splice(i, 1);
           continue;
         }
-        if (isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {
+        if (dc.hasCave && prevDrZ < dc.caveCeil - 2 && dr.vz > 0 && dr.z > dc.caveCeil - 3) {
+          dr.z = dc.caveCeil - 3;
+          dr.vz = -dr.vz * 0.4;
+        }
+        const dcInCave = dc.hasCave && dr.z < dc.caveCeil - 2;
+        if (!dcInCave && isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {
           dr.inWater = true;
           dr.z = waterSurfZ(dc);
           dr.vz = 0;
@@ -621,20 +642,23 @@
           if (Math.hypot(dr.x - cat.x, dr.y - cat.y) < 140) {
             guideSpeak('archimedes', 'Eureka! A água desloca! 🛁', 135);
           }
-        } else if (!isWetMat(dc.mat) && dr.z <= dc.h) {
-          dr.z = dc.h;
-          if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
-            dr.vz = -dr.vz * 0.45;
-            dr.vx *= 0.65;
-            dr.vy *= 0.65;
-            dr.spin *= 0.6;
-            dr.bounces++;
-          } else {
-            dr.vz = 0;
-            const damp = Math.max(0, 1 - dt * 8);
-            dr.vx *= damp;
-            dr.vy *= damp;
-            dr.spin = 0;
+        } else {
+          const effGroundZ = dcInCave ? dc.caveFloor : dc.h;
+          if ((dcInCave || !isWetMat(dc.mat)) && dr.z <= effGroundZ) {
+            dr.z = effGroundZ;
+            if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
+              dr.vz = -dr.vz * 0.45;
+              dr.vx *= 0.65;
+              dr.vy *= 0.65;
+              dr.spin *= 0.6;
+              dr.bounces++;
+            } else {
+              dr.vz = 0;
+              const damp = Math.max(0, 1 - dt * 8);
+              dr.vx *= damp;
+              dr.vy *= damp;
+              dr.spin = 0;
+            }
           }
         }
       }

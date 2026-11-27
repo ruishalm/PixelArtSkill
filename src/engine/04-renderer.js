@@ -275,7 +275,8 @@
         const dBaseZ = Math.round(dr.z);
         const dTopZ = dBaseZ + Math.ceil(dr.model.count * dr.scale);
         const dp = (dr.x - camX) * sinA + (dr.y - camY) * cosA;
-        const gH = getHeightAt(dr.x, dr.y);
+        const dCell = getCellAt(dr.x, dr.y);
+        const gH = dCell ? (dCell.hasCave && dr.z < dCell.caveCeil - 2 ? dCell.caveFloor : dCell.h) : null;
         if (gH !== null && !dr.inWater) {
           registerShadow(dr.x, dr.y, gH, dr.z, 3.8, 2.4, 0.22);
         }
@@ -354,9 +355,63 @@
 
         const catBlinkHidden = cat.hurtTimer > 0 && (Math.floor((1.0 - cat.hurtTimer) * 6) % 2 === 0);
         const bob = inAir ? 0 : (cat.isWalking ? Math.abs(Math.sin(t * 2)) * 0.7 : Math.sin(cat.idleTimer * 2.4) * 0.35);
+        const customAvModel = (typeof cat.avatar === 'string' && cat.avatar.startsWith('custom_'))
+          ? ((typeof customAvatarModels !== 'undefined' && customAvatarModels[cat.avatar]) ||
+             (typeof window !== 'undefined' && window.customAvatarModels && window.customAvatarModels[cat.avatar]) ||
+             propModels[cat.avatar])
+          : null;
         if (!catBlinkHidden && cat.avatar === 'human' && typeof pushHumanoidDrawables === 'function') {
           const humanTop = pushHumanoidDrawables(activeDrawables, cat, cosA, sinA, bob);
           if (humanTop > maxEntityTopZ) maxEntityTopZ = humanTop;
+        } else if (!catBlinkHidden && customAvModel) {
+          const S = cat.scale || 1;
+          const avBaseZ = Math.round(cat.z + bob * S);
+          const avTopZ = avBaseZ + Math.ceil(customAvModel.count * S);
+          const legCut = Math.max(1, Math.floor(customAvModel.count * 0.28));
+          const legSway = (cat.isWalking && !inAir) ? Math.sin(t) * 0.8 * S : 0;
+          const swayWx = legSway * cosC;
+          const swayWy = legSway * sinC;
+          activeDrawables.push({
+            baseZ: avBaseZ,
+            topZ: avTopZ,
+            depth: dpCat + 0.5,
+            drawSlice: (z) => {
+              const sz = Math.min(customAvModel.count - 1, Math.floor((z - avBaseZ) / S));
+              const isLeg = sz < legCut;
+              const wx = isLeg ? cat.x + swayWx : cat.x;
+              const wy = isLeg ? cat.y + swayWy : cat.y;
+              stampModelSlice(entityCtx, customAvModel, sz, wx, wy, z, cat.selfAngle, S, cosA, sinA);
+            }
+          });
+          if (avTopZ > maxEntityTopZ) maxEntityTopZ = avTopZ;
+
+          if (typeof swingTimer !== 'undefined' && swingTimer > 0 && typeof equippedTool !== 'undefined' && equippedTool !== 'none') {
+            const tKey = TOOLS_META[equippedTool].modelKey;
+            const tModel = tKey ? propModels[tKey] : null;
+            if (tModel) {
+              const prog = 1 - Math.max(0, Math.min(1, swingTimer / 0.22));
+              const arcAngle = (prog - 0.5) * 2.1;
+              const swAngle = cat.selfAngle + arcAngle;
+              const fxC = -Math.sin(swAngle);
+              const fyC = Math.cos(swAngle);
+              const tx = cat.x + fxC * 10 * S;
+              const ty = cat.y + fyC * 10 * S;
+              const tScale = 0.68 * S;
+              const tBaseZ = Math.round(cat.z + (6 + Math.sin(prog * Math.PI) * 4) * S);
+              const tTopZ = tBaseZ + Math.ceil(tModel.count * tScale);
+              const tDp = (tx - camX) * sinA + (ty - camY) * cosA;
+              activeDrawables.push({
+                baseZ: tBaseZ,
+                topZ: tTopZ,
+                depth: tDp + 0.65,
+                drawSlice: (z) => {
+                  const sz = Math.min(tModel.count - 1, Math.floor((z - tBaseZ) / tScale));
+                  stampModelSlice(entityCtx, tModel, sz, tx, ty, z, swAngle, tScale, cosA, sinA);
+                }
+              });
+              if (tTopZ > maxEntityTopZ) maxEntityTopZ = tTopZ;
+            }
+          }
         } else if (!catBlinkHidden) {
           const pawSpecs = [
             [-4.5, -7.5, inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.0) : 0), inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.3 : 0)],
@@ -461,17 +516,86 @@
         particlesByZ.get(pz).push(p);
       }
 
+      // Buckets dinâmicos por fatia Z para WaveBuffer, FlowStreaks, FloatingItems e Cachoeiras de Montanha
+      const wavesByZ = new Map();
+      for (let dy = 1; dy < WAVE_H - 1; dy++) {
+        const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+        if (cwy < minVisWy || cwy > maxVisWy) continue;
+        const row = dy * WAVE_W;
+        for (let dx = 1; dx < WAVE_W - 1; dx++) {
+          const val = waveCurr[row + dx];
+          if (Math.abs(val) < 0.14) continue;
+          const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+          if (cwx < minVisWx || cwx > maxVisWx) continue;
+          const mx = Math.floor(cwx / VOX + HALF_GRID);
+          const my = Math.floor(cwy / VOX + HALF_GRID);
+          if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
+          const wIdx = my * mw + mx;
+          const wMat = matMap[wIdx];
+          if (!isWetMat(wMat)) continue;
+          const surfZ = wMat === MAT_SHALLOW ? (hmap[wIdx] < 0 ? -1 : hmap[wIdx]) : (hmap[wIdx] < 0 ? -2 : hmap[wIdx]);
+          if (!wavesByZ.has(surfZ)) wavesByZ.set(surfZ, []);
+          wavesByZ.get(surfZ).push({ wx: cwx, wy: cwy, val });
+        }
+      }
+
+      const streaksByZ = new Map();
+      for (let i = 0; i < flowStreaks.length; i++) {
+        const s = flowStreaks[i];
+        if (s.hLen < 2) continue;
+        if (s.x < minVisWx - 24 || s.x > maxVisWx + 24 || s.y < minVisWy - 24 || s.y > maxVisWy + 24) continue;
+        const sz = Math.round(s.z);
+        if (!streaksByZ.has(sz)) streaksByZ.set(sz, []);
+        streaksByZ.get(sz).push(s);
+      }
+
+      const floatingByZ = new Map();
+      for (let i = 0; i < floatingItems.length; i++) {
+        const f = floatingItems[i];
+        if (f.x < minVisWx || f.x > maxVisWx || f.y < minVisWy || f.y > maxVisWy) continue;
+        const fz = Math.round(f.z);
+        if (!floatingByZ.has(fz)) floatingByZ.set(fz, []);
+        floatingByZ.get(fz).push(f);
+      }
+
+      const visWaterfalls = [];
+      for (let i = 0; i < waterfallDrops.length; i++) {
+        const wd = waterfallDrops[i];
+        if (wd.wx >= minVisWx && wd.wx <= maxVisWx && wd.wy >= minVisWy && wd.wy <= maxVisWy) {
+          visWaterfalls.push(wd);
+        }
+      }
+
       // 4. Loop Unificado Slice-by-Slice (Terreno + Destination-Out + Grama + Partículas + Entidades)
       entityCtx.globalCompositeOperation = 'source-over';
       entityCtx.clearRect(0, 0, LOW_W, LOW_H);
       let entityStarted = false;
       const wfVisible = maxVisWx >= WF_X0 && minVisWx <= WF_X0 + WF_W * WF_CELL && maxVisWy >= WF_Y0 && minVisWy <= WF_Y0 + WF_H * WF_CELL;
+      const dropStreakTick = Math.floor(fluidTime * 10);
+
+      let activeCaveCeil = null;
+      const playerCaveCell = getCellAt(cat.x, cat.y);
+      if (playerCaveCell && playerCaveCell.hasCave && cat.z < playerCaveCell.caveCeil - 2) {
+        activeCaveCeil = playerCaveCell.caveCeil;
+      } else if (
+        window.__STUDIO_EDIT_MODE__ &&
+        window.__STUDIO__ &&
+        window.__STUDIO__.activeTool === 'cave_carve' &&
+        window.__STUDIO__.hoverWorld
+      ) {
+        const hw = window.__STUDIO__.hoverWorld;
+        const hc = getCellAt(hw.wx, hw.wy);
+        if (hc && hc.hasCave) activeCaveCeil = hc.caveCeil;
+      }
 
       for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
+        const isCaveCutaway = activeCaveCeil !== null && z >= activeCaveCeil;
         // 4a. Fatia do terreno (Tight-Crop Bounded Slice + skip O(1))
         const tSlice = z <= TERRAIN_Z_MAX ? terrainSlices[z] : null;
         if (tSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
+          if (isCaveCutaway) lowCtx.globalAlpha = 0.22;
           drawBoundedSliceTo(lowCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
+          if (isCaveCutaway) lowCtx.globalAlpha = 1.0;
 
           // Brilho animado na superfície da água (z = -2 profunda, z = -1 rasa)
           if (z === -2 || z === -1) {
@@ -492,44 +616,30 @@
             }
           }
 
-          // WaveBuffer (cristas/cavas) + FloatingItems respeitando oclusão 3D nas fatias z=-2, z=-1 e z=13
-          if (z === -2 || z === -1 || z === 13) {
-            for (let dy = 1; dy < WAVE_H - 1; dy++) {
-              const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
-              if (cwy < minVisWy || cwy > maxVisWy) continue;
-              const row = dy * WAVE_W;
-              for (let dx = 1; dx < WAVE_W - 1; dx++) {
-                const val = waveCurr[row + dx];
-                if (Math.abs(val) < 0.14) continue;
-                const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
-                if (cwx < minVisWx || cwx > maxVisWx) continue;
-                const mx = Math.floor(cwx / VOX + HALF_GRID);
-                const my = Math.floor(cwy / VOX + HALF_GRID);
-                if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
-                const wIdx = my * mw + mx;
-                const wMat = matMap[wIdx];
-                if (!isWetMat(wMat)) continue;
-                const surfZ = wMat === MAT_SHALLOW ? (hmap[wIdx] < 0 ? -1 : hmap[wIdx]) : (hmap[wIdx] < 0 ? -2 : hmap[wIdx]);
-                if (surfZ !== z) continue;
-                const wp = project(cwx, cwy, z + 0.2);
-                const px = Math.round(wp.x);
-                const py = Math.round(wp.y);
-                if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
-                if (val > 0) {
-                  lowCtx.fillStyle = val > 0.7 ? 'rgba(240, 249, 255, 0.72)' : 'rgba(224, 242, 254, 0.45)';
-                } else {
-                  lowCtx.fillStyle = val < -0.7 ? 'rgba(24, 118, 186, 0.52)' : 'rgba(36, 148, 214, 0.34)';
-                }
-                lowCtx.fillRect(px - 1, py, 3, 1);
+          // WaveBuffer (cristas/cavas), FlowStreaks & FloatingItems em qualquer cota Z com oclusão 3D
+          const wList = wavesByZ.get(z);
+          if (wList) {
+            for (let i = 0; i < wList.length; i++) {
+              const wv = wList[i];
+              const wp = project(wv.wx, wv.wy, z + 0.2);
+              const px = Math.round(wp.x);
+              const py = Math.round(wp.y);
+              if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
+              if (wv.val > 0) {
+                lowCtx.fillStyle = wv.val > 0.7 ? 'rgba(240, 249, 255, 0.72)' : 'rgba(224, 242, 254, 0.45)';
+              } else {
+                lowCtx.fillStyle = wv.val < -0.7 ? 'rgba(24, 118, 186, 0.52)' : 'rgba(36, 148, 214, 0.34)';
               }
+              lowCtx.fillRect(px - 1, py, 3, 1);
             }
+          }
 
-            for (let i = 0; i < flowStreaks.length; i++) {
-              const s = flowStreaks[i];
-              if (s.hLen < 2 || Math.round(s.z) !== z) continue;
-              if (s.x < minVisWx - 24 || s.x > maxVisWx + 24 || s.y < minVisWy - 24 || s.y > maxVisWy + 24) continue;
+          const sList = streaksByZ.get(z);
+          if (sList) {
+            for (let i = 0; i < sList.length; i++) {
+              const s = sList[i];
               const isDefl = s.deflect >= 0.16;
-              lowCtx.strokeStyle = isDefl ? 'rgba(248, 253, 255, 0.88)' : 'rgba(224, 242, 254, 0.42)';
+              lowCtx.strokeStyle = isDefl ? 'rgba(248, 253, 255, 0.88)' : 'rgba(224, 242, 254, 0.48)';
               lowCtx.lineWidth = s.deflect > 0.35 ? 1.5 : 1;
               lowCtx.beginPath();
               const p0 = project(s.hist[0], s.hist[1], z + 0.25);
@@ -540,11 +650,12 @@
               }
               lowCtx.stroke();
             }
+          }
 
-            for (let i = 0; i < floatingItems.length; i++) {
-              const f = floatingItems[i];
-              if (Math.round(f.z) !== z) continue;
-              if (f.x < minVisWx || f.x > maxVisWx || f.y < minVisWy || f.y > maxVisWy) continue;
+          const flList = floatingByZ.get(z);
+          if (flList) {
+            for (let i = 0; i < flList.length; i++) {
+              const f = flList[i];
               const bob = Math.sin(fluidTime * 3.2 + f.phase) * 0.25;
               const fp = project(f.x, f.y, z + 0.3 + bob);
               const px = Math.round(fp.x);
@@ -555,8 +666,21 @@
             }
           }
 
+          // Espuma animada nas quedas de cachoeiras dinâmicas (ΔZ >= 3)
+          if (visWaterfalls.length > 0) {
+            lowCtx.fillStyle = 'rgba(240, 249, 255, 0.82)';
+            for (let i = 0; i < visWaterfalls.length; i++) {
+              const wd = visWaterfalls[i];
+              if (z < wd.botZ || z > wd.topZ) continue;
+              if (((z + dropStreakTick + wd.mx * 3 + wd.my * 5) % 4) === 0 || z <= wd.botZ + 1) {
+                const wp = project(wd.wx, wd.wy, z + 0.2);
+                lowCtx.fillRect(Math.round(wp.x) - 1, Math.round(wp.y), 2, 2);
+              }
+            }
+          }
+
           // 4b. Recorte matemático de oclusão 3D em entityCanvas
-          if (entityStarted) {
+          if (entityStarted && !isCaveCutaway) {
             entityCtx.globalCompositeOperation = 'destination-out';
             drawBoundedSliceTo(entityCtx, tSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy);
             entityCtx.globalCompositeOperation = 'source-over';
@@ -610,7 +734,10 @@
         if (shList) {
           for (const sh of shList) {
             const c = getCellAt(sh.x, sh.y);
-            const onTerrain = c && Math.abs(sh.groundZ - c.h) <= 1.2;
+            const onTerrain = c && (
+              Math.abs(sh.groundZ - c.h) <= 1.2 ||
+              (c.hasCave && Math.abs(sh.groundZ - c.caveFloor) <= 1.2)
+            );
             const targetShadowCtx = onTerrain ? lowCtx : entityCtx;
             const sp = project(sh.x, sh.y, sh.groundZ + 0.3);
             targetShadowCtx.fillStyle = `rgba(38, 22, 14, ${sh.alpha})`;
@@ -624,7 +751,9 @@
         const gSlice = z <= Z_GRASS_MAX ? grassTipSlices[z] : null;
         if (gSlice && viewMaxMx > viewMinMx && viewMaxMy > viewMinMy) {
           const grassOff = Math.round(Math.sin(animTime * 4.5 + (z * 0.7)) * grassAmp + grassLean);
+          if (isCaveCutaway) lowCtx.globalAlpha = 0.22;
           drawBoundedSliceTo(lowCtx, gSlice, z, viewMinMx, viewMinMy, viewMaxMx, viewMaxMy, grassOff);
+          if (isCaveCutaway) lowCtx.globalAlpha = 1.0;
         }
 
         // 4c-bis. Partículas 3D na fatia Z (ocluídas por falésias mais altas!)

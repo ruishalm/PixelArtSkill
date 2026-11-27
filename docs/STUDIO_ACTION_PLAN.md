@@ -169,9 +169,27 @@ flowchart TD
 - **Humanoide cru (`feat/humanoid-avatar`):** `src/engine/05-humanoid.js`, avatar padrão do Studio.
 - **Publicar `.html` (`feat/studio-publish-html`):** HTML autocontido que abre em modo Testar; payload do projeto versionado (grid, avatar, `baseKind`, `generationMode`).
 - **Modelador Voxel MVP (`feat/studio-modeler`) & Polimento (`feat/modeler-polish`):** editor por camadas Z (16/24/32), lápis/borracha/balde/conta-gotas, espelho X, onion skin, paleta editável com presets (Padrão, Madeira, Folhagem, Pedra, Personagem, Cozy Pastel), botão `Auto-Shading (Z)`, preview 3D girando, categorias (`decor`, `solid`, `destructible` com HP/drop, `pickable`, `foliage`, `fire`), salvar na biblioteca do mundo ("Meus Modelos"), importar/exportar modelo `.json` (compatível com RLE), modelos incluídos no projeto e no `.html` publicado.
+- **Geradores Procedurais, Extrusão Z e Avatares Customizados (`feat/modeler-generators-and-custom-avatar`):** extrusão em pilha Z (1..10 camadas), gerador procedural de personagens (4 arquétipos + 6 cabeças) e 6 props em 1 clique (árvore, rocha, casinha, baú, cogumelo, espada) com variação por seed; categoria `avatar` com suporte a renderização e animação customizada no renderizador da engine e ferramentas de ataque (`swingTimer`/`equippedTool`).
+- **UX 3 Colunas do Modelador, Topbar Limpa, Tree Studio Modular & Conversor 2D → 3D (`feat/tree-studio-2d3d-and-modeler-ux`):** `.world-only-top` oculta controles de mundo na aba Modelador, scrollbar discreta na topbar, `#modelerView` reorganizado em 3 colunas (ferramentas/paleta/salvar à esquerda, Fatia 2D + Preview 3D lado a lado no centro, sub-abas de geradores à direita), além da implementação completa da Seção 8.1 e Seção 8.2.
+
+---
+
+## 8. Suíte Modular de Árvores & Conversor Matemático 2D → 3D (Sem IA) — ✅ Implementado
+
+Implementado em `src/studio/shell.html`, `src/studio/studio.css` e `src/studio/00-modeler.js` (`feat/tree-studio-2d3d-and-modeler-ux`):
+
+### 8.1. Tree & Flora Studio Modular (✅ Implementado)
+- **Troncos com bifurcação/trifurcação configurável:** seletor de ramificação (`1` tronco único, `2` bifurcado em Y, `3` trifurcado, `4` multi-galhos retorcido) com espessura (`1..5`), curvatura & raízes (`0..3`) e conicidade 3D.
+- **Copas modulares:** seleção de geradores (`spheres` Nuvens/Carvalho, `cones` Camadas/Pinheiro, `weeping` Pendente/Salgueiro, `dome` Domo/Sakura, `none` Seca/Morta).
+- **Switches de flores (%) e frutas (%):** distribuição estocástica na superfície externa da copa (`0..40%` flores, `0..30%` frutas).
+- **Mini-paletas independentes:** 4 pickers (`Tronco`, `Folhas`, `Flores`, `Frutas`) que geram automaticamente a paleta sombreada dedicada no Modelador.
+
+### 8.2. Conversor Matemático 2D → 3D ("3D-ização" sem IA) (✅ Implementado)
+1. *Inflação por Transformada de Distância Euclidiana (EDT Inflation):* perfis `edt_blade` (Chanfrado / Lâmina com borda afiada de 1 voxel) e `edt_organic` (Orgânico / Arredondado com perfil elíptico) a partir da Vista Frontal 2D (desenhada, copiada da fatia Z ou importada de `.png`).
+2. *Torno / Revolução 360° (Lathe):* rotação 360° da Vista Frontal em torno do eixo central Z para vasos, poções, cogumelos, colunas e chapéus.
+3. *Interseção Ortogonal `Frente 2D × Lado 2D` (Visual Hull / Space Carving):* cruzamento de duas projeções ortogonais (`m2dFrontCanvas` × `m2dSideCanvas`) com seleção de cor pela superfície mais próxima e chanfro opcional nas 4 quinas extremas em seções `>= 4×4`, acompanhado de 3 silhuetas 2D de demonstração (`🗡️ Espada`, `🏺 Vaso/Poção`, `🧸 Bichinho Frente+Lado`).
 - **Redirecionamento de scripts legados (`chore/project-full-audit`):** `scripts/generate_room.py` e `scripts/generate_full_3d_room.py` redirecionados para `generate_mega_room.build_mega_room()` para evitar sobrescrita monolítica acidental de `examples/room-3d.html`.
 
 ### Pendente / Observações
 - **1A (resize em runtime sem reload) e desacoplamento completo de `generate_studio.py`:** `scripts/generate_studio.py` ainda inclui `src/terrain-world/*.js` para reaproveitar estruturas compartilhadas (`hmap`, `propModels`, `loop`), mas pula toda a inicialização do Vale Felino via `window.__IS_STUDIO__`.
-- **Categoria `Avatar de Teste` no Modelador:** não implementada (o Studio usa `human` ou `cat`).
-- **Verificação em navegador:** a suíte automatizada (`tests/test_physics_invariants.py`, 8/8) valida packs, builds, sintaxe JS combinada, links e invariantes matemáticos em Node, complementada por smoke test em Chrome headless (6 páginas HTML + round-trip do Modelador e `Publicar .html`); inspeção visual manual interativa segue recomendada após futuras alterações de UI.
+- **Verificação em navegador:** a suíte automatizada (`tests/test_physics_invariants.py`, 11/11) valida packs, builds, sintaxe JS combinada, links, invariantes matemáticos em Node e execução real do Modelador 8.1/8.2; inspeção visual manual interativa segue recomendada após alterações de UI.
