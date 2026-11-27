@@ -151,7 +151,7 @@
                 }
               }
             }
-            if (maxH >= centerH + 12) {
+            if (maxH >= centerH + 13) {
               caveTargetFloorZ = Math.max(-1, centerH);
             } else if (centerH >= 16) {
               caveTargetFloorZ = Math.max(0, centerH - 18);
@@ -335,7 +335,7 @@
               terrainDirty = true;
             } else if (activeTool === 'cave_carve') {
               const roofBase = isWetMat(matMap[idx]) ? getSolidBedAtIdx(idx) : hmap[idx];
-              if (roofBase >= caveTargetFloorZ + 12) {
+              if (roofBase >= caveTargetFloorZ + 13) {
                 caveFloor[idx] = caveTargetFloorZ;
                 caveCeil[idx] = Math.min(roofBase - 3, caveTargetFloorZ + 14);
                 pinnedMask[idx] = 1;

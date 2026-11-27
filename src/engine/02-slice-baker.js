@@ -533,7 +533,7 @@
                     col = (min8 < z)
                       ? shadePack(PAL_ROCK[nHash & 1], sunShade + (((z >> 1) & 1) ? 9 : -8), sh * 0.3)
                       : bedCol;
-                  } else if (z < bedZ || min8 < z || hasCave) {
+                  } else if (z < bedZ || min8 < z) {
                     // Parede de contenção rochosa sólida (anti-aquário!)
                     if (wallMax >= wallMin && z <= wallMax) {
                       const strata = ((z >> 1) & 1) ? 5 : -5;
@@ -890,6 +890,7 @@
           if (z === ci.h) {
             let baseRGB;
             if (ci.mat === MAT_SAND) baseRGB = PAL_SAND[nHash & 1];
+            else if (ci.mat === MAT_STONE) baseRGB = PAL_STONE[nHash & 1];
             else if (ci.mat === MAT_PEAK) baseRGB = PAL_PEAK[nHash & 1];
             else if (ci.mat === MAT_PATH) baseRGB = PAL_PATH[nHash & 1];
             else {
