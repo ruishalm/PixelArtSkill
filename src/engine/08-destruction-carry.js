@@ -547,9 +547,15 @@
       }
       if (dr.carried) {
         const S = cat.scale || 1;
+        const customAv = (typeof cat.avatar === 'string' && cat.avatar.startsWith('custom_'))
+          ? ((typeof customAvatarModels !== 'undefined' && customAvatarModels[cat.avatar]) ||
+             (typeof window !== 'undefined' && window.customAvatarModels && window.customAvatarModels[cat.avatar]) ||
+             propModels[cat.avatar])
+          : null;
+        const carryH = cat.avatar === 'human' ? 31 : (customAv ? (customAv.count + 3) : 17);
         dr.x = cat.x - Math.sin(cat.selfAngle) * 4 * S;
         dr.y = cat.y + Math.cos(cat.selfAngle) * 4 * S;
-        dr.z = cat.z + (cat.avatar === 'human' ? 31 : 17) * S;
+        dr.z = cat.z + carryH * S;
         dr.vx = 0; dr.vy = 0; dr.vz = 0;
         dr.selfAngle = cat.selfAngle;
         dr.inWater = false;

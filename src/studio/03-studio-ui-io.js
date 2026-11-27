@@ -56,7 +56,7 @@
       const avatarScaleVal = document.getElementById('valAvatarScale');
       function setAvatar(kind) {
         cat.avatar = kind;
-        cat.scale = kind === 'human' ? 1.0 : 0.45;
+        cat.scale = kind === 'cat' ? 0.45 : 1.0;
         avatarScaleEl.value = String(cat.scale);
         avatarScaleVal.textContent = `${cat.scale.toFixed(2)}x`;
       }
@@ -435,6 +435,7 @@
           if (cloneAssetGrid) cloneAssetGrid.innerHTML = '';
           const cloneAssetEmpty = docClone.querySelector('#customAssetEmpty');
           if (cloneAssetEmpty) cloneAssetEmpty.style.display = '';
+          docClone.querySelectorAll('#avatarSelect option[value^="custom_"]').forEach(el => el.remove());
           docClone.querySelectorAll('script[data-studio-boot]').forEach(el => el.remove());
 
           const cssLinks = Array.from(docClone.querySelectorAll('link[rel="stylesheet"][href]'));

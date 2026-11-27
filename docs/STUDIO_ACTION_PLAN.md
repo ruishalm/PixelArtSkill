@@ -169,6 +169,24 @@ flowchart TD
 - **Humanoide cru (`feat/humanoid-avatar`):** `src/engine/05-humanoid.js`, avatar padrão do Studio.
 - **Publicar `.html` (`feat/studio-publish-html`):** HTML autocontido que abre em modo Testar; payload do projeto versionado (grid, avatar, `baseKind`, `generationMode`).
 - **Modelador Voxel MVP (`feat/studio-modeler`) & Polimento (`feat/modeler-polish`):** editor por camadas Z (16/24/32), lápis/borracha/balde/conta-gotas, espelho X, onion skin, paleta editável com presets (Padrão, Madeira, Folhagem, Pedra, Personagem, Cozy Pastel), botão `Auto-Shading (Z)`, preview 3D girando, categorias (`decor`, `solid`, `destructible` com HP/drop, `pickable`, `foliage`, `fire`), salvar na biblioteca do mundo ("Meus Modelos"), importar/exportar modelo `.json` (compatível com RLE), modelos incluídos no projeto e no `.html` publicado.
+- **Geradores Procedurais, Extrusão Z e Avatares Customizados (`feat/modeler-generators-and-custom-avatar`):** extrusão em pilha Z (1..10 camadas), gerador procedural de personagens (4 arquétipos + 6 cabeças) e 6 props em 1 clique (árvore, rocha, casinha, baú, cogumelo, espada) com variação por seed; categoria `avatar` com suporte a renderização e animação customizada no renderizador da engine e ferramentas de ataque (`swingTimer`/`equippedTool`).
+
+---
+
+## 8. Próxima Expansão Planejada: Suíte Modular de Árvores & Conversor Matemático 2D → 3D (Sem IA)
+
+Documentando a arquitetura especificada para a próxima evolução do Studio:
+
+### 8.1. Tree & Flora Studio Modular
+- **Troncos com bifurcação/trifurcação configurável:** algoritmos paramétricos de L-Systems ou ramificação recursiva guiados por seed e parâmetros de espessura, ângulo de inclinação e conicidade.
+- **Copas modulares:** seleção de geradores (camadas de folhas em cone/esfera, copas pendentes tipo salgueiro, domos densos).
+- **Switches de flores (%) e frutas (%):** distribuição estocástica controlada por densidade nas extremidades da copa.
+- **Mini-paletas independentes:** paletas separadas e customizáveis por subcomponente (tronco, folhagem, flor, fruto).
+
+### 8.2. Conversor Matemático 2D → 3D ("3D-ização" sem IA)
+1. *Inflação por Transformada de Distância Euclidiana (EDT Inflation):* a partir de 1 sprite 2D de perfil (com perfis Chanfrado/Lâmina para armas/escudos e Orgânico/Elíptico para criaturas/objetos), calcula o campo de distância para extrudar o volume voxelizado com bisel automático.
+2. *Torno / Revolução 360° (Lathe):* rotação de uma silhueta 2D em torno do eixo central Z para gerar formas simétricas como poções, vasos, cogumelos, colunas e chapéus em segundos.
+3. *Interseção Ortogonal `Frente 2D × Lado 2D` (Visual Hull / Space Carving):* cruzamento de duas projeções ortogonais (vista frontal e lateral) para esculpir automaticamente personagens, animais e móveis 3D complexos sem necessidade de modelagem manual ou inferência por IA pesada.
 - **Redirecionamento de scripts legados (`chore/project-full-audit`):** `scripts/generate_room.py` e `scripts/generate_full_3d_room.py` redirecionados para `generate_mega_room.build_mega_room()` para evitar sobrescrita monolítica acidental de `examples/room-3d.html`.
 
 ### Pendente / Observações
