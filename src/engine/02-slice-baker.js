@@ -51,8 +51,74 @@
 
     const terrainSlices = {};
     const grassTipSlices = {};
+    const waterfallDrops = [];
+
+    const COL_BED = packRGBA(28, 66, 108, 255);
+    const COL_FOAM_PLUNGE = packRGBA(236, 248, 255, 245);
+    const COL_SHALLOW_A = packRGBA(72, 202, 245, 225);
+    const COL_SHALLOW_B = packRGBA(95, 215, 250, 225);
+    const COL_DEEP_A = packRGBA(56, 189, 248, 235);
+    const COL_DEEP_B = packRGBA(42, 172, 236, 235);
+    const COL_CALM_SHIMMER = packRGBA(186, 230, 253, 240);
+    const COL_CALM_A = packRGBA(56, 189, 248, 235);
+    const COL_CALM_B = packRGBA(72, 202, 245, 235);
+    const COL_CALM_SUB = packRGBA(36, 168, 232, 235);
+    const COL_DROP_FOAM = packRGBA(224, 242, 254, 255);
+    const COL_DROP_TOP = packRGBA(56, 189, 248, 240);
+    const COL_DROP_BODY = packRGBA(28, 158, 224, 255);
+    const COL_SHALLOW_BED_A = packRGBA(198, 178, 134, 255);
+    const COL_SHALLOW_BED_B = packRGBA(182, 162, 120, 255);
+    const COL_SHALLOW_SURF_A = packRGBA(103, 232, 249, 200);
+    const COL_SHALLOW_SURF_B = packRGBA(125, 240, 252, 200);
+    const COL_SHALLOW_SHIMMER = packRGBA(224, 252, 255, 225);
+
+    function getMinWetDropNeighborZ(mx, my, surfZ) {
+      let minWet = surfZ;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = my + dy;
+        if (ny < 0 || ny >= mh) continue;
+        const row = ny * mw;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = mx + dx;
+          if (nx < 0 || nx >= mw) continue;
+          const nIdx = row + nx;
+          if (!isWetMat(matMap[nIdx])) continue;
+          const nh = hmap[nIdx];
+          const ns = nh < 0 ? (matMap[nIdx] === MAT_SHALLOW ? -1 : -2) : nh;
+          if (ns < minWet) minWet = ns;
+        }
+      }
+      return minWet;
+    }
+
+    function computeWaterfallDrops() {
+      waterfallDropMask.fill(0);
+      waterfallDrops.length = 0;
+      for (let my = 1; my < mh - 1; my++) {
+        const row = my * mw;
+        for (let mx = 1; mx < mw - 1; mx++) {
+          const idx = row + mx;
+          if (!isWetMat(matMap[idx])) continue;
+          const h = hmap[idx];
+          if (h < 0) continue;
+          const minWet = getMinWetDropNeighborZ(mx, my, h);
+          if (h - minWet >= 3) {
+            waterfallDropMask[idx] = 1;
+            waterfallDrops.push({
+              mx, my,
+              wx: (mx - HALF_GRID + 0.5) * VOX,
+              wy: (my - HALF_GRID + 0.5) * VOX,
+              topZ: h,
+              botZ: minWet
+            });
+          }
+        }
+      }
+    }
 
     function bakeTerrainSlices() {
+      computeWaterfallDrops();
       const nTerrain = TERRAIN_Z_MAX - Z_MIN + 1;
       const tMinX = new Int16Array(nTerrain).fill(mw);
       const tMaxX = new Int16Array(nTerrain).fill(-1);
@@ -123,24 +189,32 @@
           }
           min8Cache[idx] = min8;
 
-          if (mat === MAT_WATER) {
-            if (h < 0) {
-              const zEnd = h + 1 < -4 ? h + 1 : -4;
-              for (let z = Z_MIN; z <= zEnd; z++) markT(z, mx, my);
-              markT(-2, mx, my);
+          if (mat === MAT_WATER || mat === MAT_SHALLOW) {
+            const wd = waterDepth[idx];
+            if (h < 0 && wd === 0) {
+              if (mat === MAT_WATER) {
+                const zEnd = h + 1 < -4 ? h + 1 : -4;
+                for (let z = Z_MIN; z <= zEnd; z++) markT(z, mx, my);
+                markT(-2, mx, my);
+              } else {
+                const zStartBed = Math.max(Z_MIN, min8 - 2);
+                for (let z = zStartBed; z <= h; z++) markT(z, mx, my);
+                markT(-1, mx, my);
+              }
             } else {
-              const isWaterfallDrop = (h - min8) > 4;
-              const zFrom = isWaterfallDrop
-                ? Math.max(Z_MIN, Math.min(h - 1, min8 - 2))
-                : Math.max(Z_MIN, h - 1);
-              for (let z = zFrom; z <= h; z++) markT(z, mx, my);
+              const surfZ = h < 0 ? (mat === MAT_SHALLOW ? -1 : -2) : h;
+              const effDepth = wd > 0 ? wd : (mat === MAT_SHALLOW ? 1 : 2);
+              const bedZ = Math.max(Z_MIN, surfZ - effDepth);
+              if (waterfallDropMask[idx] === 1) {
+                const minWet = getMinWetDropNeighborZ(mx, my, surfZ);
+                const zDropBot = Math.max(Z_MIN, minWet - 1);
+                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, zDropBot));
+                for (let z = zStart; z <= surfZ; z++) markT(z, mx, my);
+              } else {
+                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+                for (let z = zStart; z <= surfZ; z++) markT(z, mx, my);
+              }
             }
-            continue;
-          }
-          if (mat === MAT_SHALLOW) {
-            const zStartBed = Math.max(Z_MIN, min8 - 2);
-            for (let z = zStartBed; z <= h; z++) markT(z, mx, my);
-            markT(h < 0 ? -1 : h, mx, my);
             continue;
           }
 
@@ -238,26 +312,6 @@
         }
       }
 
-      // Pre-cache packed colors for flat shadow-free water & terrain
-      const COL_BED = packRGBA(28, 66, 108, 255);
-      const COL_FOAM_PLUNGE = packRGBA(236, 248, 255, 245);
-      const COL_SHALLOW_A = packRGBA(72, 202, 245, 225);
-      const COL_SHALLOW_B = packRGBA(95, 215, 250, 225);
-      const COL_DEEP_A = packRGBA(56, 189, 248, 235);
-      const COL_DEEP_B = packRGBA(42, 172, 236, 235);
-      const COL_CALM_SHIMMER = packRGBA(186, 230, 253, 240);
-      const COL_CALM_A = packRGBA(56, 189, 248, 235);
-      const COL_CALM_B = packRGBA(72, 202, 245, 235);
-      const COL_CALM_SUB = packRGBA(36, 168, 232, 235);
-      const COL_DROP_FOAM = packRGBA(224, 242, 254, 255);
-      const COL_DROP_TOP = packRGBA(56, 189, 248, 240);
-      const COL_DROP_BODY = packRGBA(28, 158, 224, 255);
-      const COL_SHALLOW_BED_A = packRGBA(198, 178, 134, 255);
-      const COL_SHALLOW_BED_B = packRGBA(182, 162, 120, 255);
-      const COL_SHALLOW_SURF_A = packRGBA(103, 232, 249, 200);
-      const COL_SHALLOW_SURF_B = packRGBA(125, 240, 252, 200);
-      const COL_SHALLOW_SHIMMER = packRGBA(224, 252, 255, 225);
-
       // Passo 2: Preenche diretamente os buffers recortados (Tight-Crop)
       for (let my = 0; my < mh; my++) {
         const row = my * mw;
@@ -271,59 +325,100 @@
           const nHash = ((Math.imul(mx, 73856093)) ^ (Math.imul(my, 19349663))) >>> 0;
           const microTex = ((nHash & 7) - 3) * 2;
 
-          if (mat === MAT_WATER) {
-            if (h < 0) {
-              const zEnd = Math.min(-4, h + 1);
-              for (let z = Z_MIN; z <= zEnd; z++) {
-                const si = z - Z_MIN;
-                terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = COL_BED;
-              }
-              const siSurf = -2 - Z_MIN;
-              const isShallow = h > -6;
-              terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isShallow
-                ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
-                : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B);
-            } else {
-              const isWaterfallDrop = (h - min8) > 4;
-              if (!isWaterfallDrop) {
-                const zFrom = Math.max(Z_MIN, h - 1);
-                const shimmer = (nHash % 19) === 0;
-                const topCol = shimmer ? COL_CALM_SHIMMER : ((nHash & 1) ? COL_CALM_A : COL_CALM_B);
-                for (let z = zFrom; z <= h; z++) {
+          if (mat === MAT_WATER || mat === MAT_SHALLOW) {
+            const wd = waterDepth[idx];
+            if (h < 0 && wd === 0) {
+              if (mat === MAT_WATER) {
+                const zEnd = Math.min(-4, h + 1);
+                for (let z = Z_MIN; z <= zEnd; z++) {
                   const si = z - Z_MIN;
-                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = (z === h) ? topCol : COL_CALM_SUB;
+                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = COL_BED;
+                }
+                const siSurf = -2 - Z_MIN;
+                const isShallow = h > -6;
+                terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = isShallow
+                  ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
+                  : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B);
+              } else {
+                const zStartBed = Math.max(Z_MIN, min8 - 2);
+                const bedCol = (nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B;
+                for (let z = zStartBed; z <= h; z++) {
+                  const si = z - Z_MIN;
+                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = bedCol;
+                }
+                const siSurf = -1 - Z_MIN;
+                const shimmer = (nHash % 17) === 0;
+                terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = shimmer
+                  ? COL_SHALLOW_SHIMMER
+                  : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B);
+              }
+            } else {
+              const hL = mx > 0 ? hmap[idx - 1] : h;
+              const hR = mx < mw - 1 ? hmap[idx + 1] : h;
+              const hU = my > 0 ? hmap[idx - mw] : h;
+              const hD = my < mh - 1 ? hmap[idx + mw] : h;
+              const sunShade = Math.max(-22, Math.min(22, Math.round((-(hR - hL) - (hD - hU)) * 1.4)));
+              const surfZ = h < 0 ? (mat === MAT_SHALLOW ? -1 : -2) : h;
+              const effDepth = wd > 0 ? wd : (mat === MAT_SHALLOW ? 1 : 2);
+              const bedZ = Math.max(Z_MIN, surfZ - effDepth);
+
+              if (waterfallDropMask[idx] === 1) {
+                const minWet = getMinWetDropNeighborZ(mx, my, surfZ);
+                const zDropBot = Math.max(Z_MIN, minWet - 1);
+                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, zDropBot));
+                const streakHash = ((mx * 17) ^ (my * 31)) & 7;
+                for (let z = zStart; z <= surfZ; z++) {
+                  const si = z - Z_MIN;
+                  let col;
+                  if (z < zDropBot) {
+                    const strata = ((z >> 1) & 1) ? 9 : -8;
+                    col = shadePack(PAL_ROCK[nHash & 1], sunShade + strata, sh * 0.3);
+                  } else {
+                    const isTop = (z === surfZ);
+                    const isFoam = isTop
+                      ? ((mx + my) % 3 === 0)
+                      : ((streakHash < 3 && ((z + (mx & 1)) % 3 !== 0)) || (z <= zDropBot + 1));
+                    col = isFoam ? COL_DROP_FOAM : (isTop ? COL_DROP_TOP : COL_DROP_BODY);
+                  }
+                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = col;
                 }
               } else {
-                const zFrom = Math.max(Z_MIN, Math.min(h - 1, min8 - 2));
-                const streakHash = ((mx * 17) ^ (my * 31)) & 7;
-                for (let z = zFrom; z <= h; z++) {
+                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+                const bedCol = mat === MAT_SHALLOW
+                  ? ((nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B)
+                  : COL_BED;
+                const shimmer = (nHash % (mat === MAT_SHALLOW ? 17 : 19)) === 0;
+                const topCol = mat === MAT_SHALLOW
+                  ? (shimmer ? COL_SHALLOW_SHIMMER : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B))
+                  : (shimmer ? COL_CALM_SHIMMER : ((nHash & 1) ? COL_CALM_A : COL_CALM_B));
+                const subCol = mat === MAT_SHALLOW ? COL_SHALLOW_SURF_B : COL_CALM_SUB;
+
+                for (let z = zStart; z <= surfZ; z++) {
                   const si = z - Z_MIN;
-                  const isTop = (z === h);
-                  const isFoam = isTop
-                    ? ((mx + my) % 3 === 0 && h < 45)
-                    : ((streakHash < 2 && ((z + (mx & 1)) % 3 !== 0)) || (z <= 2));
-                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = isFoam
-                    ? COL_DROP_FOAM
-                    : (isTop ? COL_DROP_TOP : COL_DROP_BODY);
+                  let col;
+                  if (z === surfZ) {
+                    col = topCol;
+                  } else if (z === bedZ) {
+                    col = (min8 < z)
+                      ? shadePack(PAL_ROCK[nHash & 1], sunShade + (((z >> 1) & 1) ? 9 : -8), sh * 0.3)
+                      : bedCol;
+                  } else if (z < bedZ || min8 < z) {
+                    // Parede de contenção rochosa sólida (anti-aquário!)
+                    const d = surfZ - z;
+                    if (d <= 8 && z < bedZ && mat === MAT_SHALLOW) {
+                      const strata = (z & 2) ? 6 : -5;
+                      col = shadePack(PAL_EARTH[nHash & 1], sunShade + strata, sh * 0.4);
+                    } else {
+                      const strata = ((z >> 1) & 1) ? 9 : -8;
+                      col = shadePack(PAL_ROCK[nHash & 1], sunShade + strata, sh * 0.3);
+                    }
+                  } else {
+                    col = subCol;
+                  }
+                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = col;
                 }
               }
             }
-            continue;
-          }
-
-          if (mat === MAT_SHALLOW) {
-            const zStartBed = Math.max(Z_MIN, min8 - 2);
-            const bedCol = (nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B;
-            for (let z = zStartBed; z <= h; z++) {
-              const si = z - Z_MIN;
-              terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = bedCol;
-            }
-            const surfZ = h < 0 ? -1 : h;
-            const siSurf = surfZ - Z_MIN;
-            const shimmer = (nHash % 17) === 0;
-            terrainBufs[siSurf][(my - tMinY[siSurf]) * tW[siSurf] + (mx - tMinX[siSurf])] = shimmer
-              ? COL_SHALLOW_SHIMMER
-              : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B);
             continue;
           }
 
@@ -486,7 +581,7 @@
       uploadTightSlices(grassBufs, gMinX, gMinY, gW, gH, grassTipSlices, Z_GRASS_MAX);
     }
 
-    // Re-bake incremental por Dirty Rect (para Matéria Granular: areia/neve em tempo real)
+    // Re-bake incremental por Dirty Rect (para Matéria Granular & Pincéis ao vivo)
     function rebakeTerrainDirtyRect(mx0, my0, mx1, my1) {
       const x0 = Math.max(1, mx0);
       const y0 = Math.max(1, my0);
@@ -494,11 +589,8 @@
       const y1 = Math.min(mh - 2, my1);
       if (x1 < x0 || y1 < y0) return;
 
-      const PAL_PATH = [[196, 158, 114], [180, 142, 99]];
-      const PAL_SAND = [[242, 214, 154], [231, 199, 136]];
-      const PAL_PEAK = [[245, 198, 224], [234, 178, 210]];
-      const PAL_SOIL = [[138, 96, 62], [116, 79, 50]];
-      const PAL_ROCK = [[104, 110, 122], [84, 90, 102]];
+      const PAL_DIRTY_SOIL = [[138, 96, 62], [116, 79, 50]];
+      const PAL_DIRTY_ROCK = [[104, 110, 122], [84, 90, 102]];
 
       let minZDirty = TERRAIN_Z_MAX;
       let maxZDirty = Z_MIN;
@@ -509,22 +601,46 @@
         for (let mx = x0; mx <= x1; mx++) {
           const idx = row + mx;
           const mat = matMap[idx];
-          if (isWetMat(mat) || mat === MAT_BRIDGE) continue;
+          if (mat === MAT_BRIDGE) continue;
           const h = Math.max(Z_MIN, Math.min(TERRAIN_Z_MAX - 1, hmap[idx]));
           const hL = hmap[idx - 1], hR = hmap[idx + 1], hU = hmap[idx - mw], hD = hmap[idx + mw];
           const min8 = Math.min(
             hL, hR, hU, hD,
             hmap[idx - mw - 1], hmap[idx - mw + 1], hmap[idx + mw - 1], hmap[idx + mw + 1]
           );
-          const zStart = Math.max(Z_MIN, min8 - 2);
+          const wet = isWetMat(mat);
+          const wd = waterDepth[idx];
+          let surfZ = h;
+          let bedZ = h;
+          let isDrop = false;
+          let zDropBot = Z_MIN;
+          let zStart = Math.max(Z_MIN, min8 - 2);
+          if (wet) {
+            if (h < 0 && wd === 0) {
+              surfZ = mat === MAT_SHALLOW ? -1 : -2;
+              zStart = Z_MIN;
+              bedZ = mat === MAT_SHALLOW ? h : Math.min(-4, h + 1);
+            } else {
+              surfZ = h < 0 ? (mat === MAT_SHALLOW ? -1 : -2) : h;
+              const effD = wd > 0 ? wd : (mat === MAT_SHALLOW ? 1 : 2);
+              bedZ = Math.max(Z_MIN, surfZ - effD);
+              const minWet = surfZ >= 0 ? getMinWetDropNeighborZ(mx, my, surfZ) : surfZ;
+              isDrop = surfZ >= 0 && (surfZ - minWet >= 3);
+              zDropBot = Math.max(Z_MIN, minWet - 1);
+              zStart = isDrop
+                ? Math.max(Z_MIN, Math.min(min8 - 2, zDropBot))
+                : Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+            }
+          }
           if (zStart < minZDirty) minZDirty = zStart;
-          if (h > maxZDirty) maxZDirty = h;
-          cellInfo.push({ mx, my, idx, h, mat, zStart, hL, hR, hU, hD });
+          if (surfZ > maxZDirty) maxZDirty = surfZ;
+          cellInfo.push({ mx, my, idx, h: surfZ, rawH: h, mat, wet, wd, bedZ, min8, isDrop, zDropBot, zStart, hL, hR, hU, hD });
         }
       }
 
       if (maxZDirty < minZDirty) return;
-      for (let z = minZDirty; z <= maxZDirty; z++) {
+      const clearTopZ = Math.min(TERRAIN_Z_MAX - 1, maxZDirty + 6);
+      for (let z = minZDirty; z <= clearTopZ; z++) {
         const sl = terrainSlices[z];
         if (!sl) continue;
         const rx0 = Math.max(sl.offX, x0);
@@ -550,15 +666,62 @@
           const nHash = ((Math.imul(ci.mx, 73856093)) ^ (Math.imul(ci.my, 19349663))) >>> 0;
           const microTex = ((nHash & 7) - 3) * 2;
           const sunShade = Math.max(-22, Math.min(22, Math.round((-(ci.hR - ci.hL) - (ci.hD - ci.hU)) * 1.4)));
+
+          if (ci.wet) {
+            if (ci.rawH < 0 && ci.wd === 0) {
+              if (ci.mat === MAT_WATER) {
+                if (z === -2) {
+                  buf[outIdx] = ci.rawH > -6 ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B) : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B);
+                } else if (z <= ci.bedZ) {
+                  buf[outIdx] = COL_BED;
+                } else {
+                  buf[outIdx] = 0;
+                }
+              } else {
+                buf[outIdx] = z === -1
+                  ? ((nHash % 17) === 0 ? COL_SHALLOW_SHIMMER : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B))
+                  : ((nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B);
+              }
+            } else if (ci.isDrop) {
+              if (z < ci.zDropBot) {
+                buf[outIdx] = shadePack(PAL_DIRTY_ROCK[(nHash + z) & 1], sunShade + microTex, shadowMask[ci.idx]);
+              } else {
+                const isTop = (z === ci.h);
+                const streakHash = ((ci.mx * 17) ^ (ci.my * 31)) & 7;
+                const isFoam = isTop ? ((ci.mx + ci.my) % 3 === 0) : ((streakHash < 3 && ((z + (ci.mx & 1)) % 3 !== 0)) || (z <= ci.zDropBot + 1));
+                buf[outIdx] = isFoam ? COL_DROP_FOAM : (isTop ? COL_DROP_TOP : COL_DROP_BODY);
+              }
+            } else {
+              if (z === ci.h) {
+                const shM = (nHash % (ci.mat === MAT_SHALLOW ? 17 : 19)) === 0;
+                buf[outIdx] = ci.mat === MAT_SHALLOW
+                  ? (shM ? COL_SHALLOW_SHIMMER : ((nHash & 1) ? COL_SHALLOW_SURF_A : COL_SHALLOW_SURF_B))
+                  : (shM ? COL_CALM_SHIMMER : ((nHash & 1) ? COL_CALM_A : COL_CALM_B));
+              } else if (z === ci.bedZ && ci.min8 >= z) {
+                buf[outIdx] = ci.mat === MAT_SHALLOW ? ((nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B) : COL_BED;
+              } else if (z < ci.bedZ || ci.min8 < z) {
+                buf[outIdx] = shadePack(PAL_DIRTY_ROCK[(nHash + z) & 1], sunShade + microTex, shadowMask[ci.idx]);
+              } else {
+                buf[outIdx] = ci.mat === MAT_SHALLOW ? COL_SHALLOW_SURF_B : COL_CALM_SUB;
+              }
+            }
+            continue;
+          }
+
           const exposedEdge = (ci.hL < ci.h || ci.hU < ci.h) ? 10 : 0;
           if (z === ci.h) {
-            const baseRGB = ci.mat === MAT_SAND
-              ? PAL_SAND[nHash & 1]
-              : (ci.mat === MAT_PEAK ? PAL_PEAK[nHash & 1] : PAL_PATH[nHash & 1]);
+            let baseRGB;
+            if (ci.mat === MAT_SAND) baseRGB = PAL_SAND[nHash & 1];
+            else if (ci.mat === MAT_PEAK) baseRGB = PAL_PEAK[nHash & 1];
+            else if (ci.mat === MAT_PATH) baseRGB = PAL_PATH[nHash & 1];
+            else {
+              const tier = ci.h >= 42 ? 3 : (ci.h >= 24 ? 2 : (ci.h >= 10 ? 1 : 0));
+              baseRGB = PAL_GRASS_BASE[tier];
+            }
             buf[outIdx] = shadePack(baseRGB, sunShade + exposedEdge + microTex, shadowMask[ci.idx]);
           } else {
             const depth = ci.h - z;
-            const cliffRGB = depth <= 4 ? PAL_SOIL[(nHash + z) & 1] : PAL_ROCK[(nHash + z) & 1];
+            const cliffRGB = depth <= 4 ? PAL_DIRTY_SOIL[(nHash + z) & 1] : PAL_DIRTY_ROCK[(nHash + z) & 1];
             buf[outIdx] = shadePack(cliffRGB, sunShade - depth * 2 + microTex, shadowMask[ci.idx]);
           }
         }

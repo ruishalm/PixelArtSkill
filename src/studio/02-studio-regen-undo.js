@@ -16,7 +16,9 @@
         return {
           h: new Float32Array(sculptH),
           m: new Uint8Array(matMap),
+          wd: new Uint8Array(waterDepth),
           p: new Uint8Array(pinnedMask),
+          springs: waterSprings.map(sp => ({ wx: sp.wx, wy: sp.wy, z: sp.z })),
           props: props.filter(p => !p.destroyed).map(p => ({
             modelKey: p.modelKey, wx: p.wx, wy: p.wy, liftZ: p.wz,
             angle: p.selfAngle, scale: p.scale, pinned: !!p.pinned
@@ -28,7 +30,13 @@
         sculptH.set(snap.h);
         for (let i = 0; i < hmap.length; i++) hmap[i] = Math.round(sculptH[i]);
         matMap.set(snap.m);
+        if (snap.wd) waterDepth.set(snap.wd);
+        else waterDepth.fill(0);
         pinnedMask.set(snap.p);
+        waterSprings.length = 0;
+        if (Array.isArray(snap.springs)) {
+          for (const sp of snap.springs) waterSprings.push({ wx: sp.wx, wy: sp.wy, z: sp.z || 0 });
+        }
         if (Array.isArray(snap.props)) {
           clearAllProps();
           for (const sp of snap.props) {
@@ -41,6 +49,7 @@
           }
         }
         if (typeof buildStandableMap === 'function') buildStandableMap();
+        if (typeof initFlowStreaks === 'function') initFlowStreaks();
         bakeTerrainSlices();
         bakeMinimapBase();
       }
@@ -77,9 +86,11 @@
 
         if (baseKind === 'flat') {
           hmap.fill(0);
+          waterDepth.fill(0);
           matMap.fill(MAT_GRASS);
           return;
         }
+        waterDepth.fill(0);
 
         const fs = 1080 / mw; // mantém o "tamanho" das feições: diorama pequeno mostra o relevo inteiro
         for (let my = 0; my < mh; my++) {
@@ -113,15 +124,19 @@
       function regenWorld(newSeed, preservePinned, baseKindOverride = null) {
         const baseKind = baseKindOverride || (baseKindSel ? baseKindSel.value : 'island');
         const genMode = genModeSel ? genModeSel.value : 'hybrid';
-        let savedH = null, savedM = null, savedProps = null;
+        let savedH = null, savedM = null, savedWd = null, savedProps = null, savedSprings = null;
         if (preservePinned) {
           savedH = new Float32Array(hmap);
           savedM = new Uint8Array(matMap);
+          savedWd = new Uint8Array(waterDepth);
+          savedSprings = waterSprings.map(sp => ({ wx: sp.wx, wy: sp.wy, z: sp.z }));
           savedProps = props.filter(p => p.pinned).map(p => ({
             modelKey: p.modelKey, wx: p.wx, wy: p.wy, angle: p.selfAngle, scale: p.scale
           }));
         } else {
           pinnedMask.fill(0);
+          waterDepth.fill(0);
+          waterSprings.length = 0;
           customWindVx.fill(0); customWindVy.fill(0);
           customFlowVx.fill(0); customFlowVy.fill(0);
         }
@@ -133,7 +148,12 @@
             if (pinnedMask[i] === 1) {
               hmap[i] = savedH[i];
               matMap[i] = savedM[i];
+              waterDepth[i] = savedWd[i];
             }
+          }
+          waterSprings.length = 0;
+          if (savedSprings) {
+            for (const sp of savedSprings) waterSprings.push(sp);
           }
           // Transição suave de 3 células na borda das áreas fixas
           const copyH = new Float32Array(hmap);

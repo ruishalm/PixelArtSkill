@@ -77,6 +77,13 @@
       return cell.h < 0 ? -2 : cell.h;
     }
 
+    function waterBedZ(cell) {
+      if (!cell) return -6;
+      if (!isWetMat(cell.mat)) return cell.h;
+      if (cell.waterDepth > 0) return Math.max(Z_MIN, waterSurfZ(cell) - cell.waterDepth);
+      return cell.h;
+    }
+
     function evaluateSupport(wx, wy, currentZ, onGround) {
       const S = cat.scale || 1;
       const r = (onGround ? 2.4 : 3.2) * S;
@@ -99,8 +106,11 @@
         }
         const c = getCellAt(sx, sy);
         if (!c || c.mat === MAT_WATER || !c.standable) continue;
-        if (c.h <= currentZ + climbAllowed) {
-          if (c.h > bestH) bestH = c.h;
+        const supH = (c.mat === MAT_SHALLOW && c.h >= 0 && c.waterDepth > 0)
+          ? Math.max(Z_MIN, c.h - Math.min(2, c.waterDepth))
+          : c.h;
+        if (supH <= currentZ + climbAllowed) {
+          if (supH > bestH) bestH = supH;
         }
       }
 
@@ -692,7 +702,8 @@
       } else {
         cat.groundZ = -6;
         cat.onGround = false;
-        if (cat.z < -2.5) {
+        const hitHighWater = sup.centerCell && sup.centerCell.mat === MAT_WATER && cat.z <= waterSurfZ(sup.centerCell) - 1.2;
+        if (cat.z < -2.5 || hitHighWater) {
           const inWater = sup.centerCell && sup.centerCell.mat === MAT_WATER;
           const splashX = cat.x;
           const splashY = cat.y;
@@ -734,6 +745,13 @@
         cat._prevSubVol = catSubVol;
       }
       if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
+        const wadeFlow = sampleWaterFlow(cat.x, cat.y);
+        if (wadeFlow.speed > 2.5) {
+          const driftX = wadeFlow.vx * 0.45 * dt;
+          const driftY = wadeFlow.vy * 0.45 * dt;
+          if (driftX !== 0 && !checkCollisionAt(cat.x + driftX, cat.y, cat.z, true).blocked) cat.x += driftX;
+          if (driftY !== 0 && !checkCollisionAt(cat.x, cat.y + driftY, cat.z, true).blocked) cat.y += driftY;
+        }
         if (cat.isWalking) {
           guideSpeak('shallow_wade', 'Partindo a correnteza! 🌊', 125);
           if (shallowRippleTimer <= 0) {
@@ -942,6 +960,7 @@
           }
         }
         if (!window.__IS_STUDIO__) stepWaterfallSim(1 / 30, true);
+        stepAutoWaterfallsAndSprings(true);
         stepWaveBuffer();
       }
       stepThermodynamics(dt);
