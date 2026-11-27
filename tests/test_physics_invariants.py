@@ -1559,6 +1559,7 @@ makeEl('mPropFamily', { value: 'weapon', type: 'select-one' });
 makeEl('mPropWidth', { value: '6', type: 'range' });
 makeEl('mPropWidthVal');
 makeEl('mPropHeight', { value: '14', type: 'range' });
+makeEl('mPropHeightVal');
 makeEl('mPropDepth', { value: '5', type: 'range' });
 makeEl('mPropDepthVal');
 makeEl('mPropSubtype', { value: 'sword', type: 'select-one' });
@@ -1713,7 +1714,27 @@ function runModelerTests() {
   document.getElementById('mRightTabs')._emit('click', { target: { closest: () => tabBtns[0] } });
   assert(document.getElementById('mTabChars').classList.contains('active'));
 
-  M.generateCharacter({ charType: 'biped_beast', partMode: 'full', headStyle: 'mohawk', hatStyle: 'none', colSkin: '#D97706' }, 1);
+  // Switching mCharType in UI adapts creature defaults (no human hair wig on beasts) and mBtnVaryChar respects archetype
+  document.getElementById('mCharHead').value = 'short_hair';
+  document.getElementById('mCharTorso').value = 'shirt';
+  document.getElementById('mCharLegs').value = 'pants';
+  document.getElementById('mCharType').value = 'biped_beast';
+  document.getElementById('mCharType')._emit('change');
+  assert.strictEqual(document.getElementById('mCharHead').value, 'mohawk', 'biped_beast UI switch must swap human hair for mohawk/crest');
+  assert.strictEqual(document.getElementById('mCharTorso').value, 'none', 'biped_beast UI switch must clear default shirt');
+  document.getElementById('mBtnVaryChar')._emit('click');
+  assert(['mohawk', 'horns', 'none'].includes(document.getElementById('mCharHead').value), 'Vary on biped_beast must not pick human hair/beard');
+
+  document.getElementById('mCharHead').value = 'short_hair';
+  document.getElementById('mCharType').value = 'lizard';
+  document.getElementById('mCharType')._emit('change');
+  assert.strictEqual(document.getElementById('mCharHead').value, 'none', 'lizard UI switch must clear human hair');
+
+  // Restore humanoid defaults for subsequent tests
+  document.getElementById('mCharType').value = 'humanoid';
+  document.getElementById('mCharType')._emit('change');
+
+  M.generateCharacter({ charType: 'biped_beast', partMode: 'full', headStyle: 'mohawk', torsoStyle: 'none', legsStyle: 'none', hatStyle: 'none', colSkin: '#D97706' }, 1);
   const beastStats = countVoxels(vol);
   assert(beastStats.n > 150 && beastStats.minZ === 0, 'biped_beast must generate grounded 3D creature');
   assert.strictEqual(document.getElementById('mKind').value, 'avatar');
@@ -1722,13 +1743,17 @@ function runModelerTests() {
   for (let y = 0; y <= 7; y++) for (let x = 0; x < N; x++) if (vol[0][y * N + x] > 0) backCornerFeet++;
   assert.strictEqual(backCornerFeet, 0, 'biped_beast must have 2 bipedal legs, not 4 quadruped legs');
 
-  M.generateCharacter({ charType: 'lizard', partMode: 'full', colSkin: '#22C55E', colHair: '#EAB308' }, 1);
+  M.generateCharacter({ charType: 'lizard', partMode: 'full', headStyle: 'none', torsoStyle: 'none', legsStyle: 'none', colSkin: '#22C55E', colHair: '#EAB308' }, 1);
   const lizStats = countVoxels(vol);
   assert(lizStats.n > 120 && lizStats.minZ === 0, 'lizard must generate grounded 3D reptile');
   // Lizard tail extends into rear Y (y <= 5) at elevated z
   let lizTail = 0;
   for (let z = 1; z <= 6; z++) for (let y = 0; y <= 5; y++) for (let x = 0; x < N; x++) if (vol[z][y * N + x] > 0) lizTail++;
   assert(lizTail > 5, 'lizard must generate long rear tail');
+  // Lizard neck must connect torso to head at z=5..6 without floating gap
+  let lizNeck = 0;
+  for (let z = 5; z <= 6; z++) for (let y = 14; y <= 16; y++) for (let x = 10; x <= 13; x++) if (vol[z][y * N + x] > 0) lizNeck++;
+  assert(lizNeck >= 4, 'lizard neck must connect body and head cleanly');
 
   // Loose parts: rhand_only, lhand_only, headgear_only, outfit_only, back_only
   M.generateCharacter({ charType: 'lizard', partMode: 'rhand_only', rhandStyle: 'sword' }, 1);
@@ -1755,11 +1780,34 @@ function runModelerTests() {
   assert.strictEqual(document.getElementById('mKind').value, 'pickable');
   assert.strictEqual(document.getElementById('mName').value, 'armadura_peitoral');
 
+  // outfit_only with shirt + legs=none must NOT force metal greaves
+  M.generateCharacter({ charType: 'humanoid', partMode: 'outfit_only', torsoStyle: 'shirt', legsStyle: 'none' }, 1);
+  let forcedArmor = 0;
+  for (let z = 0; z < N; z++) for (let i = 0; i < N * N; i++) if (vol[z][i] >= 13 && vol[z][i] <= 15) forcedArmor++;
+  assert.strictEqual(forcedArmor, 0, 'outfit_only with shirt + legs=none must not force armor/greaves');
+
   M.generateCharacter({ charType: 'humanoid', partMode: 'back_only', backStyle: 'cape' }, 1);
   pStat = countVoxels(vol);
   assert(pStat.n > 30 && pStat.minZ === 0, 'back_only cape must be grounded at z=0');
   assert.strictEqual(document.getElementById('mKind').value, 'pickable');
   assert.strictEqual(document.getElementById('mName').value, 'capa_heroi');
+
+  // Grid size N=16 and N=32 generation & preview compatibility
+  for (const gSz of ['16', '32']) {
+    document.getElementById('mSize').value = gSz;
+    document.getElementById('mSize')._emit('change');
+    M.generateCharacter({ charType: 'biped_beast', partMode: 'full', headStyle: 'mohawk', torsoStyle: 'none', legsStyle: 'none' }, 1);
+    let cntG = 0;
+    for (let z = 0; z < M.getSize(); z++) for (let i = 0; i < M.getSize() * M.getSize(); i++) if (M.getVol()[z][i] > 0) cntG++;
+    assert(cntG > 80, `biped_beast must generate cleanly at N=${gSz}`);
+    M.generateModularProp({ family: 'house', subtype: 'tower', width: 7, height: 15, depth: 5, detail: 2 }, 500);
+    let cntP = 0;
+    for (let z = 0; z < M.getSize(); z++) for (let i = 0; i < M.getSize() * M.getSize(); i++) if (M.getVol()[z][i] > 0) cntP++;
+    assert(cntP > 80, `tower prop must generate cleanly at N=${gSz}`);
+  }
+  document.getElementById('mSize').value = '24';
+  document.getElementById('mSize')._emit('change');
+  vol = M.getVol();
 
   // Live input regeneration on color picker
   document.getElementById('mCharPartMode').value = 'full';
