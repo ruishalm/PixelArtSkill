@@ -274,6 +274,10 @@
         dr.carried = false;
         dr.x = cat.x + fx * 7 * (cat.scale || 1);
         dr.y = cat.y + fy * 7 * (cat.scale || 1);
+        const dropCell = getCellAt(dr.x, dr.y) || getCellAt(cat.x, cat.y);
+        if (dropCell && dropCell.hasCave && cat.z < dropCell.caveCeil - 2) {
+          dr.z = Math.min(cat.z + 4 * (cat.scale || 1), dropCell.caveCeil - 3.5);
+        }
         dr.vx = fx * 14;
         dr.vy = fy * 14;
         dr.vz = 10;
@@ -345,6 +349,10 @@
       dr.carried = false;
       dr.x = cat.x + fx * 6 * (cat.scale || 1);
       dr.y = cat.y + fy * 6 * (cat.scale || 1);
+      const throwCell = getCellAt(dr.x, dr.y) || getCellAt(cat.x, cat.y);
+      if (throwCell && throwCell.hasCave && cat.z < throwCell.caveCeil - 2) {
+        dr.z = Math.min(cat.z + 4 * (cat.scale || 1), throwCell.caveCeil - 3.5);
+      }
       dr.vx = fx * 110;
       dr.vy = fy * 110;
       dr.vz = 85;
@@ -600,6 +608,7 @@
           dr.vy = ny * pushSpd;
           dr.spin = (Math.random() - 0.5) * 3.0;
         }
+        const prevDrZ = dr.z;
         dr.vz -= GRAVITY * 0.45 * dt;
         dr.x += dr.vx * dt;
         dr.y += dr.vy * dt;
@@ -609,6 +618,10 @@
         if (!dc) {
           debrisDrops.splice(i, 1);
           continue;
+        }
+        if (dc.hasCave && prevDrZ < dc.caveCeil - 2 && dr.vz > 0 && dr.z > dc.caveCeil - 3) {
+          dr.z = dc.caveCeil - 3;
+          dr.vz = -dr.vz * 0.4;
         }
         const dcInCave = dc.hasCave && dr.z < dc.caveCeil - 2;
         if (!dcInCave && isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {

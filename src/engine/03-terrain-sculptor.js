@@ -867,6 +867,17 @@
           ? MAT_SHALLOW
           : (depth >= 3 ? MAT_WATER : MAT_SHALLOW);
       }
+      if (typeof caveFloor !== 'undefined' && typeof caveCeil !== 'undefined' && caveCeil[idx] > caveFloor[idx]) {
+        const effTop = clampedSurf <= -2 ? clampedSurf : clampedBed;
+        if (effTop <= caveCeil[idx]) {
+          if (effTop - 3 > caveFloor[idx] + 3) {
+            caveCeil[idx] = effTop - 3;
+          } else {
+            caveFloor[idx] = -32768;
+            caveCeil[idx] = -32768;
+          }
+        }
+      }
       if (onTouchIdx) onTouchIdx(idx);
     }
 
