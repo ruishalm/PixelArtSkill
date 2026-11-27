@@ -1213,6 +1213,7 @@ vm.runInContext(
         self.assertIn('world-only-top', studio_html)
         self.assertIn('body.in-modeler .world-only-top', studio_css)
         self.assertIn('.topbar::-webkit-scrollbar', studio_css)
+        self.assertIn('@supports not selector(::-webkit-scrollbar)', studio_css)
 
         idx_mleft = studio_html.find('class="m-sidebar-left"')
         idx_mcenter = studio_html.find('class="m-stage-center"')
@@ -1388,8 +1389,8 @@ function runModelerTests() {
   assert(coneLeaves > 80, 'Conical pine crown must generate foliage');
   assert.strictEqual(zeroFlowFruit, 0, '0% flower/fruit must place zero flowers/fruits');
 
-  // Multi-branch + weeping willow reaches lower Z layers
-  M.generateModularTree({ branchCount: 4, crownType: 'weeping', flowerPct: 0, fruitPct: 0 }, 302);
+  // Multi-branch + weeping willow with curvature reaches lower Z layers and stays centered near curved branches
+  M.generateModularTree({ branchCount: 4, curve: 3, crownType: 'weeping', flowerPct: 0, fruitPct: 0 }, 302);
   let lowWillowLeaves = 0;
   for (let z = 4; z <= 10; z++) {
     for (let i = 0; i < vol[z].length; i++) if (vol[z][i] >= 4 && vol[z][i] <= 7) lowWillowLeaves++;
@@ -1433,7 +1434,7 @@ function runModelerTests() {
   assert.strictEqual(minSpan, 1, 'edt_blade must keep sharp 1-voxel edges');
   assert(maxSpan >= 3, 'edt_blade interior must thicken beyond 1 voxel');
 
-  // 3b. edt_organic on solid rectangle: rounded elliptical profile
+  // 3b. edt_organic on solid rectangle: rounded elliptical profile tapering to 1-voxel rim
   const bufs = M.get2dBuffers();
   bufs.front2D.fill(0);
   for (let z = 4; z <= 19; z++) for (let x = 6; x <= 17; x++) bufs.front2D[z * N + x] = 2;
@@ -1444,7 +1445,8 @@ function runModelerTests() {
     if (vol[4][y * N + 6] > 0) edgeY++;
     if (vol[12][y * N + 12] > 0) centerY++;
   }
-  assert(centerY > edgeY, 'edt_organic center must be thicker than corner edge');
+  assert.strictEqual(edgeY, 1, 'edt_organic outer rim must taper to 1 voxel instead of thick wall');
+  assert(centerY >= 11 && centerY > edgeY, 'edt_organic center must be thicker than corner edge');
 
   // 3c. lathe (360 revolution) on vase preset: rotational symmetry around central Z axis
   document.getElementById('m2dPreset').value = 'vase';

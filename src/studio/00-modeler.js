@@ -1305,13 +1305,15 @@
             }
           }
         } else if (crownType === 'weeping') {
-          paintLeafLobe(0, 0, 17.2, 7.6, 7.6, 3.8, 3);
+          const avgX = crownAnchors.reduce((acc, a) => acc + a.x, 0) / crownAnchors.length;
+          const avgY = crownAnchors.reduce((acc, a) => acc + a.y, 0) / crownAnchors.length;
+          paintLeafLobe(avgX, avgY, 17.2, 7.6, 7.6, 3.8, 3);
           const numStrands = 18;
           for (let k = 0; k < numStrands; k++) {
             const ang = (k / numStrands) * Math.PI * 2 + (rng() - 0.5) * 0.2;
             const rad = 5.2 + rng() * 2.4;
-            const sx = Math.cos(ang) * rad;
-            const sy = Math.sin(ang) * rad;
+            const sx = avgX + Math.cos(ang) * rad;
+            const sy = avgY + Math.sin(ang) * rad;
             const zTop = 16.2 + rng() * 1.5;
             const zBot = 4.2 + rng() * 4.5;
             for (let lz = zBot; lz <= zTop; lz += 0.6) {
@@ -1453,7 +1455,24 @@
             }
             return;
           }
-          buf[c.gz * N + c.gx] = (erase2d || tool === 'eraser') ? 0 : curColor;
+          const nextV = (erase2d || tool === 'eraser') ? 0 : curColor;
+          if (tool === 'fill' && !erase2d) {
+            const target = buf[c.gz * N + c.gx];
+            if (target !== nextV) {
+              const st = [[c.gx, c.gz]];
+              while (st.length) {
+                const [px, pz] = st.pop();
+                if (px < 0 || px >= N || pz < 0 || pz >= N) continue;
+                const idx = pz * N + px;
+                if (buf[idx] !== target) continue;
+                buf[idx] = nextV;
+                st.push([px + 1, pz], [px - 1, pz], [px, pz + 1], [px, pz - 1]);
+              }
+            }
+            drawAll2d();
+            return;
+          }
+          buf[c.gz * N + c.gx] = nextV;
           drawAll2d();
         };
         cv.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1511,14 +1530,26 @@
           const reader = new FileReader();
           reader.onload = () => {
             const img = new Image();
+            img.onerror = () => say(`Falha ao carregar imagem "${file.name}".`, false);
             img.onload = () => {
               const tmp = document.createElement('canvas');
               tmp.width = N; tmp.height = N;
               const tCtx = tmp.getContext('2d');
               tCtx.imageSmoothingEnabled = false;
               tCtx.clearRect(0, 0, N, N);
-              tCtx.drawImage(img, 0, 0, N, N);
+              const sc = Math.min(N / Math.max(1, img.width), N / Math.max(1, img.height));
+              const dw = Math.max(1, Math.round(img.width * sc));
+              const dh = Math.max(1, Math.round(img.height * sc));
+              const dx = Math.floor((N - dw) / 2);
+              const dy = N - dh;
+              tCtx.drawImage(img, dx, dy, dw, dh);
               const data = tCtx.getImageData(0, 0, N, N).data;
+              let sideUsed = false;
+              for (let i = 0; i < side2D.length; i++) if (side2D[i] > 0) { sideUsed = true; break; }
+              if (!sideUsed) {
+                const baseKey = palPresetEl?.value || 'default';
+                pal = (PAL_PRESETS[baseKey] || DEFAULT_PAL).slice();
+              }
               front2D.fill(0);
               const h2 = (v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
               for (let row = 0; row < N; row++) {
@@ -1697,9 +1728,10 @@
               const col = front2D[z * N + x];
               if (col === 0) continue;
               const d = dist[z * N + x];
+              const orgNorm = dMax > 1 ? Math.max(0, d - 1) / (dMax - 1) : 0.25;
               const halfY = mode === 'edt_blade'
                 ? Math.min(maxHalfY, Math.max(0, Math.floor(d - 0.5)))
-                : Math.round(maxHalfY * Math.sqrt(Math.min(1, d / Math.max(1, dMax))));
+                : Math.round(maxHalfY * Math.sqrt(Math.min(1, orgNorm)));
               const y0 = Math.max(0, yc - halfY);
               const y1 = Math.min(N - 1, yc + halfY);
               for (let y = y0; y <= y1; y++) vol[z][y * N + x] = col;
