@@ -461,11 +461,62 @@
         particlesByZ.get(pz).push(p);
       }
 
+      // Buckets dinâmicos por fatia Z para WaveBuffer, FlowStreaks, FloatingItems e Cachoeiras de Montanha
+      const wavesByZ = new Map();
+      for (let dy = 1; dy < WAVE_H - 1; dy++) {
+        const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
+        if (cwy < minVisWy || cwy > maxVisWy) continue;
+        const row = dy * WAVE_W;
+        for (let dx = 1; dx < WAVE_W - 1; dx++) {
+          const val = waveCurr[row + dx];
+          if (Math.abs(val) < 0.14) continue;
+          const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
+          if (cwx < minVisWx || cwx > maxVisWx) continue;
+          const mx = Math.floor(cwx / VOX + HALF_GRID);
+          const my = Math.floor(cwy / VOX + HALF_GRID);
+          if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
+          const wIdx = my * mw + mx;
+          const wMat = matMap[wIdx];
+          if (!isWetMat(wMat)) continue;
+          const surfZ = wMat === MAT_SHALLOW ? (hmap[wIdx] < 0 ? -1 : hmap[wIdx]) : (hmap[wIdx] < 0 ? -2 : hmap[wIdx]);
+          if (!wavesByZ.has(surfZ)) wavesByZ.set(surfZ, []);
+          wavesByZ.get(surfZ).push({ wx: cwx, wy: cwy, val });
+        }
+      }
+
+      const streaksByZ = new Map();
+      for (let i = 0; i < flowStreaks.length; i++) {
+        const s = flowStreaks[i];
+        if (s.hLen < 2) continue;
+        if (s.x < minVisWx - 24 || s.x > maxVisWx + 24 || s.y < minVisWy - 24 || s.y > maxVisWy + 24) continue;
+        const sz = Math.round(s.z);
+        if (!streaksByZ.has(sz)) streaksByZ.set(sz, []);
+        streaksByZ.get(sz).push(s);
+      }
+
+      const floatingByZ = new Map();
+      for (let i = 0; i < floatingItems.length; i++) {
+        const f = floatingItems[i];
+        if (f.x < minVisWx || f.x > maxVisWx || f.y < minVisWy || f.y > maxVisWy) continue;
+        const fz = Math.round(f.z);
+        if (!floatingByZ.has(fz)) floatingByZ.set(fz, []);
+        floatingByZ.get(fz).push(f);
+      }
+
+      const visWaterfalls = [];
+      for (let i = 0; i < waterfallDrops.length; i++) {
+        const wd = waterfallDrops[i];
+        if (wd.wx >= minVisWx && wd.wx <= maxVisWx && wd.wy >= minVisWy && wd.wy <= maxVisWy) {
+          visWaterfalls.push(wd);
+        }
+      }
+
       // 4. Loop Unificado Slice-by-Slice (Terreno + Destination-Out + Grama + Partículas + Entidades)
       entityCtx.globalCompositeOperation = 'source-over';
       entityCtx.clearRect(0, 0, LOW_W, LOW_H);
       let entityStarted = false;
       const wfVisible = maxVisWx >= WF_X0 && minVisWx <= WF_X0 + WF_W * WF_CELL && maxVisWy >= WF_Y0 && minVisWy <= WF_Y0 + WF_H * WF_CELL;
+      const dropStreakTick = Math.floor(fluidTime * 10);
 
       for (let z = Z_MIN; z <= maxEntityTopZ; z++) {
         // 4a. Fatia do terreno (Tight-Crop Bounded Slice + skip O(1))
@@ -492,44 +543,30 @@
             }
           }
 
-          // WaveBuffer (cristas/cavas) + FloatingItems respeitando oclusão 3D nas fatias z=-2, z=-1 e z=13
-          if (z === -2 || z === -1 || z === 13) {
-            for (let dy = 1; dy < WAVE_H - 1; dy++) {
-              const cwy = waveOriginY + (dy + 0.5) * WAVE_CELL;
-              if (cwy < minVisWy || cwy > maxVisWy) continue;
-              const row = dy * WAVE_W;
-              for (let dx = 1; dx < WAVE_W - 1; dx++) {
-                const val = waveCurr[row + dx];
-                if (Math.abs(val) < 0.14) continue;
-                const cwx = waveOriginX + (dx + 0.5) * WAVE_CELL;
-                if (cwx < minVisWx || cwx > maxVisWx) continue;
-                const mx = Math.floor(cwx / VOX + HALF_GRID);
-                const my = Math.floor(cwy / VOX + HALF_GRID);
-                if (mx < 0 || mx >= mw || my < 0 || my >= mh) continue;
-                const wIdx = my * mw + mx;
-                const wMat = matMap[wIdx];
-                if (!isWetMat(wMat)) continue;
-                const surfZ = wMat === MAT_SHALLOW ? (hmap[wIdx] < 0 ? -1 : hmap[wIdx]) : (hmap[wIdx] < 0 ? -2 : hmap[wIdx]);
-                if (surfZ !== z) continue;
-                const wp = project(cwx, cwy, z + 0.2);
-                const px = Math.round(wp.x);
-                const py = Math.round(wp.y);
-                if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
-                if (val > 0) {
-                  lowCtx.fillStyle = val > 0.7 ? 'rgba(240, 249, 255, 0.72)' : 'rgba(224, 242, 254, 0.45)';
-                } else {
-                  lowCtx.fillStyle = val < -0.7 ? 'rgba(24, 118, 186, 0.52)' : 'rgba(36, 148, 214, 0.34)';
-                }
-                lowCtx.fillRect(px - 1, py, 3, 1);
+          // WaveBuffer (cristas/cavas), FlowStreaks & FloatingItems em qualquer cota Z com oclusão 3D
+          const wList = wavesByZ.get(z);
+          if (wList) {
+            for (let i = 0; i < wList.length; i++) {
+              const wv = wList[i];
+              const wp = project(wv.wx, wv.wy, z + 0.2);
+              const px = Math.round(wp.x);
+              const py = Math.round(wp.y);
+              if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
+              if (wv.val > 0) {
+                lowCtx.fillStyle = wv.val > 0.7 ? 'rgba(240, 249, 255, 0.72)' : 'rgba(224, 242, 254, 0.45)';
+              } else {
+                lowCtx.fillStyle = wv.val < -0.7 ? 'rgba(24, 118, 186, 0.52)' : 'rgba(36, 148, 214, 0.34)';
               }
+              lowCtx.fillRect(px - 1, py, 3, 1);
             }
+          }
 
-            for (let i = 0; i < flowStreaks.length; i++) {
-              const s = flowStreaks[i];
-              if (s.hLen < 2 || Math.round(s.z) !== z) continue;
-              if (s.x < minVisWx - 24 || s.x > maxVisWx + 24 || s.y < minVisWy - 24 || s.y > maxVisWy + 24) continue;
+          const sList = streaksByZ.get(z);
+          if (sList) {
+            for (let i = 0; i < sList.length; i++) {
+              const s = sList[i];
               const isDefl = s.deflect >= 0.16;
-              lowCtx.strokeStyle = isDefl ? 'rgba(248, 253, 255, 0.88)' : 'rgba(224, 242, 254, 0.42)';
+              lowCtx.strokeStyle = isDefl ? 'rgba(248, 253, 255, 0.88)' : 'rgba(224, 242, 254, 0.48)';
               lowCtx.lineWidth = s.deflect > 0.35 ? 1.5 : 1;
               lowCtx.beginPath();
               const p0 = project(s.hist[0], s.hist[1], z + 0.25);
@@ -540,11 +577,12 @@
               }
               lowCtx.stroke();
             }
+          }
 
-            for (let i = 0; i < floatingItems.length; i++) {
-              const f = floatingItems[i];
-              if (Math.round(f.z) !== z) continue;
-              if (f.x < minVisWx || f.x > maxVisWx || f.y < minVisWy || f.y > maxVisWy) continue;
+          const flList = floatingByZ.get(z);
+          if (flList) {
+            for (let i = 0; i < flList.length; i++) {
+              const f = flList[i];
               const bob = Math.sin(fluidTime * 3.2 + f.phase) * 0.25;
               const fp = project(f.x, f.y, z + 0.3 + bob);
               const px = Math.round(fp.x);
@@ -552,6 +590,19 @@
               if (px < -4 || px >= LOW_W + 4 || py < -4 || py >= LOW_H + 4) continue;
               lowCtx.fillStyle = f.color;
               lowCtx.fillRect(px, py, 2, 2);
+            }
+          }
+
+          // Espuma animada nas quedas de cachoeiras dinâmicas (ΔZ >= 3)
+          if (visWaterfalls.length > 0) {
+            lowCtx.fillStyle = 'rgba(240, 249, 255, 0.82)';
+            for (let i = 0; i < visWaterfalls.length; i++) {
+              const wd = visWaterfalls[i];
+              if (z < wd.botZ || z > wd.topZ) continue;
+              if (((z + dropStreakTick + wd.mx * 3 + wd.my * 5) % 4) === 0 || z <= wd.botZ + 1) {
+                const wp = project(wd.wx, wd.wy, z + 0.2);
+                lowCtx.fillRect(Math.round(wp.x) - 1, Math.round(wp.y), 2, 2);
+              }
             }
           }
 

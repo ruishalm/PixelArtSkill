@@ -186,6 +186,35 @@
         const pvy = paintedFlow.vy * shallowScale;
         return { vx: pvx, vy: pvy, speed: Math.hypot(pvx, pvy) };
       }
+
+      // Correnteza automática por gravidade (-∇h) em riachos/cachoeiras acima do nível do mar
+      if (c.h >= 0) {
+        const mx = c.mx, my = c.my;
+        const h0 = c.h;
+        let gx = 0, gy = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          const ny = my + dy;
+          if (ny < 0 || ny >= mh) continue;
+          const row = ny * mw;
+          for (let dx = -2; dx <= 2; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = mx + dx;
+            if (nx < 0 || nx >= mw) continue;
+            const nIdx = row + nx;
+            if (!isWetMat(matMap[nIdx])) continue;
+            const nh = hmap[nIdx] < 0 ? (matMap[nIdx] === MAT_SHALLOW ? -1 : -2) : hmap[nIdx];
+            const w = 1 / (dx * dx + dy * dy);
+            gx += dx * (nh - h0) * w;
+            gy += dy * (nh - h0) * w;
+          }
+        }
+        const gMag = Math.hypot(gx, gy);
+        if (gMag > 0.12) {
+          const slopeSpeed = Math.min(54, 22 + gMag * 14) * (c.mat === MAT_SHALLOW ? 0.85 : 1.0);
+          return { vx: (-gx / gMag) * slopeSpeed, vy: (-gy / gMag) * slopeSpeed, speed: slopeSpeed };
+        }
+      }
+
       if (window.__IS_STUDIO__) {
         return { vx: 0, vy: 0, speed: 0 };
       }
@@ -782,6 +811,49 @@
         centerDownstreamDepth: cCnt > 0 ? cSum / cCnt : 0,
         totalVolume
       };
+    }
+
+    function stepAutoWaterfallsAndSprings(emitSpray = true) {
+      if (typeof waterfallDrops !== 'undefined' && waterfallDrops.length > 0) {
+        for (let i = 0; i < waterfallDrops.length; i++) {
+          const wd = waterfallDrops[i];
+          if (Math.abs(wd.wx - camX) > 380 || Math.abs(wd.wy - camY) > 380) continue;
+          if (Math.random() < 0.25) {
+            injectWaterRipple(wd.wx, wd.wy, 0.55, 1);
+          }
+          if (emitSpray && particles.length < 220 && Math.random() < 0.18) {
+            spawnParticles(
+              wd.wx + (Math.random() - 0.5) * 3,
+              wd.wy + (Math.random() - 0.5) * 3,
+              wd.botZ + 0.6,
+              1,
+              ['#E0F2FE', '#FFFFFF', '#7DD3FC'],
+              14,
+              { grav: 75, vz: 12 + Math.random() * 10, life: 0.45 }
+            );
+          }
+        }
+      }
+      if (typeof waterSprings !== 'undefined' && waterSprings.length > 0) {
+        for (let i = 0; i < waterSprings.length; i++) {
+          const sp = waterSprings[i];
+          if (Math.abs(sp.wx - camX) > 380 || Math.abs(sp.wy - camY) > 380) continue;
+          if (Math.random() < 0.14) {
+            injectWaterRipple(sp.wx, sp.wy, 0.45, 1);
+          }
+          if (emitSpray && particles.length < 220 && Math.random() < 0.08) {
+            spawnParticles(
+              sp.wx + (Math.random() - 0.5) * 3,
+              sp.wy + (Math.random() - 0.5) * 3,
+              (getHeightAt(sp.wx, sp.wy) || sp.z) + 0.8,
+              1,
+              ['#E0F2FE', '#BAE6FD', '#FFFFFF'],
+              8,
+              { grav: 55, vz: 10 + Math.random() * 6, life: 0.35 }
+            );
+          }
+        }
+      }
     }
 
     // =========================================================================

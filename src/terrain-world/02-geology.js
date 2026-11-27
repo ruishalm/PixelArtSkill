@@ -36,6 +36,9 @@
     function isWetMat(m) { return m === MAT_WATER || m === MAT_SHALLOW; }
 
     const hmap = new Int16Array(mw * mh);
+    const waterDepth = new Uint8Array(mw * mh); // profundidade de água abaixo de hmap[idx] (bedZ = hmap[idx] - waterDepth[idx])
+    const waterfallDropMask = new Uint8Array(mw * mh); // 1 = célula de crista/cortina ativa de cachoeira
+    const waterSprings = []; // nascentes persistentes: [{ wx, wy, z }]
     const biomeMap = new Uint8Array(mw * mh);
     const matMap = new Uint8Array(mw * mh);
     const cliffMask = new Uint8Array(mw * mh);
@@ -87,6 +90,9 @@
     function initOrganicWorld() {
       // Base inicial: plano verde Z=0
       hmap.fill(0);
+      waterDepth.fill(0);
+      waterfallDropMask.fill(0);
+      waterSprings.length = 0;
       matMap.fill(MAT_GRASS);
       biomeMap.fill(0);
       bridges.length = 0;
@@ -265,6 +271,7 @@
               if (wx >= 309 && wx <= 346) {
                 hmap[idx] = 46;
                 matMap[idx] = MAT_WATER;
+                waterDepth[idx] = 2;
                 biomeMap[idx] = 7;
                 cliffMask[idx] = 1;
               } else if (wx >= 272 && wx <= 308) {
@@ -552,6 +559,8 @@
         mx, my, idx,
         h: hmap[idx],
         mat: matMap[idx],
+        waterDepth: waterDepth[idx],
+        bedZ: isWetMat(matMap[idx]) ? Math.max(Z_MIN, hmap[idx] - waterDepth[idx]) : hmap[idx],
         biomeId: b,
         biomeKey: BIOME_KEYS[b],
         biome: BIOME_NAMES[b],

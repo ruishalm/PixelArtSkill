@@ -89,6 +89,8 @@
         S.pushUndoSnapshot();
         if (baseKindSel) baseKindSel.value = 'flat';
         hmap.fill(0);
+        waterDepth.fill(0);
+        waterSprings.length = 0;
         syncSculptFromHmap();
         matMap.fill(MAT_GRASS);
         pinnedMask.fill(0);
@@ -194,8 +196,15 @@
             const idx = my * mw + mx;
             sculptH[idx] = 0;
             hmap[idx] = 0;
+            waterDepth[idx] = 0;
             matMap[idx] = MAT_GRASS;
             pinnedMask[idx] = 0;
+          }
+        }
+        for (let i = waterSprings.length - 1; i >= 0; i--) {
+          const sp = waterSprings[i];
+          if (sp.wx >= selectionBox.x0 && sp.wx <= selectionBox.x1 && sp.wy >= selectionBox.y0 && sp.wy <= selectionBox.y1) {
+            waterSprings.splice(i, 1);
           }
         }
         for (let i = props.length - 1; i >= 0; i--) {
@@ -224,7 +233,7 @@
         const pinnedCells = [];
         for (let i = 0; i < pinnedMask.length; i++) {
           if (pinnedMask[i] === 1) {
-            pinnedCells.push([i, Math.round(hmap[i] * 10) / 10, matMap[i]]);
+            pinnedCells.push([i, Math.round(hmap[i] * 10) / 10, matMap[i], waterDepth[i]]);
           }
         }
         const windSparse = [];
@@ -238,7 +247,7 @@
           }
         }
         return {
-          version: 2,
+          version: 3,
           gridW: mw,
           gridH: mh,
           seed: WORLD_SEED,
@@ -249,6 +258,7 @@
           tuning: { ...ENGINE_TUNING, gravity: GRAVITY },
           customAssets: window.StudioModeler ? window.StudioModeler.exportAssets() : [],
           pinnedCells,
+          springs: waterSprings.map(sp => ({ wx: +sp.wx.toFixed(1), wy: +sp.wy.toFixed(1), z: sp.z || 0 })),
           windSparse,
           flowSparse,
           pinnedProps: props.filter(p => p.pinned).map(p => ({
@@ -286,12 +296,21 @@
         if (data.baseKind && baseKindSel) baseKindSel.value = data.baseKind;
         if (data.generationMode && genModeSel) genModeSel.value = data.generationMode;
         S.regenWorld(data.seed || DEFAULT_WORLD_SEED, false, data.baseKind || null);
+        waterDepth.fill(0);
+        waterSprings.length = 0;
         if (Array.isArray(data.pinnedCells)) {
-          for (const [idx, h, m] of data.pinnedCells) {
+          for (const entry of data.pinnedCells) {
+            const idx = entry[0], h = entry[1], m = entry[2], wd = entry[3] || 0;
             if (idx < 0 || idx >= hmap.length) continue;
             pinnedMask[idx] = 1;
             hmap[idx] = h;
             matMap[idx] = m;
+            waterDepth[idx] = wd;
+          }
+        }
+        if (Array.isArray(data.springs)) {
+          for (const sp of data.springs) {
+            waterSprings.push({ wx: sp.wx, wy: sp.wy, z: sp.z || 0 });
           }
         }
         if (Array.isArray(data.windSparse)) {
@@ -324,6 +343,7 @@
         }
         syncSculptFromHmap();
         if (typeof buildStandableMap === 'function') buildStandableMap();
+        if (typeof initFlowStreaks === 'function') initFlowStreaks();
         bakeTerrainSlices();
         bakeMinimapBase();
       }

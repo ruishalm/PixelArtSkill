@@ -35,6 +35,21 @@
       let lastVecWorld = null;
       let selStartWorld = null;
       let terrainPaintedInStroke = false;
+      let lastWaterCellKey = -1;
+      let strokeMinMx = mw, strokeMinMy = mh, strokeMaxMx = -1, strokeMaxMy = -1;
+      let strokeNeedsBreachCheck = false;
+
+      const touchHydroIdx = (idx) => {
+        sculptH[idx] = hmap[idx];
+        pinnedMask[idx] = 1;
+      };
+
+      const expandStrokeBounds = (x0, y0, x1, y1) => {
+        if (x0 < strokeMinMx) strokeMinMx = x0;
+        if (y0 < strokeMinMy) strokeMinMy = y0;
+        if (x1 > strokeMaxMx) strokeMaxMx = x1;
+        if (y1 > strokeMaxMy) strokeMaxMy = y1;
+      };
 
       // Remoção segura de props: desativa colisores ligados ao prop e tira das listas da engine
       function removePropObj(p) {
@@ -117,6 +132,26 @@
           flattenTargetZ = c ? c.h : 0;
         }
 
+        if (activeTool === 'mat_water' || activeTool === 'mat_shallow') {
+          const cellKey = cy * mw + cx;
+          if (!isInitialClick && cellKey === lastWaterCellKey) return;
+          lastWaterCellKey = cellKey;
+          const b = applyWaterBrushHydrology(cx, cy, rCells, activeTool, touchHydroIdx);
+          terrainPaintedInStroke = true;
+          const bx0 = Math.max(1, Math.min(mx0, b.minMx) - 1);
+          const by0 = Math.max(1, Math.min(my0, b.minMy) - 1);
+          const bx1 = Math.min(mw - 2, Math.max(mx1, b.maxMx) + 1);
+          const by1 = Math.min(mh - 2, Math.max(my1, b.maxMy) + 1);
+          expandStrokeBounds(bx0, by0, bx1, by1);
+          if ((bx1 - bx0) * (by1 - by0) <= 6400) {
+            rebakeTerrainDirtyRect(bx0, by0, bx1, by1);
+          } else {
+            bakeTerrainSlices();
+          }
+          bakeMinimapBase();
+          return;
+        }
+
         let terrainDirty = false;
         const r2 = rCells * rCells;
 
@@ -131,37 +166,118 @@
             const w = falloff * falloff * (3 - 2 * falloff);
 
             if (activeTool === 'raise') {
+              const oldH = hmap[idx];
               sculptH[idx] = Math.min(TERRAIN_Z_MAX, sculptH[idx] + brushStrength * 1.4 * w);
-              hmap[idx] = Math.round(sculptH[idx]);
+              const newH = Math.round(sculptH[idx]);
+              if (isWetMat(matMap[idx])) {
+                const lift = Math.max(0, newH - oldH);
+                if (waterDepth[idx] > 0) {
+                  if (lift > 0 && lift < waterDepth[idx]) {
+                    waterDepth[idx] -= lift;
+                    hmap[idx] = oldH;
+                    sculptH[idx] -= lift;
+                    matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
+                  } else if (lift >= waterDepth[idx]) {
+                    const rem = lift - waterDepth[idx];
+                    waterDepth[idx] = 0;
+                    hmap[idx] = oldH + rem;
+                    sculptH[idx] = hmap[idx];
+                    if (hmap[idx] > -2) matMap[idx] = dryMatForHeight(hmap[idx]);
+                  }
+                } else {
+                  hmap[idx] = newH;
+                  if (newH > -2) {
+                    waterDepth[idx] = 0;
+                    matMap[idx] = dryMatForHeight(newH);
+                  }
+                }
+              } else {
+                hmap[idx] = newH;
+              }
               pinnedMask[idx] = 1;
               terrainDirty = true;
             } else if (activeTool === 'lower') {
+              const oldH = hmap[idx];
               sculptH[idx] = Math.max(Z_MIN, sculptH[idx] - brushStrength * 1.4 * w);
-              hmap[idx] = Math.round(sculptH[idx]);
+              const newH = Math.round(sculptH[idx]);
+              if (isWetMat(matMap[idx]) && oldH >= 0 && waterDepth[idx] > 0) {
+                const drop = Math.max(0, oldH - newH);
+                if (drop > 0) {
+                  const newBed = Math.max(Z_MIN, getSolidBedAtIdx(idx) - drop);
+                  waterDepth[idx] = Math.min(255, oldH - newBed);
+                  hmap[idx] = oldH;
+                  sculptH[idx] += drop;
+                  matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
+                }
+              } else {
+                hmap[idx] = newH;
+                if (newH <= -2 && isWetMat(matMap[idx])) waterDepth[idx] = 0;
+              }
               pinnedMask[idx] = 1;
+              strokeNeedsBreachCheck = true;
               terrainDirty = true;
             } else if (activeTool === 'flatten') {
+              const oldH = hmap[idx];
               sculptH[idx] = sculptH[idx] + (flattenTargetZ - sculptH[idx]) * Math.min(1, 0.35 * brushStrength * w);
-              hmap[idx] = Math.round(sculptH[idx]);
+              const newH = Math.round(sculptH[idx]);
+              if (isWetMat(matMap[idx]) && newH > -2) {
+                if (newH > oldH || waterDepth[idx] === 0) {
+                  hmap[idx] = newH;
+                  waterDepth[idx] = 0;
+                  matMap[idx] = dryMatForHeight(newH);
+                } else {
+                  const bed = getSolidBedAtIdx(idx);
+                  hmap[idx] = newH;
+                  if (newH <= bed) {
+                    waterDepth[idx] = 0;
+                    matMap[idx] = dryMatForHeight(newH);
+                  } else {
+                    waterDepth[idx] = newH - bed;
+                    matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
+                  }
+                }
+              } else {
+                hmap[idx] = newH;
+              }
               pinnedMask[idx] = 1;
+              strokeNeedsBreachCheck = true;
               terrainDirty = true;
             } else if (activeTool === 'smooth') {
+              const oldH = hmap[idx];
               const avg = (sculptH[idx - 1] + sculptH[idx + 1] + sculptH[idx - mw] + sculptH[idx + mw]) * 0.25;
               sculptH[idx] = sculptH[idx] + (avg - sculptH[idx]) * Math.min(1, 0.45 * brushStrength * w);
-              hmap[idx] = Math.round(sculptH[idx]);
+              const newH = Math.round(sculptH[idx]);
+              if (isWetMat(matMap[idx]) && newH > -2) {
+                if (newH > oldH || waterDepth[idx] === 0) {
+                  hmap[idx] = newH;
+                  waterDepth[idx] = 0;
+                  matMap[idx] = dryMatForHeight(newH);
+                } else {
+                  const bed = getSolidBedAtIdx(idx);
+                  hmap[idx] = newH;
+                  if (newH <= bed) {
+                    waterDepth[idx] = 0;
+                    matMap[idx] = dryMatForHeight(newH);
+                  } else {
+                    waterDepth[idx] = newH - bed;
+                    matMap[idx] = waterDepth[idx] <= 2 ? MAT_SHALLOW : MAT_WATER;
+                  }
+                }
+              } else {
+                hmap[idx] = newH;
+              }
               pinnedMask[idx] = 1;
+              strokeNeedsBreachCheck = true;
               terrainDirty = true;
             } else if (activeTool.startsWith('mat_')) {
               let m = MAT_GRASS;
               if (activeTool === 'mat_sand') m = MAT_SAND;
               else if (activeTool === 'mat_peak') m = MAT_PEAK;
               else if (activeTool === 'mat_path') m = MAT_PATH;
-              else if (activeTool === 'mat_water') {
-                m = MAT_WATER;
-                if (sculptH[idx] > -4) { sculptH[idx] = -4; hmap[idx] = -4; }
-              } else if (activeTool === 'mat_shallow') {
-                m = MAT_SHALLOW;
-                if (sculptH[idx] > -1) { sculptH[idx] = -1; hmap[idx] = -1; }
+              if (isWetMat(matMap[idx])) {
+                hmap[idx] = getSolidBedAtIdx(idx);
+                sculptH[idx] = hmap[idx];
+                waterDepth[idx] = 0;
               }
               matMap[idx] = m;
               pinnedMask[idx] = 1;
@@ -174,7 +290,9 @@
               sculptH[idx] = 0;
               hmap[idx] = 0;
               matMap[idx] = MAT_GRASS;
+              waterDepth[idx] = 0;
               pinnedMask[idx] = 0;
+              strokeNeedsBreachCheck = true;
               terrainDirty = true;
             }
           }
@@ -198,10 +316,16 @@
               removePropObj(props[i]);
             }
           }
+          for (let i = waterSprings.length - 1; i >= 0; i--) {
+            if (Math.hypot(waterSprings[i].wx - wx, waterSprings[i].wy - wy) <= brushRadius) {
+              waterSprings.splice(i, 1);
+            }
+          }
         }
 
         if (terrainDirty) {
           terrainPaintedInStroke = true;
+          expandStrokeBounds(mx0, my0, mx1, my1);
           rebakeTerrainDirtyRect(mx0 - 1, my0 - 1, mx1 + 1, my1 + 1);
           bakeMinimapBase();
         }
@@ -313,6 +437,25 @@
           }
           return;
         }
+        if (activeTool === 'spring') {
+          if (isInitialClick) {
+            S.pushUndoSnapshot();
+            const cx = Math.max(1, Math.min(mw - 2, Math.floor(hit.wx / VOX + HALF_GRID)));
+            const cy = Math.max(1, Math.min(mh - 2, Math.floor(hit.wy / VOX + HALF_GRID)));
+            const spWx = (cx - HALF_GRID + 0.5) * VOX;
+            const spWy = (cy - HALF_GRID + 0.5) * VOX;
+            const exists = waterSprings.some(sp => Math.hypot(sp.wx - spWx, sp.wy - spWy) < 6);
+            if (!exists) {
+              waterSprings.push({ wx: spWx, wy: spWy, z: getSolidBedAtIdx(cy * mw + cx) });
+            }
+            placeSpringHydrology(cx, cy, touchHydroIdx);
+            if (typeof buildStandableMap === 'function') buildStandableMap();
+            if (typeof initFlowStreaks === 'function') initFlowStreaks();
+            bakeTerrainSlices();
+            bakeMinimapBase();
+          }
+          return;
+        }
         if (activeTool.startsWith('prop_')) {
           if (isInitialClick) applyPropTool(hit.wx, hit.wy);
         } else if (activeTool === 'wind' || activeTool === 'flow' || activeTool === 'vec_erase') {
@@ -368,10 +511,17 @@
         if (!window.__STUDIO_EDIT_MODE__) return;
         if (terrainPaintedInStroke) {
           terrainPaintedInStroke = false;
+          if (strokeNeedsBreachCheck && strokeMaxMx >= strokeMinMx && typeof drainBreachedLakesInRect === 'function') {
+            drainBreachedLakesInRect(strokeMinMx, strokeMinMy, strokeMaxMx, strokeMaxMy, touchHydroIdx);
+          }
+          strokeNeedsBreachCheck = false;
+          strokeMinMx = mw; strokeMinMy = mh; strokeMaxMx = -1; strokeMaxMy = -1;
           if (typeof buildStandableMap === 'function') buildStandableMap();
+          if (typeof initFlowStreaks === 'function') initFlowStreaks();
           bakeTerrainSlices();
           bakeMinimapBase();
         }
+        lastWaterCellKey = -1;
         isPainting = false;
         isOrbiting = false;
         lastVecWorld = null;
@@ -400,7 +550,25 @@
         if (keys['KeyQ']) targetTurn += 1.8 * dt;
         if (keys['KeyE']) targetTurn -= 1.8 * dt;
         turn += (targetTurn - turn) * Math.min(1, dt * 14);
+        if (typeof syncWaveOrigin === 'function') syncWaveOrigin();
         if (typeof stepFlowStreaks === 'function') stepFlowStreaks(dt);
+        if (typeof stepWaveBuffer === 'function') {
+          waveAccum += dt;
+          while (waveAccum >= 1 / 30) {
+            waveAccum -= 1 / 30;
+            if (typeof stepAutoWaterfallsAndSprings === 'function') stepAutoWaterfallsAndSprings(true);
+            stepWaveBuffer();
+          }
+        }
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vz -= (p.grav !== undefined ? p.grav : 260) * dt;
+          p.z += p.vz * dt;
+          p.life -= dt;
+          if (p.life <= 0) particles.splice(i, 1);
+        }
       };
 
       window.__STUDIO_OVERLAY__ = function () {
@@ -502,6 +670,23 @@
           octx.stroke();
         }
 
+        // Marcadores das nascentes (waterSprings) próximas à câmera
+        if (typeof waterSprings !== 'undefined') {
+          for (let i = 0; i < waterSprings.length; i++) {
+            const sp = waterSprings[i];
+            if (Math.abs(sp.wx - camX) > 260 || Math.abs(sp.wy - camY) > 260) continue;
+            const sz = (getHeightAt(sp.wx, sp.wy) ?? sp.z) + 1.5;
+            const scr = project(sp.wx, sp.wy, sz);
+            octx.strokeStyle = '#38BDF8';
+            octx.fillStyle = 'rgba(224, 242, 254, 0.85)';
+            octx.lineWidth = 2;
+            octx.beginPath();
+            octx.arc(scr.x * pixelScale, scr.y * pixelScale, 6, 0, Math.PI * 2);
+            octx.fill();
+            octx.stroke();
+          }
+        }
+
         // Anel 3D do pincel sob o cursor
         const activeTool = S.activeTool;
         const brushRadius = S.brushRadius;
@@ -517,7 +702,8 @@
             if (i === 0) octx.moveTo(scr.x * pixelScale, scr.y * pixelScale);
             else octx.lineTo(scr.x * pixelScale, scr.y * pixelScale);
           }
-          octx.strokeStyle = activeTool === 'pin' ? '#38BDF8' : (activeTool === 'wind' ? '#FACC15' : '#F59E0B');
+          const isWaterTool = activeTool === 'pin' || activeTool === 'spring' || activeTool === 'mat_water' || activeTool === 'mat_shallow';
+          octx.strokeStyle = isWaterTool ? '#38BDF8' : (activeTool === 'wind' ? '#FACC15' : '#F59E0B');
           octx.lineWidth = 2;
           octx.stroke();
         }
