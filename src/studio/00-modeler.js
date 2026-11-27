@@ -42,6 +42,8 @@
       let pal = DEFAULT_PAL.slice();
       let N = 24;
       let vol = [];
+      let front2D = new Uint8Array(N * N);
+      let side2D = new Uint8Array(N * N);
       let curZ = 0;
       let tool = 'pencil';
       let curColor = 2;
@@ -55,6 +57,8 @@
       function newVolume(size) {
         N = size;
         vol = Array.from({ length: N }, () => new Uint8Array(N * N));
+        front2D = new Uint8Array(N * N);
+        side2D = new Uint8Array(N * N);
         curZ = 0;
         voxCache = null;
         const zEl = document.getElementById('mZ');
@@ -327,6 +331,7 @@
         if (!confirm('Descartar o modelo atual e começar um novo?')) return;
         newVolume(parseInt(document.getElementById('mSize').value, 10));
         drawEdit();
+        if (typeof drawAll2d === 'function') drawAll2d();
       });
       document.getElementById('mSize').addEventListener('change', () => {
         const s = parseInt(document.getElementById('mSize').value, 10);
@@ -337,6 +342,7 @@
         }
         newVolume(s);
         drawEdit();
+        if (typeof drawAll2d === 'function') drawAll2d();
       });
       document.getElementById('mOnion').addEventListener('change', drawEdit);
       document.querySelectorAll('#mTools .tool-btn').forEach((b) => {
@@ -1063,6 +1069,714 @@
         });
       }
 
+      // ---------- 8.1 Tree & Flora Studio Modular ----------
+      const bindRangeLabel = (id, valId, suffix = '') => {
+        const el = document.getElementById(id);
+        const out = document.getElementById(valId);
+        if (!el) return;
+        const sync = () => { if (out) out.textContent = String(el.value) + suffix; };
+        el.addEventListener('input', sync);
+        el.addEventListener('change', sync);
+        sync();
+      };
+      bindRangeLabel('mTreeThick', 'mTreeThickVal');
+      bindRangeLabel('mTreeCurve', 'mTreeCurveVal');
+      bindRangeLabel('mTreeFlowerPct', 'mTreeFlowerPctVal', '%');
+      bindRangeLabel('mTreeFruitPct', 'mTreeFruitPctVal', '%');
+      bindRangeLabel('m2dThickness', 'm2dThicknessVal');
+
+      let modTreeSeed = 200;
+      function generateModularTree(opts = {}, seed = 201) {
+        const rng = makeRng(seed);
+        const branchCount = Math.max(1, Math.min(4, parseInt(opts.branchCount ?? document.getElementById('mTreeBranch')?.value ?? '2', 10) || 2));
+        const thick = Math.max(1, Math.min(5, parseInt(opts.thick ?? document.getElementById('mTreeThick')?.value ?? '2', 10) || 2));
+        const curve = Math.max(0, Math.min(3, parseInt(opts.curve ?? document.getElementById('mTreeCurve')?.value ?? '1', 10) || 0));
+        const crownType = String(opts.crownType ?? document.getElementById('mTreeCrown')?.value ?? 'spheres');
+        const flowerPct = Math.max(0, Math.min(40, parseInt(opts.flowerPct ?? document.getElementById('mTreeFlowerPct')?.value ?? '0', 10) || 0));
+        const fruitPct = Math.max(0, Math.min(30, parseInt(opts.fruitPct ?? document.getElementById('mTreeFruitPct')?.value ?? '0', 10) || 0));
+        const colTrunk = String(opts.colTrunk ?? document.getElementById('mTreeColTrunk')?.value ?? '#7C4D2B');
+        const colLeaf = String(opts.colLeaf ?? document.getElementById('mTreeColLeaf')?.value ?? '#3F8F3A');
+        const colFlower = String(opts.colFlower ?? document.getElementById('mTreeColFlower')?.value ?? '#F472B6');
+        const colFruit = String(opts.colFruit ?? document.getElementById('mTreeColFruit')?.value ?? '#EF4444');
+
+        pal = [
+          'rgba(0,0,0,0)',
+          shadeHex(colTrunk, 0.72), colTrunk, shadeHex(colTrunk, 1.22),
+          shadeHex(colLeaf, 0.65), shadeHex(colLeaf, 0.85), colLeaf, shadeHex(colLeaf, 1.24),
+          colFlower, shadeHex(colFlower, 1.28),
+          shadeHex(colFruit, 0.78), colFruit,
+          '#FDE68A', '#FFFFFF', '#6B7280', '#1B1B1B'
+        ];
+        if (kindSel) kindSel.value = 'foliage';
+        if (destrOptsEl) destrOptsEl.style.display = 'none';
+        if (document.getElementById('mName')) document.getElementById('mName').value = `arvore_mod_${seed}`;
+        curColor = 6;
+        const colEl = document.getElementById('mColor');
+        if (colEl) colEl.value = pal[curColor];
+
+        for (let z = 0; z < N; z++) vol[z].fill(0);
+        const s = N / 24;
+        const cx = (N - 1) / 2;
+        const cy = (N - 1) / 2;
+
+        const putV = (vx, vy, vz, colIdx) => {
+          const ix = Math.round(vx), iy = Math.round(vy), iz = Math.round(vz);
+          if (ix < 0 || ix >= N || iy < 0 || iy >= N || iz < 0 || iz >= N) return;
+          vol[iz][iy * N + ix] = colIdx;
+        };
+        const stampSphere = (lx, ly, lz, r, colFn) => {
+          const rV = r * s;
+          const vx = cx + lx * s, vy = cy + ly * s, vz = lz * s;
+          const x0 = Math.max(0, Math.floor(vx - rV - 0.5)), x1 = Math.min(N - 1, Math.ceil(vx + rV + 0.5));
+          const y0 = Math.max(0, Math.floor(vy - rV - 0.5)), y1 = Math.min(N - 1, Math.ceil(vy + rV + 0.5));
+          const z0 = Math.max(0, Math.floor(vz - rV - 0.5)), z1 = Math.min(N - 1, Math.ceil(vz + rV + 0.5));
+          for (let iz = z0; iz <= z1; iz++) {
+            for (let iy = y0; iy <= y1; iy++) {
+              for (let ix = x0; ix <= x1; ix++) {
+                const dx = ix - vx, dy = iy - vy, dz = iz - vz;
+                if (dx * dx + dy * dy + dz * dz <= rV * rV + 0.05) {
+                  const c = colFn(dx, dy, dz);
+                  if (c > 0) vol[iz][iy * N + ix] = c;
+                }
+              }
+            }
+          }
+        };
+        const drawSegment = (p0, p1, r0, r1, bendX, bendY) => {
+          const dist = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+          const steps = Math.max(8, Math.ceil(dist * s * 2.4));
+          for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const b = Math.sin(t * Math.PI);
+            const px = p0.x + (p1.x - p0.x) * t + bendX * b;
+            const py = p0.y + (p1.y - p0.y) * t + bendY * b;
+            const pz = p0.z + (p1.z - p0.z) * t;
+            const r = r0 + (r1 - r0) * t;
+            stampSphere(px, py, pz, r, (dx, dy) => (dx + dy < -0.2 ? 3 : dx + dy > 0.4 ? 1 : 2));
+          }
+        };
+
+        const baseR = 0.65 + thick * 0.48;
+        const topR = Math.max(0.55, baseR * 0.54);
+        // Raizes radiais na base quando curvatura > 0
+        if (curve > 0) {
+          const numRoots = 2 + curve;
+          const rAng0 = rng() * Math.PI * 2;
+          for (let i = 0; i < numRoots; i++) {
+            const ang = rAng0 + (i * Math.PI * 2) / numRoots + (rng() - 0.5) * 0.4;
+            const reach = baseR + 1.1 + curve * 0.55;
+            drawSegment(
+              { x: Math.cos(ang) * reach, y: Math.sin(ang) * reach, z: 0.3 },
+              { x: Math.cos(ang) * baseR * 0.4, y: Math.sin(ang) * baseR * 0.4, z: 2.2 + curve * 0.6 },
+              Math.max(0.55, baseR * 0.42),
+              Math.max(0.45, baseR * 0.32),
+              0, 0
+            );
+          }
+        }
+
+        const leanAng = rng() * Math.PI * 2;
+        const trunkBendX = Math.cos(leanAng) * curve * 0.85;
+        const trunkBendY = Math.sin(leanAng) * curve * 0.85;
+        const crownAnchors = [];
+
+        if (branchCount === 1) {
+          const trunkTop = crownType === 'cones' ? 20.0 : 15.5;
+          const tipX = trunkBendX * 0.55, tipY = trunkBendY * 0.55;
+          drawSegment(
+            { x: 0, y: 0, z: 0 },
+            { x: tipX, y: tipY, z: trunkTop },
+            baseR, Math.max(0.5, topR * 0.65),
+            trunkBendX * 0.5, trunkBendY * 0.5
+          );
+          if (crownType === 'cones') {
+            crownAnchors.push({ x: tipX * 0.5, y: tipY * 0.5, z: 12.5 });
+          }
+          crownAnchors.push({ x: tipX, y: tipY, z: trunkTop });
+        } else {
+          const splitZ = 6.8 + rng() * 2.2;
+          const splitX = trunkBendX * 0.5;
+          const splitY = trunkBendY * 0.5;
+          drawSegment(
+            { x: 0, y: 0, z: 0 },
+            { x: splitX, y: splitY, z: splitZ },
+            baseR, topR,
+            trunkBendX * 0.45, trunkBendY * 0.45
+          );
+          const baseAz = rng() * Math.PI * 2;
+          for (let b = 0; b < branchCount; b++) {
+            const az = baseAz + (b * Math.PI * 2) / branchCount + (rng() - 0.5) * 0.45;
+            const reach = (branchCount === 4 ? 5.8 : 4.8) + rng() * 1.8;
+            const endZ = (crownType === 'none' ? 16.5 : 13.8) + rng() * 3.2;
+            const bx = splitX + Math.cos(az) * reach;
+            const by = splitY + Math.sin(az) * reach;
+            const bendAmp = (0.6 + curve * 0.55) * (b % 2 === 0 ? 1 : -1);
+            const perpX = -Math.sin(az) * bendAmp;
+            const perpY = Math.cos(az) * bendAmp;
+            drawSegment(
+              { x: splitX, y: splitY, z: splitZ - 0.5 },
+              { x: bx, y: by, z: endZ },
+              topR * 0.84, Math.max(0.48, topR * 0.4),
+              perpX, perpY
+            );
+            crownAnchors.push({ x: bx, y: by, z: endZ });
+
+            if (branchCount === 4 || crownType === 'none') {
+              const subT = 0.52 + rng() * 0.2;
+              const sx0 = splitX + (bx - splitX) * subT;
+              const sy0 = splitY + (by - splitY) * subT;
+              const sz0 = splitZ + (endZ - splitZ) * subT;
+              const saz = az + (b % 2 === 0 ? 0.75 : -0.75);
+              const sReach = 2.6 + rng() * 1.6;
+              const sx1 = sx0 + Math.cos(saz) * sReach;
+              const sy1 = sy0 + Math.sin(saz) * sReach;
+              const sz1 = Math.min(21.5, sz0 + 2.6 + rng() * 2.0);
+              drawSegment(
+                { x: sx0, y: sy0, z: sz0 },
+                { x: sx1, y: sy1, z: sz1 },
+                Math.max(0.45, topR * 0.48), 0.42,
+                0, 0
+              );
+              if (branchCount === 4) crownAnchors.push({ x: sx1, y: sy1, z: sz1 });
+            }
+          }
+        }
+
+        // Copa Modular
+        const paintLeafLobe = (cxL, cyL, czL, rx, ry, rz, wobblePhase) => {
+          const x0 = Math.max(0, Math.floor(cx + (cxL - rx) * s)), x1 = Math.min(N - 1, Math.ceil(cx + (cxL + rx) * s));
+          const y0 = Math.max(0, Math.floor(cy + (cyL - ry) * s)), y1 = Math.min(N - 1, Math.ceil(cy + (cyL + ry) * s));
+          const z0 = Math.max(0, Math.floor((czL - rz) * s)), z1 = Math.min(N - 1, Math.ceil((czL + rz) * s));
+          for (let iz = z0; iz <= z1; iz++) {
+            const lz = iz / s;
+            const topness = (lz - (czL - rz)) / (2 * rz);
+            for (let iy = y0; iy <= y1; iy++) {
+              const ly = (iy - cy) / s;
+              for (let ix = x0; ix <= x1; ix++) {
+                const lx = (ix - cx) / s;
+                const wobble = Math.sin(lx * 0.9 + wobblePhase) * Math.cos(ly * 0.9 - wobblePhase) * 0.14;
+                const d = ((lx - cxL) / rx) ** 2 + ((ly - cyL) / ry) ** 2 + ((lz - czL) / rz) ** 2 + wobble;
+                if (d <= 1.0) {
+                  vol[iz][iy * N + ix] = topness > 0.76 ? 7 : (topness > 0.50 ? 6 : (topness > 0.25 ? 5 : 4));
+                }
+              }
+            }
+          }
+        };
+
+        if (crownType === 'spheres') {
+          crownAnchors.forEach((a, idx) => {
+            paintLeafLobe(a.x, a.y, a.z + 1.0, 3.8 + rng() * 1.3, 3.8 + rng() * 1.3, 2.9 + rng() * 1.0, idx);
+            if (idx < 4) {
+              paintLeafLobe(
+                a.x + (rng() - 0.5) * 3.0, a.y + (rng() - 0.5) * 3.0, a.z + 2.2,
+                2.8 + rng() * 1.0, 2.8 + rng() * 1.0, 2.4 + rng() * 0.8, idx + 7
+              );
+            }
+          });
+          paintLeafLobe(trunkBendX * 0.35, trunkBendY * 0.35, 18.2, 4.4, 4.4, 3.2, 99);
+        } else if (crownType === 'cones') {
+          const tiers = branchCount === 1 ? 4 : 3;
+          const baseCz = branchCount === 1 ? 7.0 : 12.0;
+          const totalH = branchCount === 1 ? 15.5 : 10.5;
+          const cxC = branchCount === 1 ? trunkBendX * 0.45 : 0;
+          const cyC = branchCount === 1 ? trunkBendY * 0.45 : 0;
+          for (let tIdx = 0; tIdx < tiers; tIdx++) {
+            const zBot = baseCz + (tIdx * totalH) / (tiers + 0.6);
+            const tierH = totalH * (0.48 - tIdx * 0.05);
+            const rMax = (branchCount === 1 ? 8.2 : 8.8) * (1 - tIdx * 0.2);
+            const z0 = Math.max(0, Math.floor(zBot * s)), z1 = Math.min(N - 1, Math.ceil((zBot + tierH) * s));
+            for (let iz = z0; iz <= z1; iz++) {
+              const frac = (iz / s - zBot) / tierH;
+              if (frac < 0 || frac > 1) continue;
+              const rLim = rMax * (1 - frac * 0.92);
+              for (let iy = 0; iy < N; iy++) {
+                const ly = (iy - cy) / s - cyC;
+                for (let ix = 0; ix < N; ix++) {
+                  const lx = (ix - cx) / s - cxC;
+                  const ang = Math.atan2(ly, lx);
+                  const rad = Math.hypot(lx, ly);
+                  const scallop = 1 + 0.13 * Math.cos(5 * ang + tIdx);
+                  if (rad <= rLim * scallop) {
+                    vol[iz][iy * N + ix] = frac > 0.72 ? 7 : (frac > 0.42 ? 6 : (frac > 0.18 ? 5 : 4));
+                  }
+                }
+              }
+            }
+          }
+        } else if (crownType === 'weeping') {
+          paintLeafLobe(0, 0, 17.2, 7.6, 7.6, 3.8, 3);
+          const numStrands = 18;
+          for (let k = 0; k < numStrands; k++) {
+            const ang = (k / numStrands) * Math.PI * 2 + (rng() - 0.5) * 0.2;
+            const rad = 5.2 + rng() * 2.4;
+            const sx = Math.cos(ang) * rad;
+            const sy = Math.sin(ang) * rad;
+            const zTop = 16.2 + rng() * 1.5;
+            const zBot = 4.2 + rng() * 4.5;
+            for (let lz = zBot; lz <= zTop; lz += 0.6) {
+              const frac = (lz - zBot) / (zTop - zBot);
+              const swayX = sx + Math.sin(lz * 0.4 + k) * 0.35;
+              const swayY = sy + Math.cos(lz * 0.4 + k) * 0.35;
+              const vx = cx + swayX * s, vy = cy + swayY * s, vz = lz * s;
+              const cIdx = frac > 0.7 ? 6 : (frac > 0.35 ? 5 : 4);
+              putV(vx, vy, vz, cIdx);
+              if (thick >= 2) putV(vx + 1, vy, vz, cIdx);
+            }
+          }
+        } else if (crownType === 'dome') {
+          const avgX = crownAnchors.reduce((acc, a) => acc + a.x, 0) / crownAnchors.length;
+          const avgY = crownAnchors.reduce((acc, a) => acc + a.y, 0) / crownAnchors.length;
+          const maxZ = crownAnchors.reduce((acc, a) => Math.max(acc, a.z), 14);
+          paintLeafLobe(avgX, avgY, Math.min(18.5, maxZ + 1.4), 8.6, 8.6, 3.8, 5);
+          crownAnchors.forEach((a, idx) => {
+            paintLeafLobe(a.x * 0.75, a.y * 0.75, a.z + 0.8, 4.2, 4.2, 2.5, idx + 11);
+          });
+        }
+
+        // Flores (%) e Frutas (%) na superfície externa da copa
+        if (crownType !== 'none' && (flowerPct > 0 || fruitPct > 0)) {
+          const surface = [];
+          const dirs = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+          for (let iz = 0; iz < N; iz++) {
+            for (let iy = 0; iy < N; iy++) {
+              for (let ix = 0; ix < N; ix++) {
+                const v = vol[iz][iy * N + ix];
+                if (v < 4 || v > 7) continue;
+                let exposed = false;
+                for (let d = 0; d < 6; d++) {
+                  const nx = ix + dirs[d][0], ny = iy + dirs[d][1], nz = iz + dirs[d][2];
+                  if (nx < 0 || nx >= N || ny < 0 || ny >= N || nz < 0 || nz >= N || vol[nz][ny * N + nx] === 0) {
+                    exposed = true;
+                    break;
+                  }
+                }
+                if (exposed) {
+                  const topExposed = (iz === N - 1 || vol[iz + 1][iy * N + ix] === 0);
+                  surface.push({ ix, iy, iz, topExposed });
+                }
+              }
+            }
+          }
+          // Embaralha determinístico com rng
+          for (let i = surface.length - 1; i > 0; i--) {
+            const j = Math.floor(rng() * (i + 1));
+            const tmp = surface[i]; surface[i] = surface[j]; surface[j] = tmp;
+          }
+          let cursor = 0;
+          if (flowerPct > 0 && surface.length > 0) {
+            const nFlowers = Math.max(1, Math.round(surface.length * (flowerPct / 100) * 0.7));
+            for (let i = 0; i < surface.length && cursor < nFlowers; i++) {
+              const p = surface[i];
+              vol[p.iz][p.iy * N + p.ix] = p.topExposed ? 9 : 8;
+              cursor++;
+            }
+          }
+          if (fruitPct > 0 && surface.length > cursor) {
+            const nFruits = Math.max(1, Math.round(surface.length * (fruitPct / 100) * 0.55));
+            let placed = 0;
+            for (let i = cursor; i < surface.length && placed < nFruits; i++) {
+              const p = surface[i];
+              if (!p.topExposed || i + (nFruits - placed) >= surface.length) {
+                vol[p.iz][p.iy * N + p.ix] = rng() > 0.35 ? 11 : 10;
+                placed++;
+              }
+            }
+          }
+        }
+
+        voxCache = null;
+        renderPalette();
+        drawEdit();
+        say(`Árvore modular (${branchCount} galhos, copa "${crownType}") gerada (seed ${seed})!`);
+      }
+
+      const btnModTree = document.getElementById('mBtnGenModularTree');
+      if (btnModTree) {
+        btnModTree.addEventListener('click', () => {
+          modTreeSeed++;
+          generateModularTree({}, modTreeSeed);
+        });
+      }
+
+      // ---------- 8.2 Conversor Matemático 2D -> 3D (Sem IA) ----------
+      const f2dCv = document.getElementById('m2dFrontCanvas');
+      const s2dCv = document.getElementById('m2dSideCanvas');
+
+      function draw2dCanvas(cv, buf) {
+        if (!cv || typeof cv.getContext !== 'function') return;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        const W = cv.width, H = cv.height;
+        const cs = W / N;
+        ctx.clearRect(0, 0, W, H);
+        for (let row = 0; row < N; row++) {
+          const z = N - 1 - row;
+          for (let col = 0; col < N; col++) {
+            const v = buf[z * N + col];
+            ctx.fillStyle = v > 0 ? (pal[v] || '#FFFFFF') : (((row + col) & 1) ? '#1F1B19' : '#171412');
+            ctx.fillRect(col * cs, row * cs, cs + 0.3, cs + 0.3);
+          }
+        }
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(W / 2, 0);
+        ctx.lineTo(W / 2, H);
+        ctx.stroke();
+      }
+      function drawAll2d() {
+        draw2dCanvas(f2dCv, front2D);
+        draw2dCanvas(s2dCv, side2D);
+      }
+
+      function bind2dCanvasPaint(cv, getBuf) {
+        if (!cv) return;
+        let active2d = false;
+        let erase2d = false;
+        const cell2d = (e) => {
+          const r = cv.getBoundingClientRect();
+          const gx = Math.floor(((e.clientX - r.left) / r.width) * N);
+          const row = Math.floor(((e.clientY - r.top) / r.height) * N);
+          if (gx < 0 || gx >= N || row < 0 || row >= N) return null;
+          return { gx, gz: N - 1 - row };
+        };
+        const paint2d = (c) => {
+          if (!c) return;
+          const buf = getBuf();
+          if (tool === 'pick' && !erase2d) {
+            const v = buf[c.gz * N + c.gx];
+            if (v > 0) {
+              curColor = v;
+              if (document.getElementById('mColor')) document.getElementById('mColor').value = pal[v];
+              renderPalette();
+            }
+            return;
+          }
+          buf[c.gz * N + c.gx] = (erase2d || tool === 'eraser') ? 0 : curColor;
+          drawAll2d();
+        };
+        cv.addEventListener('contextmenu', (e) => e.preventDefault());
+        cv.addEventListener('pointerdown', (e) => {
+          active2d = true;
+          erase2d = e.button === 2 || e.buttons === 2;
+          if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId);
+          paint2d(cell2d(e));
+        });
+        cv.addEventListener('pointermove', (e) => {
+          if (!active2d) return;
+          paint2d(cell2d(e));
+        });
+        cv.addEventListener('pointerup', () => { active2d = false; erase2d = false; });
+      }
+      bind2dCanvasPaint(f2dCv, () => front2D);
+      bind2dCanvasPaint(s2dCv, () => side2D);
+
+      const btn2dFromSlice = document.getElementById('m2dFromSlice');
+      if (btn2dFromSlice) {
+        btn2dFromSlice.addEventListener('click', () => {
+          const layer = vol[curZ];
+          for (let y = 0; y < N; y++) {
+            const z = N - 1 - y;
+            for (let x = 0; x < N; x++) front2D[z * N + x] = layer[y * N + x];
+          }
+          drawAll2d();
+          say(`Fatia Z=${curZ} copiada para a Vista Frontal 2D!`);
+        });
+      }
+      const btn2dCopySide = document.getElementById('m2dCopyFrontToSide');
+      if (btn2dCopySide) {
+        btn2dCopySide.addEventListener('click', () => {
+          side2D.set(front2D);
+          drawAll2d();
+          say('Vista Frontal copiada para Vista Lateral!');
+        });
+      }
+      const btn2dClear = document.getElementById('m2dClear');
+      if (btn2dClear) {
+        btn2dClear.addEventListener('click', () => {
+          front2D.fill(0);
+          side2D.fill(0);
+          drawAll2d();
+          say('Grades 2D limpas.');
+        });
+      }
+      const btn2dImport = document.getElementById('m2dImportImg');
+      const file2dImg = document.getElementById('m2dFileImg');
+      if (btn2dImport && file2dImg) {
+        btn2dImport.addEventListener('click', () => file2dImg.click());
+        file2dImg.addEventListener('change', (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+              const tmp = document.createElement('canvas');
+              tmp.width = N; tmp.height = N;
+              const tCtx = tmp.getContext('2d');
+              tCtx.imageSmoothingEnabled = false;
+              tCtx.clearRect(0, 0, N, N);
+              tCtx.drawImage(img, 0, 0, N, N);
+              const data = tCtx.getImageData(0, 0, N, N).data;
+              front2D.fill(0);
+              const h2 = (v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
+              for (let row = 0; row < N; row++) {
+                const gz = N - 1 - row;
+                for (let col = 0; col < N; col++) {
+                  const p = (row * N + col) * 4;
+                  if (data[p + 3] < 64) continue;
+                  const hex = `#${h2(data[p])}${h2(data[p + 1])}${h2(data[p + 2])}`;
+                  front2D[gz * N + col] = findOrAddPalColor(hex);
+                }
+              }
+              renderPalette();
+              drawAll2d();
+              say(`Imagem "${file.name}" importada para Vista Frontal ${N}×${N}!`);
+            };
+            img.src = reader.result;
+          };
+          reader.readAsDataURL(file);
+          e.target.value = '';
+        });
+      }
+
+      function load2dPreset(presetName) {
+        front2D.fill(0);
+        side2D.fill(0);
+        const s = N / 24;
+        const cx = (N - 1) / 2;
+        if (presetName === 'sword') {
+          applyPresetAndKind('default', 'pickable', 'espada_2d3d');
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let x = 0; x < N; x++) {
+              const lx = (x - cx) / s;
+              let c = 0;
+              if (lz >= 1 && lz < 3.2 && Math.hypot(lx, lz - 2.0) <= 1.8) c = 13;
+              else if (lz >= 3 && lz < 7 && Math.abs(lx) <= 1.0) c = 4;
+              else if (lz >= 7 && lz < 8.8 && Math.abs(lx) <= 4.6) c = 13;
+              else if (lz >= 8.8 && lz <= 22.2) {
+                const tipTaper = lz > 18.5 ? Math.max(0.4, 2.2 - (lz - 18.5) * 0.52) : 2.2;
+                if (Math.abs(lx) <= tipTaper) c = Math.abs(lx) <= 0.9 ? 14 : 11;
+              }
+              if (c > 0) front2D[z * N + x] = c;
+            }
+          }
+        } else if (presetName === 'vase') {
+          applyPresetAndKind('default', 'decor', 'vaso_2d3d');
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let x = 0; x < N; x++) {
+              const ax = Math.abs((x - cx) / s);
+              let c = 0;
+              if (lz >= 1 && lz < 2.6 && ax <= 4.2) c = 10;
+              else if (lz >= 2.6 && lz < 13.5) {
+                const belly = 3.2 + Math.sin(((lz - 2.6) / 10.9) * Math.PI) * 4.4;
+                if (ax <= belly) c = ax > belly - 1.2 ? 2 : (lz < 9.5 ? 12 : 14);
+              } else if (lz >= 13.5 && lz < 17.5 && ax <= 2.4) {
+                c = ax > 1.2 ? 2 : 14;
+              } else if (lz >= 17.5 && lz < 19.3 && ax <= 3.6) {
+                c = 13;
+              } else if (lz >= 19.3 && lz <= 21.5 && ax <= 1.8) {
+                c = 6;
+              }
+              if (c > 0) front2D[z * N + x] = c;
+            }
+          }
+        } else {
+          // creature: silhueta bichinho Frente + Lado
+          applyPresetAndKind('character', 'solid', 'bichinho_2d3d');
+          for (let z = 0; z < N; z++) {
+            const lz = z / s;
+            for (let x = 0; x < N; x++) {
+              const lx = (x - cx) / s;
+              let cf = 0;
+              if (lz >= 1 && lz < 5 && Math.abs(Math.abs(lx) - 2.6) <= 1.3) cf = 4;
+              else if (lz >= 4.5 && lz < 12.5 && (lx / 5.2) ** 2 + ((lz - 8.5) / 4.2) ** 2 <= 1) cf = Math.abs(lx) < 2.2 ? 1 : 3;
+              if (lz >= 11.5 && lz <= 18.8 && (lx / 4.8) ** 2 + ((lz - 15.0) / 3.8) ** 2 <= 1) {
+                cf = (lz >= 14.5 && lz <= 16.0 && Math.abs(Math.abs(lx) - 1.8) <= 0.65) ? 6 : 3;
+              } else if (lz >= 17.5 && lz <= 21.5 && Math.abs(Math.abs(lx) - 3.0) <= 1.1) {
+                cf = 4;
+              }
+              if (cf > 0) front2D[z * N + x] = cf;
+
+              const ly = (x - cx) / s; // eixo horizontal = Y na Vista Lateral
+              let cs = 0;
+              if (lz >= 1 && lz < 5 && (Math.abs(ly - 2.4) <= 1.3 || Math.abs(ly + 2.4) <= 1.3)) cs = 4;
+              else if (lz >= 4.5 && lz < 12.5 && (ly / 5.4) ** 2 + ((lz - 8.5) / 4.2) ** 2 <= 1) cs = 3;
+              if (lz >= 6.5 && lz <= 12.0 && ly < -4.2 && ly >= -8.8 && Math.abs(lz - (8.0 + (-ly - 4.2) * 0.8)) <= 1.2) cs = 1;
+              if (lz >= 11.5 && lz <= 18.8 && ((ly - 1.0) / 4.4) ** 2 + ((lz - 15.0) / 3.8) ** 2 <= 1) cs = 3;
+              if (lz >= 12.5 && lz <= 15.2 && ly >= 4.2 && ly <= 7.2) cs = (ly >= 6.2 && lz >= 14.0) ? 6 : 1;
+              if (lz >= 17.5 && lz <= 21.5 && Math.abs(ly - 0.2) <= 1.2) cs = 4;
+              if (cs > 0) side2D[z * N + x] = cs;
+            }
+          }
+        }
+        renderPalette();
+        drawAll2d();
+        say(`Silhueta 2D "${presetName}" carregada!`);
+      }
+
+      const btn2dLoadPreset = document.getElementById('m2dLoadPreset');
+      if (btn2dLoadPreset) {
+        btn2dLoadPreset.addEventListener('click', () => {
+          const p = document.getElementById('m2dPreset')?.value || 'sword';
+          load2dPreset(p);
+        });
+      }
+
+      function computeEDT2D(buf) {
+        const dist = new Float32Array(N * N);
+        const boundaryEmpty = [];
+        for (let ez = -1; ez <= N; ez++) {
+          for (let ex = -1; ex <= N; ex++) {
+            const inB = ex >= 0 && ex < N && ez >= 0 && ez < N;
+            if (inB && buf[ez * N + ex] > 0) continue;
+            let touchesFilled = false;
+            for (let dz = -1; dz <= 1 && !touchesFilled; dz++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = ex + dx, nz = ez + dz;
+                if (nx >= 0 && nx < N && nz >= 0 && nz < N && buf[nz * N + nx] > 0) {
+                  touchesFilled = true;
+                  break;
+                }
+              }
+            }
+            if (touchesFilled) boundaryEmpty.push(ex, ez);
+          }
+        }
+        let dMax = 0;
+        for (let z = 0; z < N; z++) {
+          for (let x = 0; x < N; x++) {
+            const idx = z * N + x;
+            if (buf[idx] === 0) continue;
+            let best2 = Infinity;
+            for (let k = 0; k < boundaryEmpty.length; k += 2) {
+              const dx = x - boundaryEmpty[k], dz = z - boundaryEmpty[k + 1];
+              const d2 = dx * dx + dz * dz;
+              if (d2 < best2) best2 = d2;
+            }
+            const d = Math.sqrt(best2);
+            dist[idx] = d;
+            if (d > dMax) dMax = d;
+          }
+        }
+        return { dist, dMax };
+      }
+
+      function convert2dTo3d(modeOpt, thickOpt) {
+        const mode = String(modeOpt ?? document.getElementById('m2dMode')?.value ?? 'edt_blade');
+        const thickness = Math.max(2, Math.min(N, parseInt(thickOpt ?? document.getElementById('m2dThickness')?.value ?? '10', 10) || 10));
+
+        let hasFront = false;
+        for (let i = 0; i < front2D.length; i++) if (front2D[i] > 0) { hasFront = true; break; }
+        if (!hasFront) {
+          say('Vista Frontal 2D vazia: desenhe ou carregue uma silhueta antes de converter.', false);
+          return { ok: false, voxels: 0 };
+        }
+        if (mode === 'visual_hull') {
+          let hasSide = false;
+          for (let i = 0; i < side2D.length; i++) if (side2D[i] > 0) { hasSide = true; break; }
+          if (!hasSide) {
+            say('Vista Lateral 2D vazia: desenhe a lateral ou use "Frente → Lado" para Cruzamento.', false);
+            return { ok: false, voxels: 0 };
+          }
+        }
+
+        for (let z = 0; z < N; z++) vol[z].fill(0);
+        const yc = Math.floor((N - 1) / 2);
+        const xc = (N - 1) / 2;
+        const ycF = (N - 1) / 2;
+
+        if (mode === 'edt_blade' || mode === 'edt_organic') {
+          const { dist, dMax } = computeEDT2D(front2D);
+          const maxHalfY = Math.max(1, Math.floor(thickness / 2));
+          for (let z = 0; z < N; z++) {
+            for (let x = 0; x < N; x++) {
+              const col = front2D[z * N + x];
+              if (col === 0) continue;
+              const d = dist[z * N + x];
+              const halfY = mode === 'edt_blade'
+                ? Math.min(maxHalfY, Math.max(0, Math.floor(d - 0.5)))
+                : Math.round(maxHalfY * Math.sqrt(Math.min(1, d / Math.max(1, dMax))));
+              const y0 = Math.max(0, yc - halfY);
+              const y1 = Math.min(N - 1, yc + halfY);
+              for (let y = y0; y <= y1; y++) vol[z][y * N + x] = col;
+            }
+          }
+        } else if (mode === 'lathe') {
+          for (let z = 0; z < N; z++) {
+            for (let y = 0; y < N; y++) {
+              for (let x = 0; x < N; x++) {
+                const r = Math.floor(Math.hypot(x - xc, y - ycF));
+                const ixR = Math.ceil(xc) + r;
+                const ixL = Math.floor(xc) - r;
+                const cR = (ixR >= 0 && ixR < N) ? front2D[z * N + ixR] : 0;
+                const cL = (ixL >= 0 && ixL < N) ? front2D[z * N + ixL] : 0;
+                const col = x >= xc ? (cR || cL) : (cL || cR);
+                if (col > 0) vol[z][y * N + x] = col;
+              }
+            }
+          }
+        } else if (mode === 'visual_hull') {
+          for (let z = 0; z < N; z++) {
+            let xMin = N, xMax = -1, yMin = N, yMax = -1;
+            for (let i = 0; i < N; i++) {
+              if (front2D[z * N + i] > 0) { if (i < xMin) xMin = i; if (i > xMax) xMax = i; }
+              if (side2D[z * N + i] > 0) { if (i < yMin) yMin = i; if (i > yMax) yMax = i; }
+            }
+            if (xMax < xMin || yMax < yMin) continue;
+            const wX = xMax - xMin + 1;
+            const wY = yMax - yMin + 1;
+            for (let y = yMin; y <= yMax; y++) {
+              const cyCol = side2D[z * N + y];
+              if (cyCol === 0) continue;
+              const dY = Math.min(y - yMin, yMax - y);
+              for (let x = xMin; x <= xMax; x++) {
+                const cxCol = front2D[z * N + x];
+                if (cxCol === 0) continue;
+                if (wX >= 4 && wY >= 4 && (x === xMin || x === xMax) && (y === yMin || y === yMax)) continue;
+                const dX = Math.min(x - xMin, xMax - x);
+                vol[z][y * N + x] = (dX < dY) ? cyCol : cxCol;
+              }
+            }
+          }
+        }
+
+        let count = 0;
+        for (let z = 0; z < N; z++) for (let i = 0; i < vol[z].length; i++) if (vol[z][i] > 0) count++;
+        voxCache = null;
+        drawEdit();
+        say(`Conversão "${mode}" gerou ${count} voxels 3D!`);
+        return { ok: true, mode, voxels: count };
+      }
+
+      const btnConvert2d = document.getElementById('mBtnConvert2d3d');
+      if (btnConvert2d) {
+        btnConvert2d.addEventListener('click', () => convert2dTo3d());
+      }
+
+      // Sub-abas da barra direita do Modelador
+      const rightTabsBox = document.getElementById('mRightTabs');
+      if (rightTabsBox) {
+        const panelMap = { chars: 'mTabChars', trees: 'mTabTrees', conv2d: 'mTabConv2d' };
+        rightTabsBox.addEventListener('click', (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest('[data-mtab]') : null;
+          const tab = btn && btn.dataset ? btn.dataset.mtab : null;
+          if (!tab || !panelMap[tab]) return;
+          rightTabsBox.querySelectorAll('.m-rtab-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          Object.values(panelMap).forEach((pid) => {
+            const p = document.getElementById(pid);
+            if (p) p.classList.remove('active');
+          });
+          const targetP = document.getElementById(panelMap[tab]);
+          if (targetP) targetP.classList.add('active');
+          if (tab === 'conv2d') drawAll2d();
+        });
+      }
+
       const btnOpenSide = document.getElementById('btnOpenModelerSide');
       if (btnOpenSide) {
         btnOpenSide.addEventListener('click', () => {
@@ -1125,6 +1839,7 @@
             curColor = Math.min(curColor, pal.length - 1) || 1;
             renderPalette();
             drawEdit();
+            drawAll2d();
             say('Modelo importado para edição.');
           } catch (err) {
             say('Falha ao importar: ' + err.message, false);
@@ -1140,6 +1855,7 @@
       const tabM = document.getElementById('btnTabModeler');
       tabW.addEventListener('click', () => {
         view.classList.remove('show');
+        document.body.classList.remove('in-modeler');
         workspace.style.display = 'flex';
         tabW.className = 'mode-btn active-edit';
         tabM.className = 'mode-btn';
@@ -1148,9 +1864,11 @@
       tabM.addEventListener('click', () => {
         workspace.style.display = 'none';
         view.classList.add('show');
+        document.body.classList.add('in-modeler');
         tabM.className = 'mode-btn active-edit';
         tabW.className = 'mode-btn';
         drawEdit();
+        drawAll2d();
       });
 
       // ---------- API para o Studio de Mundo ----------
@@ -1160,6 +1878,12 @@
         registerAsset,
         generateCharacter,
         generateProcProp,
+        generateModularTree,
+        convert2dTo3d,
+        load2dPreset,
+        get2dBuffers: () => ({ front2D, side2D }),
+        getPalette: () => pal,
+        getSize: () => N,
         getVol: () => vol,
         setZ,
         setTool: (t) => { tool = t; },
@@ -1174,5 +1898,6 @@
       }
       renderPalette();
       drawEdit();
+      drawAll2d();
     })();
 
