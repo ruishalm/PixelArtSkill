@@ -144,7 +144,7 @@
         speech: cat.speech ? cat.speech.text : null,
         collectedFish: fishes.filter(f => f.collected).length,
         visitedBiomes: Array.from(visitedBiomes),
-        viewport: { viewW, viewH, LOW_W, LOW_H, pixelScale, dpr }
+        viewport: { viewW, viewH, LOW_W, LOW_H, pixelScale, camZoom, dpr }
       }),
       setCatWorld: (wx, wy, z = null) => {
         teleportToWorld(wx, wy, null, z);

@@ -16,7 +16,7 @@
         window.__STUDIO_EDIT_MODE__ = true;
         document.getElementById('btnModeEdit').className = 'mode-btn active-edit';
         document.getElementById('btnModeTest').className = 'mode-btn';
-        document.getElementById('helpPill').textContent = 'Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira';
+        document.getElementById('helpPill').textContent = 'Editar: Clique/Arraste pincel • Scroll: Zoom • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira';
       });
       document.getElementById('btnModeTest').addEventListener('click', () => {
         window.__STUDIO_EDIT_MODE__ = false;
@@ -25,9 +25,23 @@
         const safe = S.findSafeSpawnNear(camX, camY);
         teleportToWorld(safe.x, safe.y, 'Testando cena! 🐱', safe.z);
         document.getElementById('helpPill').textContent = document.body.classList.contains('play-only')
-          ? 'WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Q/E gira'
-          : 'Testar: WASD anda • Espaço pula • F quebra/arremessa • G pega/solta • Volte p/ Editar';
+          ? 'WASD anda • Espaço pula • Scroll: Zoom • F quebra/arremessa • G pega/solta • Q/E gira'
+          : 'Testar: WASD anda • Espaço pula • Scroll: Zoom • F quebra/arremessa • G pega/solta • Volte p/ Editar';
       });
+
+      const btnZoomOut = document.getElementById('btnZoomOut');
+      const btnZoomReset = document.getElementById('btnZoomReset');
+      const btnZoomIn = document.getElementById('btnZoomIn');
+      if (btnZoomOut) btnZoomOut.addEventListener('click', () => {
+        if (typeof setCamZoom === 'function') setCamZoom(camZoom / 1.15);
+      });
+      if (btnZoomReset) btnZoomReset.addEventListener('click', () => {
+        if (typeof setCamZoom === 'function') setCamZoom(1.0);
+      });
+      if (btnZoomIn) btnZoomIn.addEventListener('click', () => {
+        if (typeof setCamZoom === 'function') setCamZoom(camZoom * 1.15);
+      });
+      if (typeof syncZoomUi === 'function') syncZoomUi();
 
       document.querySelectorAll('.sidebar').forEach((sb) => {
         sb.addEventListener('click', (e) => {
@@ -435,6 +449,8 @@
           if (cloneAssetGrid) cloneAssetGrid.innerHTML = '';
           const cloneAssetEmpty = docClone.querySelector('#customAssetEmpty');
           if (cloneAssetEmpty) cloneAssetEmpty.style.display = '';
+          const cloneZoomReset = docClone.querySelector('#btnZoomReset');
+          if (cloneZoomReset) cloneZoomReset.textContent = '🔍 100%';
           docClone.querySelectorAll('#avatarSelect option[value^="custom_"]').forEach(el => el.remove());
           docClone.querySelectorAll('script[data-studio-boot]').forEach(el => el.remove());
 
