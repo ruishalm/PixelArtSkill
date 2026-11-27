@@ -275,7 +275,8 @@
         const dBaseZ = Math.round(dr.z);
         const dTopZ = dBaseZ + Math.ceil(dr.model.count * dr.scale);
         const dp = (dr.x - camX) * sinA + (dr.y - camY) * cosA;
-        const gH = getHeightAt(dr.x, dr.y);
+        const dCell = getCellAt(dr.x, dr.y);
+        const gH = dCell ? (dCell.hasCave && dr.z < dCell.caveCeil - 2 ? dCell.caveFloor : dCell.h) : null;
         if (gH !== null && !dr.inWater) {
           registerShadow(dr.x, dr.y, gH, dr.z, 3.8, 2.4, 0.22);
         }

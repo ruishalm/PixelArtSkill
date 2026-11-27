@@ -807,6 +807,7 @@ const sculptorCode = fs.readFileSync(path.join(root, 'src/engine/03-terrain-scul
 const rendererCode = fs.readFileSync(path.join(root, 'src/engine/04-renderer.js'), 'utf8');
 const fluidsCode = fs.readFileSync(path.join(root, 'src/engine/06-fluids-weather.js'), 'utf8');
 const physCode = fs.readFileSync(path.join(root, 'src/engine/07-physics-movement.js'), 'utf8');
+const destrCode = fs.readFileSync(path.join(root, 'src/engine/08-destruction-carry.js'), 'utf8');
 const brushesCode = fs.readFileSync(path.join(root, 'src/studio/01-studio-state-brushes.js'), 'utf8');
 const regenCode = fs.readFileSync(path.join(root, 'src/studio/02-studio-regen-undo.js'), 'utf8');
 const uiCode = fs.readFileSync(path.join(root, 'src/studio/03-studio-ui-io.js'), 'utf8');
@@ -923,10 +924,9 @@ const sandbox = {
   verletChains: [], catSkinModels: [{ paw: { count: 4, w: 4, h: 4, sheet: {} }, body: { count: 8, w: 8, h: 8, sheet: {} } }],
   HAT_PRESETS: [{ id: 'none' }], hatModels: {}, TOOLS_META: { none: { modelKey: null } },
   PROP_COLLIDER_META: {},
-  equippedTool: 'none', actionCooldown: 0, swingTimer: 0, shakeTimer: 0, shakeMag: 0,
-  lastRustleCell: -1, carriedDrop: null,
-  sfxJump(){}, sfxLand(){}, sfxBlocked(){}, sfxShallowStep(){}, sfxBiome(){}, sfxFish(){},
-  stepFallingBodies(){}, stepDebrisDrops(){}, updateFoliage(){}, triggerAction(){}, throwCarriedItem(){}, pickOrDropItem(){},
+  propModels: { wood_log: { count: 6, w: 6, h: 6, sheet: {} } },
+  lastRustleCell: -1,
+  sfxJump(){}, sfxLand(){}, sfxBlocked(){}, sfxShallowStep(){}, sfxBiome(){}, sfxFish(){}, sfxChop(){}, sfxCrumble(){},
   addProp(){}, bakeMinimapBase(){},
   worldToGrid: (wx, wy) => ({ mx: Math.floor(wx / VOX + HALF_GRID), my: Math.floor(wy / VOX + HALF_GRID) }),
   getCellAt: (wx, wy) => {
@@ -935,10 +935,13 @@ const sandbox = {
     if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
     const idx = my * mw + mx;
     const cf = sandbox.caveFloor[idx], cc = sandbox.caveCeil[idx];
+    const mat = sandbox.matMap[idx], wd = sandbox.waterDepth[idx];
+    const wet = mat === MAT_WATER || mat === MAT_SHALLOW;
+    const solidTop = (wet && wd > 0) ? Math.max(Z_MIN, sandbox.hmap[idx] - wd) : sandbox.hmap[idx];
     return {
       mx, my, idx,
-      h: sandbox.hmap[idx], mat: sandbox.matMap[idx], waterDepth: sandbox.waterDepth[idx],
-      hasCave: cc > cf && sandbox.hmap[idx] > cc, caveFloor: cf, caveCeil: cc,
+      h: sandbox.hmap[idx], mat, waterDepth: wd,
+      hasCave: cc > cf && solidTop > cc, caveFloor: cf, caveCeil: cc,
       biomeId: 0, biomeKey: 'vila', biome: 'Vila',
       standable: sandbox.standableMap[idx] === 1, cliffTop: sandbox.cliffTopMap[idx]
     };
@@ -1122,12 +1125,74 @@ function runCaveSuite() {
   S.popUndoSnapshot();
   assert(getCellAt(brushWx, brushWy).hasCave, 'Undo after cave_fill must reopen cave');
 
+  // 4. Regression checks:
+  // 4a. Sloped cave mouth (h=12) must open cleanly for human scale=1.0 (no 9u headroom bottleneck)
+  document.getElementById('btnNewFlat')._emit('click');
+  for (let my = 28; my <= 36; my++) {
+    hmap[my * mw + 30] = 12;
+    for (let mx = 31; mx <= 40; mx++) hmap[my * mw + mx] = 26;
+  }
+  buildStandableMap();
+  S.syncSculptFromHmap();
+  S.activeTool = 'cave_carve';
+  S.brushRadius = 10;
+  S.applyTerrainBrush((29 - HALF_GRID + 0.5) * VOX, (32 - HALF_GRID + 0.5) * VOX, true);
+  cat.scale = 1.0;
+  teleportToWorld((29 - HALF_GRID + 0.5) * VOX, (32 - HALF_GRID + 0.5) * VOX, null, 0);
+  assert.strictEqual(
+    checkCollisionAt((30 - HALF_GRID + 0.5) * VOX, (32 - HALF_GRID + 0.5) * VOX, 0, true).blocked,
+    false,
+    'Sloped foothill carved with cave_carve must allow human (scale=1.0) to enter'
+  );
+
+  // 4b. Lake over cave preserves water body slices (blue, not rock) & clamps punctured roof
+  document.getElementById('btnNewFlat')._emit('click');
+  for (let my = 28; my <= 36; my++) {
+    for (let mx = 28; mx <= 36; mx++) {
+      const idx = my * mw + mx;
+      hmap[idx] = 20; caveFloor[idx] = 0; caveCeil[idx] = 12;
+      if (mx >= 31 && mx <= 33 && my >= 31 && my <= 33) {
+        matMap[idx] = MAT_WATER; waterDepth[idx] = 5;
+      }
+    }
+  }
+  bakeTerrainSlices();
+  const sl17 = terrainSlices[17];
+  const px17 = sl17.canvas._buf[(32 - sl17.offY) * sl17.w + (32 - sl17.offX)];
+  assert((px17 >>> 16 & 255) > (px17 & 255) + 40, 'Water body above cave at z=17 must stay blue water, not rock');
+  paintWetCell(32 * mw + 32, 13, 10, MAT_WATER);
+  assert(caveCeil[32 * mw + 32] < 10, 'Water bed puncturing cave ceiling must clamp caveCeil below bedZ');
+
+  // 4c. Dropping & throwing carried item inside cave keeps item on caveFloor instead of mountain roof
+  document.getElementById('btnNewFlat')._emit('click');
+  for (let my = 24; my <= 40; my++) {
+    for (let mx = 24; mx <= 40; mx++) {
+      const idx = my * mw + mx;
+      hmap[idx] = 26; caveFloor[idx] = 0; caveCeil[idx] = 14;
+    }
+  }
+  const cWx = (32 - HALF_GRID + 0.5) * VOX, cWy = (32 - HALF_GRID + 0.5) * VOX;
+  cat.avatar = 'human'; cat.scale = 1.0;
+  teleportToWorld(cWx, cWy, null, 0);
+  spawnPushableLog(cWx, cWy, 0);
+  debrisDrops[debrisDrops.length - 1].z = 0;
+  pickOrDropItem();
+  stepDebrisDrops(1 / 60);
+  pickOrDropItem();
+  for (let i = 0; i < 60; i++) stepDebrisDrops(1 / 60);
+  assert(debrisDrops[debrisDrops.length - 1].z < 2, 'Dropped log inside cave must land on caveFloor=0, not roof=26');
+  pickOrDropItem();
+  stepDebrisDrops(1 / 60);
+  throwCarriedItem();
+  for (let i = 0; i < 90; i++) stepDebrisDrops(1 / 60);
+  assert(debrisDrops[debrisDrops.length - 1].z < 2, 'Thrown log inside cave must bounce off ceiling and land on caveFloor=0');
+
   console.log('CAVES_AND_DUAL_SIDEBAR_OK');
 }
 
 vm.runInContext(
   mathCode + '\n' + bakerCode + '\n' + sculptorCode + '\n' + rendererCode + '\n' +
-  fluidsCode + '\n' + physCode + '\n' + brushesCode + '\n' + regenCode + '\n' + uiCode +
+  fluidsCode + '\n' + physCode + '\n' + destrCode + '\n' + brushesCode + '\n' + regenCode + '\n' + uiCode +
   '\n(' + runCaveSuite.toString() + ')()',
   sandbox
 );

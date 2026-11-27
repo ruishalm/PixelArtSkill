@@ -559,15 +559,20 @@
       if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
       const idx = my * mw + mx;
       const b = biomeMap[idx];
+      const mat = matMap[idx];
+      const wd = waterDepth[idx];
+      const wet = isWetMat(mat);
+      const bedZ = wet ? Math.max(Z_MIN, hmap[idx] - wd) : hmap[idx];
+      const solidTop = (wet && wd > 0) ? bedZ : hmap[idx];
       const cf = caveFloor[idx];
       const cc = caveCeil[idx];
-      const hasCave = cc > cf && hmap[idx] > cc;
+      const hasCave = cc > cf && solidTop > cc;
       return {
         mx, my, idx,
         h: hmap[idx],
-        mat: matMap[idx],
-        waterDepth: waterDepth[idx],
-        bedZ: isWetMat(matMap[idx]) ? Math.max(Z_MIN, hmap[idx] - waterDepth[idx]) : hmap[idx],
+        mat,
+        waterDepth: wd,
+        bedZ,
         hasCave,
         caveFloor: cf,
         caveCeil: cc,
