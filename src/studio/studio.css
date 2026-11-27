@@ -286,7 +286,7 @@ input[type="range"] { width: 100%; accent-color: #F59E0B; cursor: pointer; }
   flex-shrink: 0;
 }
 .m-sidebar-left { width: 280px; border-right: 1px solid #44403C; }
-.m-sidebar-right { width: 320px; border-left: 1px solid #44403C; }
+.m-sidebar-right { width: 332px; border-left: 1px solid #44403C; }
 .m-stage-center {
   flex: 1;
   min-width: 0;
@@ -321,14 +321,24 @@ input[type="range"] { width: 100%; accent-color: #F59E0B; cursor: pointer; }
 #m2dFrontCanvas, #m2dSideCanvas { cursor: crosshair; width: 136px; height: 136px; }
 .m-2d-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .m-2d-col { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: #D6D3D1; font-weight: 700; }
-.m-rtabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: #1C1917; padding: 3px; border-radius: 8px; border: 1px solid #44403C; flex-shrink: 0; }
+.m-rtabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; background: #1C1917; padding: 3px; border-radius: 8px; border: 1px solid #44403C; flex-shrink: 0; }
 .m-rtab-btn {
-  border: none; background: transparent; color: #A8A29E; padding: 5px 4px;
-  font-size: 10px; font-weight: 800; border-radius: 6px; cursor: pointer; white-space: nowrap;
+  border: none; background: transparent; color: #A8A29E; padding: 5px 2px;
+  font-size: 10px; font-weight: 800; border-radius: 6px; cursor: pointer; white-space: nowrap; text-align: center;
 }
 .m-rtab-btn.active { background: #D97706; color: #FFFBEB; }
 .m-rtab-panel { display: none; flex-direction: column; gap: 8px; }
 .m-rtab-panel.active { display: flex; }
+.m-mod-block {
+  display: flex; flex-direction: column; gap: 6px;
+  background: #1F1C1A; border: 1px solid #3F3A36; border-radius: 8px; padding: 8px;
+}
+.m-block-title {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;
+  color: #FBBF24; border-bottom: 1px solid #35302C; padding-bottom: 4px; margin-bottom: 1px;
+}
+.m-field { display: flex; align-items: center; gap: 6px; }
+.m-field-lbl { font-size: 11px; color: #A8A29E; min-width: 86px; }
 .m-color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .m-color-item { display: flex; align-items: center; justify-content: space-between; background: #1C1917; border: 1px solid #44403C; border-radius: 6px; padding: 3px 6px; font-size: 10px; color: #D6D3D1; }
 .m-color-item input[type="color"] { width: 24px; height: 20px; border: none; background: transparent; cursor: pointer; padding: 0; }

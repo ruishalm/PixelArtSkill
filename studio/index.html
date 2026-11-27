@@ -287,7 +287,7 @@
       <button class="btn mzoom-btn" id="mPrevZoomIn" title="Aproximar Preview 3D (Scroll)">+</button>
      </div>
     </div>
-    <canvas id="mPreviewCanvas" width="300" height="300"></canvas>
+    <canvas id="mPreviewCanvas" width="300" height="300" title="Arraste para girar • Scroll: Zoom • Alt+Clique / Duplo Clique: escolher camada Z"></canvas>
     <div class="mrow">
      <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mAutoSpin" checked /> Auto-girar</label>
      <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mRefHuman" /> 🧍 Referência (humanoide 28u)</label>
@@ -296,92 +296,269 @@
   </div>
   <aside class="m-sidebar-right">
    <div class="m-rtabs" id="mRightTabs">
-    <button class="m-rtab-btn active" data-mtab="chars">🧍 Chars &amp; Props</button>
+    <button class="m-rtab-btn active" data-mtab="chars">🧍 Chars</button>
+    <button class="m-rtab-btn" data-mtab="props">🛠️ Props</button>
     <button class="m-rtab-btn" data-mtab="trees">🌳 Árvores</button>
     <button class="m-rtab-btn" data-mtab="conv2d">🖼️ 2D → 3D</button>
    </div>
    <div id="mTabChars" class="m-rtab-panel active">
-    <div class="sec-title">⚡ Gerador de Personagens</div>
-    <div class="mrow">
-     <span style="font-size:11px;color:#A8A29E;">Arquétipo:</span>
-     <select id="mCharType" class="mtxt" style="flex:1;">
-      <option value="humanoid">🧍 Humanoide</option>
-      <option value="chibi">🧸 Chibi Cabeçudo</option>
-      <option value="quadruped">🐾 Bichinho (4 patas)</option>
-      <option value="monster">👾 Monstro / Golem</option>
-     </select>
+    <div class="m-mod-block">
+     <div class="m-block-title">📐 1. FORMA &amp; PROPORÇÃO</div>
+     <div class="m-field">
+      <span class="m-field-lbl">Arquétipo:</span>
+      <select id="mCharType" class="mtxt" style="flex:1;">
+       <option value="humanoid">🧍 Humanoide</option>
+       <option value="chibi">👶 Chibi / Cabeçudo</option>
+       <option value="dwarf">🧔 Robusto / Anão</option>
+       <option value="biped_beast">🦖 Bicho 2 Patas (Galinha / Dino)</option>
+       <option value="lizard">🦎 Lagarto / Réptil</option>
+       <option value="quadruped">🐾 Bicho 4 Patas (Gato / Lobo)</option>
+       <option value="monster">👾 Monstro / Golem</option>
+      </select>
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Altura Pernas</span><span id="mCharLegHVal">6</span></div>
+      <input id="mCharLegH" type="range" min="3" max="9" step="1" value="6" />
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Largura Tronco</span><span id="mCharTorsoWVal">6</span></div>
+      <input id="mCharTorsoW" type="range" min="4" max="10" step="1" value="6" />
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Tamanho Cabeça</span><span id="mCharHeadSVal">6</span></div>
+      <input id="mCharHeadS" type="range" min="4" max="10" step="1" value="6" />
+     </div>
+    </div>
+    <div class="m-mod-block">
+     <div class="m-block-title">🎨 2. ESTILO &amp; PEÇAS</div>
+     <div class="m-field">
+      <span class="m-field-lbl">Gerar / Exportar:</span>
+      <select id="mCharPartMode" class="mtxt" style="flex:1;">
+       <option value="full">🧍 Personagem Completo</option>
+       <option value="body_only">🐾 Só Corpo Base (Sem Roupas/Equips)</option>
+       <option value="outfit_only">👕 Só Roupa / Armadura (Torso + Pernas Soltos)</option>
+       <option value="headgear_only">🪖 Só Chapéu / Elmo / Cabelo (Item Solto)</option>
+       <option value="back_only">🎒 Só Capa / Mochila / Asas (Item Solto)</option>
+       <option value="rhand_only">🗡️ Só Arma Mão Direita (Item Solto)</option>
+       <option value="lhand_only">🛡️ Só Escudo / Item Mão Esquerda (Item Solto)</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Cabeça / Cabelo:</span>
+      <select id="mCharHead" class="mtxt" style="flex:1;">
+       <option value="short_hair">💇 Cabelo Curto</option>
+       <option value="long_hair">👱 Cabelo Longo</option>
+       <option value="mohawk">🤘 Moicano / Crista</option>
+       <option value="ponytail">🎀 Rabo de Cavalo</option>
+       <option value="ears">🐱 Orelhas Felinas/Elfo</option>
+       <option value="horns">😈 Chifres / Dino</option>
+       <option value="beard">🧔 Com Barba</option>
+       <option value="none">🥚 Liso / Careca</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Chapéu / Elmo:</span>
+      <select id="mCharHat" class="mtxt" style="flex:1;">
+       <option value="none">Nenhum</option>
+       <option value="helmet">🪖 Elmo Cavaleiro</option>
+       <option value="wizard_hat">🧙 Chapéu de Mago</option>
+       <option value="crown">👑 Coroa</option>
+       <option value="hood">🧥 Capuz</option>
+       <option value="straw_hat">👒 Chapéu de Palha</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Torso / Roupa:</span>
+      <select id="mCharTorso" class="mtxt" style="flex:1;">
+       <option value="shirt">👕 Camisa</option>
+       <option value="tunic">🥋 Túnica / Manto</option>
+       <option value="armor">🛡️ Peitoral de Armadura</option>
+       <option value="vest">🦺 Colete</option>
+       <option value="none">🐾 Sem Camisa / Escamas</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Pernas:</span>
+      <select id="mCharLegs" class="mtxt" style="flex:1;">
+       <option value="pants">👖 Calça</option>
+       <option value="shorts">🩳 Bermuda</option>
+       <option value="robe">👗 Saia / Túnica Longa</option>
+       <option value="greaves">🦿 Grevas de Metal</option>
+       <option value="none">🦶 Patas Naturais</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Costas:</span>
+      <select id="mCharBack" class="mtxt" style="flex:1;">
+       <option value="none">Nada</option>
+       <option value="cape">🦸 Capa Longa</option>
+       <option value="backpack">🎒 Mochila</option>
+       <option value="wings">🪽 Asas / Espinhos Dorsais</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Mão Direita:</span>
+      <select id="mCharRHand" class="mtxt" style="flex:1;">
+       <option value="none">Vazia</option>
+       <option value="sword">🗡️ Espada</option>
+       <option value="axe">🪓 Machado</option>
+       <option value="staff">🪄 Cajado Mágico</option>
+       <option value="hammer">🔨 Martelo</option>
+       <option value="torch">🔥 Tocha</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Mão Esquerda:</span>
+      <select id="mCharLHand" class="mtxt" style="flex:1;">
+       <option value="none">Vazia</option>
+       <option value="shield">🛡️ Escudo</option>
+       <option value="book">📖 Grimório / Livro</option>
+       <option value="lantern">🏮 Lanterna</option>
+      </select>
+     </div>
+    </div>
+    <div class="m-mod-block">
+     <div class="m-block-title">🌈 3. CORES POR PARTE</div>
+     <div class="m-color-grid">
+      <label class="m-color-item"><span>🧑 Pele/Escama</span><input type="color" id="mCharColSkin" value="#F2C9A0" /></label>
+      <label class="m-color-item"><span>💇 Cabelo/Crista</span><input type="color" id="mCharColHair" value="#5B3A22" /></label>
+      <label class="m-color-item"><span>👕 Torso/Camisa</span><input type="color" id="mCharColShirt" value="#3B82F6" /></label>
+      <label class="m-color-item"><span>👖 Pernas/Calça</span><input type="color" id="mCharColPants" value="#374151" /></label>
+      <label class="m-color-item"><span>🛡️ Armad./Capa</span><input type="color" id="mCharColArmor" value="#9CA3AF" /></label>
+      <label class="m-color-item"><span>🗡️ Arma/Detalhe</span><input type="color" id="mCharColEquip" value="#F59E0B" /></label>
+     </div>
     </div>
     <div class="mrow">
-     <span style="font-size:11px;color:#A8A29E;">Cabeça:</span>
-     <select id="mCharHead" class="mtxt" style="flex:1;">
-      <option value="short_hair">💇 Cabelo Curto</option>
-      <option value="long_hair">👱 Cabelo Longo</option>
-      <option value="mohawk">🤘 Moicano</option>
-      <option value="helmet">🪖 Elmo / Cavaleiro</option>
-      <option value="wizard_hat">🧙 Chapéu de Mago</option>
-      <option value="ears">🐱 Orelhas Felinas/Elfo</option>
-      <option value="none">🥚 Careca / Liso</option>
-     </select>
-    </div>
-    <div class="mrow">
-     <button class="btn accent" id="mBtnGenChar" style="flex:1;">🧍 Gerar Personagem</button>
+     <button class="btn accent" id="mBtnGenChar" style="flex:1;">⚡ Gerar / Atualizar</button>
      <button class="btn" id="mBtnVaryChar" title="Variar cores e detalhes com nova seed">🎲 Variar</button>
     </div>
-    <div class="sec-title" style="margin-top:4px;">Props em 1 Clique (Seed Variável)</div>
+   </div>
+   <div id="mTabProps" class="m-rtab-panel">
+    <div class="m-mod-block">
+     <div class="m-block-title">📐 1. FORMA &amp; PROPORÇÃO</div>
+     <div class="m-field">
+      <span class="m-field-lbl">Família:</span>
+      <select id="mPropFamily" class="mtxt" style="flex:1;">
+       <option value="weapon">🗡️ Arma / Escudo / Ferramenta</option>
+       <option value="house">🏠 Construção / Cabana / Torre</option>
+       <option value="chest">📦 Baú / Barril / Móvel</option>
+       <option value="rock">🪨 Rocha / Cristal / Ruína</option>
+       <option value="plant">🍄 Cogumelo / Flor / Cacto</option>
+      </select>
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Largura / Raio</span><span id="mPropWidthVal">6</span></div>
+      <input id="mPropWidth" type="range" min="3" max="11" step="1" value="6" />
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Altura / Comprimento</span><span id="mPropHeightVal">14</span></div>
+      <input id="mPropHeight" type="range" min="6" max="22" step="1" value="14" />
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Espessura / Volume</span><span id="mPropDepthVal">5</span></div>
+      <input id="mPropDepth" type="range" min="2" max="10" step="1" value="5" />
+     </div>
+    </div>
+    <div class="m-mod-block">
+     <div class="m-block-title">🎨 2. ESTILO &amp; PEÇAS</div>
+     <div class="m-field">
+      <span class="m-field-lbl">Subtipo:</span>
+      <select id="mPropSubtype" class="mtxt" style="flex:1;">
+       <option value="sword">🗡️ Espada</option>
+       <option value="greatsword">⚔️ Espadão</option>
+       <option value="axe">🪓 Machado Duplo</option>
+       <option value="hammer">🔨 Martelo de Guerra</option>
+       <option value="staff">🪄 Cajado com Orbe</option>
+       <option value="shield">🛡️ Escudo Brasão</option>
+      </select>
+     </div>
+     <div class="m-field">
+      <span class="m-field-lbl">Detalhe:</span>
+      <select id="mPropDetail" class="mtxt" style="flex:1;">
+       <option value="0">0 · Simples / Limpo</option>
+       <option value="1" selected>1 · Padrão (Guarda / Faixas / Janelas)</option>
+       <option value="2">2 · Ornamentado (Joia / Chaminé / Ouro)</option>
+      </select>
+     </div>
+    </div>
+    <div class="m-mod-block">
+     <div class="m-block-title">🌈 3. CORES POR PARTE</div>
+     <div class="m-color-grid">
+      <label class="m-color-item"><span>🎨 Principal</span><input type="color" id="mPropColMain" value="#8A5A2B" /></label>
+      <label class="m-color-item"><span>🧱 Secundária</span><input type="color" id="mPropColSec" value="#9AA3A8" /></label>
+      <label class="m-color-item"><span>✨ Detalhe/Ouro</span><input type="color" id="mPropColAcc" value="#F59E0B" /></label>
+      <label class="m-color-item"><span>💎 Brilho/Joia</span><input type="color" id="mPropColGem" value="#38BDF8" /></label>
+     </div>
+    </div>
+    <div class="mrow">
+     <button class="btn accent" id="mBtnGenProp" style="flex:1;">🛠️ Gerar / Atualizar Prop</button>
+     <button class="btn" id="mBtnVaryProp" title="Variar cores e seed do prop">🎲 Variar Prop</button>
+    </div>
+    <div class="sec-title" style="margin-top:2px;">Atalhos Rápidos</div>
     <div class="tool-grid" id="mProcProps">
-     <button class="tool-btn" data-genprop="gen_tree">🌲 Árvore</button>
-     <button class="tool-btn" data-genprop="gen_rock">🪨 Rocha / Cristal</button>
-     <button class="tool-btn" data-genprop="gen_house">🏠 Casinha</button>
-     <button class="tool-btn" data-genprop="gen_chest">📦 Baú / Caixa</button>
-     <button class="tool-btn" data-genprop="gen_mushroom">🍄 Cogumelo</button>
-     <button class="tool-btn" data-genprop="gen_sword">🗡️ Espada / Totem</button>
+     <button class="tool-btn" id="mGenSword" data-genprop="gen_sword">🗡️ Espada</button>
+     <button class="tool-btn" id="mGenHouse" data-genprop="gen_house">🏠 Casinha</button>
+     <button class="tool-btn" id="mGenChest" data-genprop="gen_chest">📦 Baú</button>
+     <button class="tool-btn" id="mGenRock" data-genprop="gen_rock">🪨 Rocha</button>
+     <button class="tool-btn" id="mGenMushroom" data-genprop="gen_mushroom">🍄 Cogumelo</button>
+     <button class="tool-btn" id="mGenTree" data-genprop="gen_tree">🌲 Árvore</button>
     </div>
    </div>
    <div id="mTabTrees" class="m-rtab-panel">
-    <div class="sec-title">🌳 Tree &amp; Flora Studio Modular</div>
+    <div class="m-mod-block">
+     <div class="m-block-title">📐 1. FORMA &amp; PROPORÇÃO</div>
+     <div class="m-field">
+      <span class="m-field-lbl">Ramificação:</span>
+      <select id="mTreeBranch" class="mtxt" style="flex:1;">
+       <option value="1">1 · Tronco Único (Pinheiro)</option>
+       <option value="2" selected>2 · Bifurcado em Y</option>
+       <option value="3">3 · Trifurcado</option>
+       <option value="4">4 · Multi-Galhos Retorcido</option>
+      </select>
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Espessura do Tronco</span><span id="mTreeThickVal">2</span></div>
+      <input id="mTreeThick" type="range" min="1" max="5" step="1" value="2" />
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Curvatura &amp; Raízes</span><span id="mTreeCurveVal">1</span></div>
+      <input id="mTreeCurve" type="range" min="0" max="3" step="1" value="1" />
+     </div>
+    </div>
+    <div class="m-mod-block">
+     <div class="m-block-title">🎨 2. ESTILO &amp; PEÇAS</div>
+     <div class="m-field">
+      <span class="m-field-lbl">Copa Modular:</span>
+      <select id="mTreeCrown" class="mtxt" style="flex:1;">
+       <option value="spheres" selected>☁️ Nuvens / Carvalho</option>
+       <option value="cones">🌲 Camadas / Pinheiro</option>
+       <option value="weeping">🌿 Pendente / Salgueiro</option>
+       <option value="dome">🌸 Domo / Sakura</option>
+       <option value="none">🪵 Seca / Morta</option>
+      </select>
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Densidade de Flores (%)</span><span id="mTreeFlowerPctVal">0%</span></div>
+      <input id="mTreeFlowerPct" type="range" min="0" max="40" step="5" value="0" />
+     </div>
+     <div class="slider-row" style="margin-bottom:0;">
+      <div class="slider-head"><span>Densidade de Frutas (%)</span><span id="mTreeFruitPctVal">0%</span></div>
+      <input id="mTreeFruitPct" type="range" min="0" max="30" step="5" value="0" />
+     </div>
+    </div>
+    <div class="m-mod-block">
+     <div class="m-block-title">🌈 3. CORES POR PARTE</div>
+     <div class="m-color-grid">
+      <label class="m-color-item"><span>🪵 Tronco</span><input type="color" id="mTreeColTrunk" value="#7C4D2B" /></label>
+      <label class="m-color-item"><span>🌿 Folhas</span><input type="color" id="mTreeColLeaf" value="#3F8F3A" /></label>
+      <label class="m-color-item"><span>🌸 Flores</span><input type="color" id="mTreeColFlower" value="#F472B6" /></label>
+      <label class="m-color-item"><span>🍎 Frutas</span><input type="color" id="mTreeColFruit" value="#EF4444" /></label>
+     </div>
+    </div>
     <div class="mrow">
-     <span style="font-size:11px;color:#A8A29E;">Ramificação:</span>
-     <select id="mTreeBranch" class="mtxt" style="flex:1;">
-      <option value="1">1 · Tronco Único (Pinheiro)</option>
-      <option value="2" selected>2 · Bifurcado em Y</option>
-      <option value="3">3 · Trifurcado</option>
-      <option value="4">4 · Multi-Galhos Retorcido</option>
-     </select>
+     <button class="btn accent" id="mBtnGenModularTree" style="flex:1;">🌳 Gerar / Atualizar Árvore</button>
+     <button class="btn" id="mBtnVaryTree" title="Nova variação de galhos com mesma configuração">🎲 Variar</button>
     </div>
-    <div class="slider-row" style="margin-bottom:0;">
-     <div class="slider-head"><span>Espessura do Tronco</span><span id="mTreeThickVal">2</span></div>
-     <input id="mTreeThick" type="range" min="1" max="5" step="1" value="2" />
-    </div>
-    <div class="slider-row" style="margin-bottom:0;">
-     <div class="slider-head"><span>Curvatura &amp; Raízes</span><span id="mTreeCurveVal">1</span></div>
-     <input id="mTreeCurve" type="range" min="0" max="3" step="1" value="1" />
-    </div>
-    <div class="mrow">
-     <span style="font-size:11px;color:#A8A29E;">Copa Modular:</span>
-     <select id="mTreeCrown" class="mtxt" style="flex:1;">
-      <option value="spheres" selected>☁️ Nuvens / Carvalho</option>
-      <option value="cones">🌲 Camadas / Pinheiro</option>
-      <option value="weeping">🌿 Pendente / Salgueiro</option>
-      <option value="dome">🌸 Domo / Sakura</option>
-      <option value="none">🪵 Seca / Morta</option>
-     </select>
-    </div>
-    <div class="slider-row" style="margin-bottom:0;">
-     <div class="slider-head"><span>Densidade de Flores (%)</span><span id="mTreeFlowerPctVal">0%</span></div>
-     <input id="mTreeFlowerPct" type="range" min="0" max="40" step="5" value="0" />
-    </div>
-    <div class="slider-row" style="margin-bottom:0;">
-     <div class="slider-head"><span>Densidade de Frutas (%)</span><span id="mTreeFruitPctVal">0%</span></div>
-     <input id="mTreeFruitPct" type="range" min="0" max="30" step="5" value="0" />
-    </div>
-    <div class="sec-title">Mini-Paletas por Parte</div>
-    <div class="m-color-grid">
-     <label class="m-color-item"><span>🪵 Tronco</span><input type="color" id="mTreeColTrunk" value="#7C4D2B" /></label>
-     <label class="m-color-item"><span>🌿 Folhas</span><input type="color" id="mTreeColLeaf" value="#3F8F3A" /></label>
-     <label class="m-color-item"><span>🌸 Flores</span><input type="color" id="mTreeColFlower" value="#F472B6" /></label>
-     <label class="m-color-item"><span>🍎 Frutas</span><input type="color" id="mTreeColFruit" value="#EF4444" /></label>
-    </div>
-    <button class="btn accent" id="mBtnGenModularTree" style="width:100%;">🌳 Gerar Árvore Modular</button>
    </div>
    <div id="mTabConv2d" class="m-rtab-panel">
     <div class="sec-title">🖼️ Conversor Matemático 2D → 3D</div>
