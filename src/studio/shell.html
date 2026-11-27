@@ -19,21 +19,18 @@
     <button id="btnModeEdit" class="mode-btn active-edit">✏️ Editar</button>
     <button id="btnModeTest" class="mode-btn">🐱 Testar</button>
    </div>
-   <span style="font-size:11px;color:#A8A29E;">Mapa:</span>
-   <select id="gridSizeSelect" class="seed-input" style="width:116px;" title="Tamanho do mapa (recarrega o Studio)">
-    <option value="128">128 · Micro Diorama</option>
+   <select id="gridSizeSelect" class="seed-input" style="width:98px;" title="Tamanho do mapa (recarrega o Studio)">
+    <option value="128">128 · Micro</option>
     <option value="256">256 · Diorama</option>
     <option value="512">512 · Médio</option>
     <option value="1080">1080 · Grande</option>
    </select>
-   <span style="font-size:11px;color:#A8A29E;">Base:</span>
-   <select id="baseKindSelect" class="seed-input" style="width:116px;" title="Base inicial ao regenerar">
-    <option value="island" selected>🏝️ Ilha Procedural</option>
+   <select id="baseKindSelect" class="seed-input" style="width:104px;" title="Base inicial ao regenerar">
+    <option value="island" selected>🏝️ Ilha Proc.</option>
     <option value="continental">🏔️ Continental</option>
     <option value="flat">🟩 Plano Vazio</option>
    </select>
-   <span style="font-size:11px;color:#A8A29E;">Seed:</span>
-   <input id="seedInput" class="seed-input" type="number" value="1337" style="width:66px;" />
+   <input id="seedInput" class="seed-input" type="number" value="1337" placeholder="Seed" title="Seed procedural do mundo" style="width:54px;" />
    <button id="btnRandSeed" class="btn" title="Nova seed aleatória">🎲 Nova</button>
    <button id="btnNewFlat" class="btn" title="Começar mapa plano vazio do zero">🆕 Plano</button>
    <button id="btnRegenAll" class="btn accent" title="Regenerar mundo inteiro">🔄 Regenerar</button>
@@ -42,9 +39,9 @@
    <button id="btnRedo" class="btn" title="Refazer última ação (Ctrl+Y)">↪️</button>
   </div>
   <div class="top-group top-group-right">
-   <button id="btnExportJson" class="btn">💾 Exportar .json</button>
-   <button id="btnPublishHtml" class="btn accent" title="Gera um .html autocontido que abre direto em modo Testar">🚀 Publicar .html</button>
-   <button id="btnImportJson" class="btn">📂 Importar .json</button>
+   <button id="btnExportJson" class="btn" title="Exportar cena e modelos (.json)">💾 Exportar</button>
+   <button id="btnPublishHtml" class="btn accent" title="Gera um .html autocontido que abre direto em modo Testar">🚀 Publicar</button>
+   <button id="btnImportJson" class="btn" title="Importar cena (.json)">📂 Importar</button>
    <input id="fileImportInput" type="file" accept=".json" style="display:none" />
   </div>
  </header>
