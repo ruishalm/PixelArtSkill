@@ -15,6 +15,8 @@
       function makeSnapshot() {
         return {
           h: new Float32Array(sculptH),
+          cf: new Int16Array(caveFloor),
+          cc: new Int16Array(caveCeil),
           m: new Uint8Array(matMap),
           wd: new Uint8Array(waterDepth),
           p: new Uint8Array(pinnedMask),
@@ -29,6 +31,13 @@
       function restoreSnapshot(snap) {
         sculptH.set(snap.h);
         for (let i = 0; i < hmap.length; i++) hmap[i] = Math.round(sculptH[i]);
+        if (snap.cf && snap.cc) {
+          caveFloor.set(snap.cf);
+          caveCeil.set(snap.cc);
+        } else {
+          caveFloor.fill(-32768);
+          caveCeil.fill(-32768);
+        }
         matMap.set(snap.m);
         if (snap.wd) waterDepth.set(snap.wd);
         else waterDepth.fill(0);
@@ -86,10 +95,14 @@
 
         if (baseKind === 'flat') {
           hmap.fill(0);
+          caveFloor.fill(-32768);
+          caveCeil.fill(-32768);
           waterDepth.fill(0);
           matMap.fill(MAT_GRASS);
           return;
         }
+        caveFloor.fill(-32768);
+        caveCeil.fill(-32768);
         waterDepth.fill(0);
 
         const fs = 1080 / mw; // mantém o "tamanho" das feições: diorama pequeno mostra o relevo inteiro
@@ -124,9 +137,11 @@
       function regenWorld(newSeed, preservePinned, baseKindOverride = null) {
         const baseKind = baseKindOverride || (baseKindSel ? baseKindSel.value : 'island');
         const genMode = genModeSel ? genModeSel.value : 'hybrid';
-        let savedH = null, savedM = null, savedWd = null, savedProps = null, savedSprings = null;
+        let savedH = null, savedCf = null, savedCc = null, savedM = null, savedWd = null, savedProps = null, savedSprings = null;
         if (preservePinned) {
           savedH = new Float32Array(hmap);
+          savedCf = new Int16Array(caveFloor);
+          savedCc = new Int16Array(caveCeil);
           savedM = new Uint8Array(matMap);
           savedWd = new Uint8Array(waterDepth);
           savedSprings = waterSprings.map(sp => ({ wx: sp.wx, wy: sp.wy, z: sp.z }));
@@ -135,6 +150,8 @@
           }));
         } else {
           pinnedMask.fill(0);
+          caveFloor.fill(-32768);
+          caveCeil.fill(-32768);
           waterDepth.fill(0);
           waterSprings.length = 0;
           customWindVx.fill(0); customWindVy.fill(0);
@@ -147,6 +164,8 @@
           for (let i = 0; i < hmap.length; i++) {
             if (pinnedMask[i] === 1) {
               hmap[i] = savedH[i];
+              caveFloor[i] = savedCf[i];
+              caveCeil[i] = savedCc[i];
               matMap[i] = savedM[i];
               waterDepth[i] = savedWd[i];
             }

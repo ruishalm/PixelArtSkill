@@ -610,7 +610,8 @@
           debrisDrops.splice(i, 1);
           continue;
         }
-        if (isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {
+        const dcInCave = dc.hasCave && dr.z < dc.caveCeil - 2;
+        if (!dcInCave && isWetMat(dc.mat) && dr.z <= waterSurfZ(dc) + 0.5) {
           dr.inWater = true;
           dr.z = waterSurfZ(dc);
           dr.vz = 0;
@@ -622,20 +623,23 @@
           if (Math.hypot(dr.x - cat.x, dr.y - cat.y) < 140) {
             guideSpeak('archimedes', 'Eureka! A água desloca! 🛁', 135);
           }
-        } else if (!isWetMat(dc.mat) && dr.z <= dc.h) {
-          dr.z = dc.h;
-          if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
-            dr.vz = -dr.vz * 0.45;
-            dr.vx *= 0.65;
-            dr.vy *= 0.65;
-            dr.spin *= 0.6;
-            dr.bounces++;
-          } else {
-            dr.vz = 0;
-            const damp = Math.max(0, 1 - dt * 8);
-            dr.vx *= damp;
-            dr.vy *= damp;
-            dr.spin = 0;
+        } else {
+          const effGroundZ = dcInCave ? dc.caveFloor : dc.h;
+          if ((dcInCave || !isWetMat(dc.mat)) && dr.z <= effGroundZ) {
+            dr.z = effGroundZ;
+            if (Math.abs(dr.vz) > 28 && dr.bounces < 3) {
+              dr.vz = -dr.vz * 0.45;
+              dr.vx *= 0.65;
+              dr.vy *= 0.65;
+              dr.spin *= 0.6;
+              dr.bounces++;
+            } else {
+              dr.vz = 0;
+              const damp = Math.max(0, 1 - dt * 8);
+              dr.vx *= damp;
+              dr.vy *= damp;
+              dr.spin = 0;
+            }
           }
         }
       }

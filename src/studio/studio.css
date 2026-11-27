@@ -94,6 +94,10 @@ body {
   gap: 11px;
   z-index: 20;
 }
+.sidebar-right {
+  border-right: none;
+  border-left: 1px solid #44403C;
+}
 .sec-title {
   font-size: 10px;
   font-weight: 800;

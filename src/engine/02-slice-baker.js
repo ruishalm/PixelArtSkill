@@ -39,6 +39,72 @@
     const PAL_MOSS = [[58, 143, 56], [41, 107, 39]];
     const PAL_EARTH = [[156, 102, 68], [128, 79, 50]];
     const PAL_ROCK = [[109, 118, 132], [86, 95, 108]];
+    const PAL_CAVE_FLOOR = [[68, 74, 86], [54, 60, 72]];
+    const PAL_CAVE_WALL = [[80, 88, 102], [64, 72, 84]];
+
+    function _hasActiveCaveAt(idx, hVal, mat, wd) {
+      if (typeof caveFloor === 'undefined' || typeof caveCeil === 'undefined') return false;
+      const cf = caveFloor[idx];
+      const cc = caveCeil[idx];
+      if (cc <= cf) return false;
+      const solidTop = (mat === MAT_WATER || mat === MAT_SHALLOW) && wd > 0 ? Math.max(Z_MIN, hVal - wd) : hVal;
+      return solidTop > cc;
+    }
+
+    function _getCaveNeighborWallBounds(mx, my, idx) {
+      let wallMin = 32767;
+      let wallMax = -32768;
+      if (mx > 0) {
+        const nb = idx - 1;
+        if (_hasActiveCaveAt(nb, hmap[nb], matMap[nb], waterDepth[nb])) {
+          const cf = Math.max(Z_MIN, caveFloor[nb]);
+          if (cf < wallMin) wallMin = cf;
+          if (caveCeil[nb] > wallMax) wallMax = caveCeil[nb];
+        }
+      }
+      if (mx < mw - 1) {
+        const nb = idx + 1;
+        if (_hasActiveCaveAt(nb, hmap[nb], matMap[nb], waterDepth[nb])) {
+          const cf = Math.max(Z_MIN, caveFloor[nb]);
+          if (cf < wallMin) wallMin = cf;
+          if (caveCeil[nb] > wallMax) wallMax = caveCeil[nb];
+        }
+      }
+      if (my > 0) {
+        const nb = idx - mw;
+        if (_hasActiveCaveAt(nb, hmap[nb], matMap[nb], waterDepth[nb])) {
+          const cf = Math.max(Z_MIN, caveFloor[nb]);
+          if (cf < wallMin) wallMin = cf;
+          if (caveCeil[nb] > wallMax) wallMax = caveCeil[nb];
+        }
+      }
+      if (my < mh - 1) {
+        const nb = idx + mw;
+        if (_hasActiveCaveAt(nb, hmap[nb], matMap[nb], waterDepth[nb])) {
+          const cf = Math.max(Z_MIN, caveFloor[nb]);
+          if (cf < wallMin) wallMin = cf;
+          if (caveCeil[nb] > wallMax) wallMax = caveCeil[nb];
+        }
+      }
+      return wallMax >= wallMin ? { wallMin, wallMax } : null;
+    }
+
+    function _getCaveFloorStart(mx, my, idx, cf, min8) {
+      let minNb = cf;
+      const nbs = [];
+      if (mx > 0) nbs.push(idx - 1);
+      if (mx < mw - 1) nbs.push(idx + 1);
+      if (my > 0) nbs.push(idx - mw);
+      if (my < mh - 1) nbs.push(idx + mw);
+      for (let i = 0; i < nbs.length; i++) {
+        const nb = nbs[i];
+        const nh = _hasActiveCaveAt(nb, hmap[nb], matMap[nb], waterDepth[nb])
+          ? Math.max(Z_MIN, caveFloor[nb])
+          : hmap[nb];
+        if (nh < minNb) minNb = nh;
+      }
+      return Math.max(Z_MIN, Math.min(cf, minNb - 1, min8 - 2));
+    }
 
     const COL_GRASS_TIP_BASE = packRGBA(45, 120, 41, 255);   // #2D7829
     const COL_GRASS_TIP_MID  = packRGBA(82, 193, 75, 255);   // #52C14B
@@ -145,6 +211,9 @@
 
       const min8Cache = new Int16Array(mw * mh);
       const grassType = new Uint8Array(mw * mh); // 0=none, 1=2px, 2=3px verde, 3..5=3px flor
+      const hasCavesSystem = typeof caveFloor !== 'undefined' && typeof caveCeil !== 'undefined';
+      const caveWallMaxArr = hasCavesSystem ? new Int16Array(mw * mh).fill(-32768) : null;
+      const caveWallMinArr = hasCavesSystem ? new Int16Array(mw * mh).fill(32767) : null;
 
       const markT = (z, mx, my) => {
         const si = z - Z_MIN;
@@ -201,15 +270,34 @@
           }
           min8Cache[idx] = min8;
 
+          const hasCave = hasCavesSystem && _hasActiveCaveAt(idx, h, mat, waterDepth[idx]);
+          let caveWall = null;
+          if (!hasCave && hasCavesSystem) {
+            caveWall = _getCaveNeighborWallBounds(mx, my, idx);
+            if (caveWall) {
+              caveWallMinArr[idx] = caveWall.wallMin;
+              caveWallMaxArr[idx] = caveWall.wallMax;
+            }
+          }
+
           if (mat === MAT_WATER || mat === MAT_SHALLOW) {
             const wd = waterDepth[idx];
+            if (hasCave) {
+              const cf = Math.max(Z_MIN, caveFloor[idx]);
+              const cc = Math.min(h, caveCeil[idx]);
+              const floorStart = _getCaveFloorStart(mx, my, idx, cf, min8);
+              for (let z = floorStart; z <= cf; z++) markT(z, mx, my);
+              const surfZ = h < 0 ? (mat === MAT_SHALLOW ? -1 : -2) : h;
+              for (let z = cc; z <= surfZ; z++) markT(z, mx, my);
+              continue;
+            }
             if (h < 0 && wd === 0) {
               if (mat === MAT_WATER) {
                 const zEnd = h + 1 < -4 ? h + 1 : -4;
                 for (let z = Z_MIN; z <= zEnd; z++) markT(z, mx, my);
                 markT(-2, mx, my);
               } else {
-                const zStartBed = Math.max(Z_MIN, min8 - 2);
+                const zStartBed = Math.max(Z_MIN, caveWall ? Math.min(min8 - 2, caveWall.wallMin) : min8 - 2);
                 for (let z = zStartBed; z <= h; z++) markT(z, mx, my);
                 markT(-1, mx, my);
               }
@@ -220,24 +308,37 @@
               if (waterfallDropMask[idx] === 1) {
                 const minWet = getMinWetDropNeighborZ(mx, my, surfZ);
                 const zDropBot = Math.max(Z_MIN, minWet - 1);
-                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, zDropBot));
+                let zStart = Math.max(Z_MIN, Math.min(min8 - 2, zDropBot));
+                if (caveWall) zStart = Math.min(zStart, Math.max(Z_MIN, caveWall.wallMin));
                 for (let z = zStart; z <= surfZ; z++) markT(z, mx, my);
               } else {
-                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+                let zStart = Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+                if (caveWall) zStart = Math.min(zStart, Math.max(Z_MIN, caveWall.wallMin));
                 for (let z = zStart; z <= surfZ; z++) markT(z, mx, my);
               }
             }
             continue;
           }
 
-          const zStart = min8 - 2 > Z_MIN ? min8 - 2 : Z_MIN;
-          if (zStart <= h) {
-            for (let z = zStart; z <= h; z++) {
-              const si = z - Z_MIN;
-              if (mx < tMinX[si]) tMinX[si] = mx;
-              if (mx > tMaxX[si]) tMaxX[si] = mx;
-              if (my < tMinY[si]) tMinY[si] = my;
-              if (my > tMaxY[si]) tMaxY[si] = my;
+          if (hasCave) {
+            const cf = Math.max(Z_MIN, caveFloor[idx]);
+            const cc = Math.min(h, caveCeil[idx]);
+            const floorStart = _getCaveFloorStart(mx, my, idx, cf, min8);
+            for (let z = floorStart; z <= cf; z++) markT(z, mx, my);
+            for (let z = cc; z <= h; z++) markT(z, mx, my);
+          } else {
+            let zStart = min8 - 2 > Z_MIN ? min8 - 2 : Z_MIN;
+            if (caveWall && caveWall.wallMin < zStart) {
+              zStart = Math.max(Z_MIN, caveWall.wallMin);
+            }
+            if (zStart <= h) {
+              for (let z = zStart; z <= h; z++) {
+                const si = z - Z_MIN;
+                if (mx < tMinX[si]) tMinX[si] = mx;
+                if (mx > tMaxX[si]) tMaxX[si] = mx;
+                if (my < tMinY[si]) tMinY[si] = my;
+                if (my > tMaxY[si]) tMaxY[si] = my;
+              }
             }
           }
 
@@ -336,10 +437,24 @@
           const min8 = min8Cache[idx];
           const nHash = ((Math.imul(mx, 73856093)) ^ (Math.imul(my, 19349663))) >>> 0;
           const microTex = ((nHash & 7) - 3) * 2;
+          const hasCave = hasCavesSystem && _hasActiveCaveAt(idx, h, mat, waterDepth[idx]);
+          const cf = hasCave ? Math.max(Z_MIN, caveFloor[idx]) : -32768;
+          const cc = hasCave ? Math.min(h, caveCeil[idx]) : -32768;
+          const wallMax = (!hasCave && caveWallMaxArr) ? caveWallMaxArr[idx] : -32768;
+          const wallMin = (!hasCave && caveWallMinArr) ? caveWallMinArr[idx] : 32767;
+
+          if (hasCave) {
+            const floorStart = _getCaveFloorStart(mx, my, idx, cf, min8);
+            const floorCol = shadePack(PAL_CAVE_FLOOR[nHash & 1], microTex - 8, sh * 0.4);
+            for (let z = floorStart; z <= cf; z++) {
+              const si = z - Z_MIN;
+              terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = floorCol;
+            }
+          }
 
           if (mat === MAT_WATER || mat === MAT_SHALLOW) {
             const wd = waterDepth[idx];
-            if (h < 0 && wd === 0) {
+            if (h < 0 && wd === 0 && !hasCave) {
               if (mat === MAT_WATER) {
                 const zEnd = Math.min(-4, h + 1);
                 for (let z = Z_MIN; z <= zEnd; z++) {
@@ -352,11 +467,13 @@
                   ? ((nHash & 1) ? COL_SHALLOW_A : COL_SHALLOW_B)
                   : ((nHash & 3) === 0 ? COL_DEEP_A : COL_DEEP_B);
               } else {
-                const zStartBed = Math.max(Z_MIN, min8 - 2);
+                const zStartBed = Math.max(Z_MIN, wallMax >= wallMin ? Math.min(min8 - 2, wallMin) : min8 - 2);
                 const bedCol = (nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B;
                 for (let z = zStartBed; z <= h; z++) {
                   const si = z - Z_MIN;
-                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = bedCol;
+                  terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = (wallMax >= wallMin && z <= wallMax && z < h)
+                    ? shadePack(PAL_CAVE_WALL[nHash & 1], microTex + (((z >> 1) & 1) ? 5 : -5), sh * 0.3)
+                    : bedCol;
                 }
                 const siSurf = -1 - Z_MIN;
                 const shimmer = (nHash % 17) === 0;
@@ -374,17 +491,18 @@
               const effDepth = wd > 0 ? wd : (mat === MAT_SHALLOW ? 1 : 2);
               const bedZ = Math.max(Z_MIN, surfZ - effDepth);
 
-              if (waterfallDropMask[idx] === 1) {
+              if (waterfallDropMask[idx] === 1 && !hasCave) {
                 const minWet = getMinWetDropNeighborZ(mx, my, surfZ);
                 const zDropBot = Math.max(Z_MIN, minWet - 1);
-                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, zDropBot));
+                let zStart = Math.max(Z_MIN, Math.min(min8 - 2, zDropBot));
+                if (wallMax >= wallMin) zStart = Math.min(zStart, Math.max(Z_MIN, wallMin));
                 const streakHash = ((mx * 17) ^ (my * 31)) & 7;
                 for (let z = zStart; z <= surfZ; z++) {
                   const si = z - Z_MIN;
                   let col;
                   if (z < zDropBot) {
                     const strata = ((z >> 1) & 1) ? 9 : -8;
-                    col = shadePack(PAL_ROCK[nHash & 1], sunShade + strata, sh * 0.3);
+                    col = shadePack((wallMax >= wallMin && z <= wallMax) ? PAL_CAVE_WALL[nHash & 1] : PAL_ROCK[nHash & 1], sunShade + strata, sh * 0.3);
                   } else {
                     const isTop = (z === surfZ);
                     const isFoam = isTop
@@ -395,7 +513,8 @@
                   terrainBufs[si][(my - tMinY[si]) * tW[si] + (mx - tMinX[si])] = col;
                 }
               } else {
-                const zStart = Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+                let zStart = hasCave ? cc : Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+                if (!hasCave && wallMax >= wallMin) zStart = Math.min(zStart, Math.max(Z_MIN, wallMin));
                 const bedCol = mat === MAT_SHALLOW
                   ? ((nHash & 1) ? COL_SHALLOW_BED_A : COL_SHALLOW_BED_B)
                   : COL_BED;
@@ -414,15 +533,20 @@
                     col = (min8 < z)
                       ? shadePack(PAL_ROCK[nHash & 1], sunShade + (((z >> 1) & 1) ? 9 : -8), sh * 0.3)
                       : bedCol;
-                  } else if (z < bedZ || min8 < z) {
+                  } else if (z < bedZ || min8 < z || hasCave) {
                     // Parede de contenção rochosa sólida (anti-aquário!)
-                    const d = surfZ - z;
-                    if (d <= 8 && z < bedZ && mat === MAT_SHALLOW) {
-                      const strata = (z & 2) ? 6 : -5;
-                      col = shadePack(PAL_EARTH[nHash & 1], sunShade + strata, sh * 0.4);
+                    if (wallMax >= wallMin && z <= wallMax) {
+                      const strata = ((z >> 1) & 1) ? 5 : -5;
+                      col = shadePack(PAL_CAVE_WALL[nHash & 1], microTex + strata, sh * 0.3);
                     } else {
-                      const strata = ((z >> 1) & 1) ? 9 : -8;
-                      col = shadePack(PAL_ROCK[nHash & 1], sunShade + strata, sh * 0.3);
+                      const d = surfZ - z;
+                      if (d <= 8 && z < bedZ && mat === MAT_SHALLOW) {
+                        const strata = (z & 2) ? 6 : -5;
+                        col = shadePack(PAL_EARTH[nHash & 1], sunShade + strata, sh * 0.4);
+                      } else {
+                        const strata = ((z >> 1) & 1) ? 9 : -8;
+                        col = shadePack(PAL_ROCK[nHash & 1], sunShade + strata, sh * 0.3);
+                      }
                     }
                   } else {
                     col = subCol;
@@ -442,7 +566,10 @@
           const gy = hD - hU;
           const sunShade = Math.max(-22, Math.min(22, Math.round((-gx - gy) * 1.4)));
           const exposedEdge = (hL < h || hU < h) ? 10 : 0;
-          const zStart = Math.max(Z_MIN, min8 - 2);
+          let zStart = hasCave ? cc : Math.max(Z_MIN, min8 - 2);
+          if (!hasCave && wallMax >= wallMin) {
+            zStart = Math.min(zStart, Math.max(Z_MIN, wallMin));
+          }
 
           for (let z = zStart; z <= h; z++) {
             const si = z - Z_MIN;
@@ -467,7 +594,10 @@
               col = shadePack(baseRGB, microTex + altLift + exposedEdge, sh);
             } else {
               const d = h - z;
-              if (mat === MAT_BRIDGE) {
+              if (wallMax >= wallMin && z <= wallMax && (d > 2 || mat === MAT_STONE)) {
+                const strata = ((z >> 1) & 1) ? 5 : -5;
+                col = shadePack(PAL_CAVE_WALL[nHash & 1], microTex + strata, sh * 0.3);
+              } else if (mat === MAT_BRIDGE) {
                 col = shadePack(PAL_BRIDGE_SIDE, sunShade, sh * 0.5);
               } else if (mat === MAT_LILYPAD) {
                 col = shadePack(PAL_LILYPAD_SIDE, sunShade, 0);
@@ -604,6 +734,7 @@
       const PAL_DIRTY_SOIL = [[138, 96, 62], [116, 79, 50]];
       const PAL_DIRTY_ROCK = [[104, 110, 122], [84, 90, 102]];
 
+      const hasCavesSystem = typeof caveFloor !== 'undefined' && typeof caveCeil !== 'undefined';
       let minZDirty = TERRAIN_Z_MAX;
       let maxZDirty = Z_MIN;
       const cellInfo = [];
@@ -622,31 +753,44 @@
           );
           const wet = isWetMat(mat);
           const wd = waterDepth[idx];
+          const hasCave = hasCavesSystem && _hasActiveCaveAt(idx, h, mat, wd);
+          const cf = hasCave ? Math.max(Z_MIN, caveFloor[idx]) : -32768;
+          const cc = hasCave ? Math.min(h, caveCeil[idx]) : -32768;
+          const floorStart = hasCave ? _getCaveFloorStart(mx, my, idx, cf, min8) : -32768;
+          const caveWall = (!hasCave && hasCavesSystem) ? _getCaveNeighborWallBounds(mx, my, idx) : null;
+          const wallMin = caveWall ? caveWall.wallMin : 32767;
+          const wallMax = caveWall ? caveWall.wallMax : -32768;
+
           let surfZ = h;
           let bedZ = h;
           let isDrop = false;
           let zDropBot = Z_MIN;
-          let zStart = Math.max(Z_MIN, min8 - 2);
+          let zStart = hasCave ? cc : Math.max(Z_MIN, min8 - 2);
+          if (!hasCave && caveWall) zStart = Math.min(zStart, Math.max(Z_MIN, wallMin));
           if (wet) {
-            if (h < 0 && wd === 0) {
+            if (h < 0 && wd === 0 && !hasCave) {
               surfZ = mat === MAT_SHALLOW ? -1 : -2;
-              zStart = Z_MIN;
+              zStart = caveWall ? Math.min(Z_MIN, wallMin) : Z_MIN;
               bedZ = mat === MAT_SHALLOW ? h : Math.min(-4, h + 1);
             } else {
               surfZ = h < 0 ? (mat === MAT_SHALLOW ? -1 : -2) : h;
               const effD = wd > 0 ? wd : (mat === MAT_SHALLOW ? 1 : 2);
               bedZ = Math.max(Z_MIN, surfZ - effD);
               const minWet = surfZ >= 0 ? getMinWetDropNeighborZ(mx, my, surfZ) : surfZ;
-              isDrop = surfZ >= 0 && (surfZ - minWet >= 3);
+              isDrop = !hasCave && surfZ >= 0 && (surfZ - minWet >= 3);
               zDropBot = Math.max(Z_MIN, minWet - 1);
-              zStart = isDrop
-                ? Math.max(Z_MIN, Math.min(min8 - 2, zDropBot))
-                : Math.max(Z_MIN, Math.min(min8 - 2, bedZ));
+              zStart = hasCave
+                ? cc
+                : (isDrop
+                  ? Math.max(Z_MIN, Math.min(min8 - 2, zDropBot))
+                  : Math.max(Z_MIN, Math.min(min8 - 2, bedZ)));
+              if (!hasCave && caveWall) zStart = Math.min(zStart, Math.max(Z_MIN, wallMin));
             }
           }
-          if (zStart < minZDirty) minZDirty = zStart;
+          const cellMinZ = hasCave ? Math.min(floorStart, zStart) : zStart;
+          if (cellMinZ < minZDirty) minZDirty = cellMinZ;
           if (surfZ > maxZDirty) maxZDirty = surfZ;
-          cellInfo.push({ mx, my, idx, h: surfZ, rawH: h, mat, wet, wd, bedZ, min8, isDrop, zDropBot, zStart, hL, hR, hU, hD });
+          cellInfo.push({ mx, my, idx, h: surfZ, rawH: h, mat, wet, wd, bedZ, min8, isDrop, zDropBot, zStart, hasCave, cf, cc, floorStart, wallMin, wallMax, hL, hR, hU, hD });
         }
       }
 
@@ -678,13 +822,28 @@
           const ci = cellInfo[i];
           if (ci.mx < rx0 || ci.mx > rx1 || ci.my < ry0 || ci.my > ry1) continue;
           const outIdx = (ci.my - ry0) * rw + (ci.mx - rx0);
+          const nHash = ((Math.imul(ci.mx, 73856093)) ^ (Math.imul(ci.my, 19349663))) >>> 0;
+          const microTex = ((nHash & 7) - 3) * 2;
+          if (ci.hasCave) {
+            if (z >= ci.floorStart && z <= ci.cf) {
+              buf[outIdx] = shadePack(PAL_CAVE_FLOOR[nHash & 1], microTex - 8, shadowMask[ci.idx] * 0.4);
+              continue;
+            }
+            if (z > ci.cf && z < ci.cc) {
+              buf[outIdx] = 0;
+              continue;
+            }
+          }
           if (z < ci.zStart || z > ci.h) {
             buf[outIdx] = 0;
             continue;
           }
-          const nHash = ((Math.imul(ci.mx, 73856093)) ^ (Math.imul(ci.my, 19349663))) >>> 0;
-          const microTex = ((nHash & 7) - 3) * 2;
           const sunShade = Math.max(-22, Math.min(22, Math.round((-(ci.hR - ci.hL) - (ci.hD - ci.hU)) * 1.4)));
+          if (!ci.hasCave && ci.wallMax >= ci.wallMin && z < ci.h && z <= ci.wallMax && (ci.h - z > 2 || ci.mat === MAT_STONE)) {
+            const strata = ((z >> 1) & 1) ? 5 : -5;
+            buf[outIdx] = shadePack(PAL_CAVE_WALL[nHash & 1], microTex + strata, shadowMask[ci.idx] * 0.3);
+            continue;
+          }
 
           if (ci.wet) {
             if (ci.rawH < 0 && ci.wd === 0) {
