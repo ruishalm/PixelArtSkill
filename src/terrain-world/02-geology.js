@@ -36,6 +36,11 @@
     function isWetMat(m) { return m === MAT_WATER || m === MAT_SHALLOW; }
 
     const hmap = new Int16Array(mw * mh);
+    const caveFloor = new Int16Array(mw * mh).fill(-32768);
+    const caveCeil = new Int16Array(mw * mh).fill(-32768);
+    const waterDepth = new Uint8Array(mw * mh); // profundidade de água abaixo de hmap[idx] (bedZ = hmap[idx] - waterDepth[idx])
+    const waterfallDropMask = new Uint8Array(mw * mh); // 1 = célula de crista/cortina ativa de cachoeira
+    const waterSprings = []; // nascentes persistentes: [{ wx, wy, z }]
     const biomeMap = new Uint8Array(mw * mh);
     const matMap = new Uint8Array(mw * mh);
     const cliffMask = new Uint8Array(mw * mh);
@@ -87,6 +92,11 @@
     function initOrganicWorld() {
       // Base inicial: plano verde Z=0
       hmap.fill(0);
+      caveFloor.fill(-32768);
+      caveCeil.fill(-32768);
+      waterDepth.fill(0);
+      waterfallDropMask.fill(0);
+      waterSprings.length = 0;
       matMap.fill(MAT_GRASS);
       biomeMap.fill(0);
       bridges.length = 0;
@@ -265,6 +275,7 @@
               if (wx >= 309 && wx <= 346) {
                 hmap[idx] = 46;
                 matMap[idx] = MAT_WATER;
+                waterDepth[idx] = 2;
                 biomeMap[idx] = 7;
                 cliffMask[idx] = 1;
               } else if (wx >= 272 && wx <= 308) {
@@ -548,10 +559,23 @@
       if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
       const idx = my * mw + mx;
       const b = biomeMap[idx];
+      const mat = matMap[idx];
+      const wd = waterDepth[idx];
+      const wet = isWetMat(mat);
+      const bedZ = wet ? Math.max(Z_MIN, hmap[idx] - wd) : hmap[idx];
+      const solidTop = (wet && wd > 0) ? bedZ : hmap[idx];
+      const cf = caveFloor[idx];
+      const cc = caveCeil[idx];
+      const hasCave = cc > cf && solidTop > cc;
       return {
         mx, my, idx,
         h: hmap[idx],
-        mat: matMap[idx],
+        mat,
+        waterDepth: wd,
+        bedZ,
+        hasCave,
+        caveFloor: cf,
+        caveCeil: cc,
         biomeId: b,
         biomeKey: BIOME_KEYS[b],
         biome: BIOME_NAMES[b],

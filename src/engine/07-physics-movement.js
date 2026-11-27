@@ -77,6 +77,28 @@
       return cell.h < 0 ? -2 : cell.h;
     }
 
+    function waterBedZ(cell) {
+      if (!cell) return -6;
+      if (!isWetMat(cell.mat)) return cell.h;
+      if (cell.waterDepth > 0) return Math.max(Z_MIN, waterSurfZ(cell) - cell.waterDepth);
+      return cell.h;
+    }
+
+    function getEffectiveGroundForCell(c, refZ, scale = cat.scale || 1) {
+      if (!c) return null;
+      if (c.hasCave && refZ < c.caveCeil - 4) {
+        if (c.caveCeil - c.caveFloor < 10 * scale) return c.h;
+        return c.caveFloor;
+      }
+      return (c.mat === MAT_SHALLOW && c.h >= 0 && c.waterDepth > 0)
+        ? Math.max(Z_MIN, c.h - Math.min(2, c.waterDepth))
+        : c.h;
+    }
+
+    function getEffectiveGroundAt(wx, wy, refZ, scale = cat.scale || 1) {
+      return getEffectiveGroundForCell(getCellAt(wx, wy), refZ, scale);
+    }
+
     function evaluateSupport(wx, wy, currentZ, onGround) {
       const S = cat.scale || 1;
       const r = (onGround ? 2.4 : 3.2) * S;
@@ -98,9 +120,13 @@
           }
         }
         const c = getCellAt(sx, sy);
-        if (!c || c.mat === MAT_WATER || !c.standable) continue;
-        if (c.h <= currentZ + climbAllowed) {
-          if (c.h > bestH) bestH = c.h;
+        if (!c) continue;
+        const inLowerCave = c.hasCave && (currentZ < c.caveCeil - 4 || (!onGround && cat.groundZ < c.caveCeil - 4 && currentZ < c.caveCeil));
+        if (!inLowerCave && (c.mat === MAT_WATER || !c.standable)) continue;
+        const refZ = inLowerCave ? Math.min(currentZ, c.caveCeil - 5) : currentZ;
+        const supH = getEffectiveGroundForCell(c, refZ, S);
+        if (supH !== null && supH <= currentZ + climbAllowed) {
+          if (supH > bestH) bestH = supH;
         }
       }
 
@@ -153,7 +179,8 @@
       }
 
       const centerCell = getCellAt(nx, ny);
-      if (!onCenterBridge && centerCell && centerCell.mat === MAT_WATER && (onGround || catZ <= waterSurfZ(centerCell) + 0.3)) {
+      const centerInCave = centerCell && centerCell.hasCave && (catZ < centerCell.caveCeil - 4 || (!onGround && cat.groundZ < centerCell.caveCeil - 4 && catZ < centerCell.caveCeil));
+      if (!onCenterBridge && !centerInCave && centerCell && centerCell.mat === MAT_WATER && (onGround || catZ <= waterSurfZ(centerCell) + 0.3)) {
         return { blocked: true, reason: 'water', maxStepH: waterSurfZ(centerCell) };
       }
 
@@ -184,6 +211,15 @@
         if (!c) {
           blocked = true;
           maxBlockingH = 999;
+          continue;
+        }
+        const inLowerCave = c.hasCave && (catZ < c.caveCeil - 4 || (!onGround && cat.groundZ < c.caveCeil - 4 && catZ < c.caveCeil));
+        if (inLowerCave) {
+          const effCaveH = getEffectiveGroundForCell(c, Math.min(catZ, c.caveCeil - 5), S);
+          if (effCaveH > catZ + allowedClimb) {
+            blocked = true;
+            if (effCaveH > maxBlockingH) maxBlockingH = effCaveH;
+          }
           continue;
         }
         if (c.mat === MAT_WATER) continue;
@@ -267,9 +303,15 @@
       }
 
       const onProbeBr = probeBr && cat.groundZ >= getBridgeDeckZ(probeBr, probeX, probeY) - AUTO_STEP_MAX - 1;
-      if (!onProbeBr && c.mat === MAT_WATER) {
+      const onProbeCave = c.hasCave && cat.groundZ < c.caveCeil - 4;
+      if (!onProbeBr && !onProbeCave && c.mat === MAT_WATER) {
         cat.obstacleHint = 'water';
         cat.obstacleLabel = '💧 Água Intransponível';
+        return;
+      }
+      if (onProbeCave && c.caveCeil - c.caveFloor < 10 * S) {
+        cat.obstacleHint = 'high';
+        cat.obstacleLabel = '⛔ Caverna Muito Baixa';
         return;
       }
 
@@ -284,7 +326,9 @@
 
       let targetH = onProbeBr
         ? getBridgeDeckZ(probeBr, probeX, probeY)
-        : ((!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) ? Math.max(c.h, c.cliffTop) : c.h);
+        : (onProbeCave
+          ? c.caveFloor
+          : ((!c.standable && c.h > cat.groundZ + AUTO_STEP_MAX) ? Math.max(c.h, c.cliffTop) : c.h));
       for (const pc of platformColliders) {
         if (pc.disabled) continue;
         if (Math.hypot(probeX - pc.wx, probeY - pc.wy) <= pc.r + 2.0 * S && pc.topZ > targetH) {
@@ -334,18 +378,37 @@
     let LOW_W = 480;
     let LOW_H = 300;
     let pixelScale = 3;
+    let camZoom = 1.0;
     let viewW = window.innerWidth;
     let viewH = window.innerHeight;
     let dpr = 1;
+
+    function syncZoomUi() {
+      const btnReset = document.getElementById('btnZoomReset');
+      if (btnReset) btnReset.textContent = `🔍 ${Math.round(camZoom * 100)}%`;
+    }
+
+    function setCamZoom(newZoom) {
+      const v = Number.isFinite(newZoom) ? newZoom : 1.0;
+      camZoom = Math.max(0.35, Math.min(3.0, +v.toFixed(4)));
+      handleResize();
+      syncZoomUi();
+      return camZoom;
+    }
+
+    function adjustCamZoom(delta) {
+      return setCamZoom(camZoom + (Number.isFinite(delta) ? delta : 0));
+    }
 
     function handleResize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       const host = canvas.parentElement;
       viewW = (host && host.clientWidth > 0) ? host.clientWidth : window.innerWidth;
       viewH = (host && host.clientHeight > 0) ? host.clientHeight : window.innerHeight;
-      pixelScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2));
-      LOW_W = Math.ceil(viewW / pixelScale);
-      LOW_H = Math.ceil(viewH / pixelScale);
+      const baseScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2));
+      pixelScale = Math.max(1, Math.min(10, +(baseScale * camZoom).toFixed(2)));
+      LOW_W = Math.max(64, Math.ceil(viewW / pixelScale));
+      LOW_H = Math.max(64, Math.ceil(viewH / pixelScale));
 
       for (const [cv, cx] of [[lowCanvas, lowCtx], [entityCanvas, entityCtx], [entitySilCanvas, entitySilCtx]]) {
         cv.width = LOW_W;
@@ -360,17 +423,40 @@
     }
     window.addEventListener('resize', handleResize);
     handleResize();
+    syncZoomUi();
+
+    canvas.addEventListener('wheel', (e) => {
+      if (e.preventDefault) e.preventDefault();
+      if (e.deltaY < 0) setCamZoom(camZoom * 1.15);
+      else if (e.deltaY > 0) setCamZoom(camZoom / 1.15);
+    }, { passive: false });
 
     window.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
       const modelerEl = document.getElementById('modelerView');
       if (modelerEl && modelerEl.classList && modelerEl.classList.contains('show')) return;
 
       const code = e.code;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '+' || e.key === '=' || code === 'Equal' || code === 'NumpadAdd') {
+          if (e.preventDefault) e.preventDefault();
+          setCamZoom(camZoom * 1.15);
+          return;
+        } else if (e.key === '-' || e.key === '_' || code === 'Minus' || code === 'NumpadSubtract') {
+          if (e.preventDefault) e.preventDefault();
+          setCamZoom(camZoom / 1.15);
+          return;
+        } else if (e.key === '0' || (code === 'Digit0' && !e.shiftKey) || code === 'Numpad0') {
+          if (e.preventDefault) e.preventDefault();
+          setCamZoom(1.0);
+          return;
+        }
+      }
+
       keys[code] = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
-        e.preventDefault();
+        if (e.preventDefault) e.preventDefault();
       }
       if (window.__STUDIO_EDIT_MODE__) return;
       if (code === 'Space') {
@@ -482,7 +568,9 @@
           const nx = npc.x + npc.dirX * sp * dt;
           const ny = npc.y + npc.dirY * sp * dt;
           const c = getCellAt(nx, ny);
-          if (c && !isWetMat(c.mat) && Math.abs(c.h - npc.z) <= 5.5) {
+          const npcEffH = c ? getEffectiveGroundForCell(c, npc.z, npc.scale || 1) : null;
+          const npcInCave = c && c.hasCave && npc.z < c.caveCeil - 4;
+          if (c && npcEffH !== null && (npcInCave || !isWetMat(c.mat)) && Math.abs(npcEffH - npc.z) <= 5.5) {
             let hitProp = false;
             for (const sc of propColliders) {
               if (sc.disabled) continue;
@@ -491,7 +579,7 @@
             if (!hitProp) {
               npc.x = nx;
               npc.y = ny;
-              npc.z = c.h;
+              npc.z = npcEffH;
             } else {
               npc.dirX = -npc.dirX;
               npc.dirY = -npc.dirY;
@@ -649,22 +737,31 @@
       const prevZ = cat.z;
       cat.vz -= GRAVITY * dt;
       cat.z += cat.vz * dt;
+      const headCell = getCellAt(cat.x, cat.y);
+      if (headCell && headCell.hasCave && prevZ < headCell.caveCeil - 2 && cat.vz > 0) {
+        const maxHeadZ = Math.max(headCell.caveFloor, headCell.caveCeil - 4.5);
+        if (cat.z > maxHeadZ) {
+          cat.z = maxHeadZ;
+          cat.vz = 0;
+        }
+      }
       if (cat.z > cat.maxJumpReached) cat.maxJumpReached = cat.z;
 
       const supportQueryZ = (!wasOnGround && cat.vz <= 0) ? Math.max(cat.z, prevZ) : cat.z;
       const sup = evaluateSupport(cat.x, cat.y, supportQueryZ, wasOnGround);
+      const supInCave = sup.centerCell && sup.centerCell.hasCave && cat.z < sup.centerCell.caveCeil - 4;
       if (sup.bestH > -900) {
         cat.groundZ = sup.bestH;
         if (cat.z <= sup.bestH + 0.05 && cat.vz <= 0 && (wasOnGround || prevZ >= sup.bestH - 2.0)) {
               if (!wasOnGround && cat.vz < -90) {
-            if (sup.centerCell && sup.centerCell.mat === MAT_SHALLOW) {
+            if (!supInCave && sup.centerCell && sup.centerCell.mat === MAT_SHALLOW) {
               sfxShallowStep();
               injectWaterRipple(cat.x, cat.y, 1.8, 2);
               spawnParticles(cat.x, cat.y, waterSurfZ(sup.centerCell) + 0.5, 6, ['#E0F2FE', '#67E8F9', '#FFFFFF'], 24);
             } else {
               sfxLand();
               spawnParticles(cat.x, cat.y, sup.bestH + 1, 6, ['#FDF6E9', '#D6C4AA'], 24);
-              if (sup.centerCell && (sup.centerCell.mat === MAT_SAND || sup.centerCell.mat === MAT_PEAK)) {
+              if (!supInCave && sup.centerCell && (sup.centerCell.mat === MAT_SAND || sup.centerCell.mat === MAT_PEAK)) {
                 disturbGranular(cat.x, cat.y, 1);
               }
             }
@@ -692,8 +789,9 @@
       } else {
         cat.groundZ = -6;
         cat.onGround = false;
-        if (cat.z < -2.5) {
-          const inWater = sup.centerCell && sup.centerCell.mat === MAT_WATER;
+        const hitHighWater = !supInCave && sup.centerCell && sup.centerCell.mat === MAT_WATER && cat.z <= waterSurfZ(sup.centerCell) - 1.2;
+        if (cat.z < -2.5 || hitHighWater) {
+          const inWater = !supInCave && sup.centerCell && sup.centerCell.mat === MAT_WATER;
           const splashX = cat.x;
           const splashY = cat.y;
           cat.x = cat.lastSafeX;
@@ -725,15 +823,23 @@
 
       // Grama rustle, água rasa wading feedback & descoberta de bioma
       const curCell = sup.centerCell;
+      const inCurCave = curCell && curCell.hasCave && cat.z < curCell.caveCeil - 4;
       const curBr = getBridgeAt(cat.x, cat.y);
       const onCurBr = curBr && cat.z >= getBridgeDeckZ(curBr, cat.x, cat.y) - AUTO_STEP_MAX - 1;
-      const catSubVol = (curCell && isWetMat(curCell.mat) && !onCurBr && cat.z <= waterSurfZ(curCell) + 1.0) ? 1.6 : 0;
+      const catSubVol = (curCell && !inCurCave && isWetMat(curCell.mat) && !onCurBr && cat.z <= waterSurfZ(curCell) + 1.0) ? 1.6 : 0;
       const prevCatSub = cat._prevSubVol || 0;
       if (catSubVol !== prevCatSub) {
         injectWaterRipple(cat.x, cat.y, (catSubVol - prevCatSub) * 1.1, 2);
         cat._prevSubVol = catSubVol;
       }
-      if (curCell && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
+      if (curCell && !inCurCave && curCell.mat === MAT_SHALLOW && !onCurBr && cat.onGround) {
+        const wadeFlow = sampleWaterFlow(cat.x, cat.y);
+        if (wadeFlow.speed > 2.5) {
+          const driftX = wadeFlow.vx * 0.45 * dt;
+          const driftY = wadeFlow.vy * 0.45 * dt;
+          if (driftX !== 0 && !checkCollisionAt(cat.x + driftX, cat.y, cat.z, true).blocked) cat.x += driftX;
+          if (driftY !== 0 && !checkCollisionAt(cat.x, cat.y + driftY, cat.z, true).blocked) cat.y += driftY;
+        }
         if (cat.isWalking) {
           guideSpeak('shallow_wade', 'Partindo a correnteza! 🌊', 125);
           if (shallowRippleTimer <= 0) {
@@ -756,7 +862,7 @@
         }
       }
       if (curCell) {
-        if (cat.onGround && (curCell.mat === MAT_GRASS || curCell.mat === MAT_PEAK) && cat.isWalking && curCell.idx !== lastRustleCell) {
+        if (!inCurCave && cat.onGround && (curCell.mat === MAT_GRASS || curCell.mat === MAT_PEAK) && cat.isWalking && curCell.idx !== lastRustleCell) {
           lastRustleCell = curCell.idx;
           if ((curCell.mx * 73 + curCell.my * 37) % 10 < 3 && Math.random() < 0.35) {
             spawnParticles(cat.x, cat.y, cat.z + 2, 2, ['#4DB848', '#8BE064'], 14);
@@ -942,6 +1048,7 @@
           }
         }
         if (!window.__IS_STUDIO__) stepWaterfallSim(1 / 30, true);
+        stepAutoWaterfallsAndSprings(true);
         stepWaveBuffer();
       }
       stepThermodynamics(dt);

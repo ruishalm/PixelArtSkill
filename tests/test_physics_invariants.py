@@ -99,6 +99,94 @@ class TestPixelArtSkill(unittest.TestCase):
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
 
+        # Verify terrain-world runtime zoom (camZoom, wheel, keydown, __TERRAIN_DEBUG__)
+        node_tw_zoom = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const root = process.cwd();
+const voxelData = fs.readFileSync(path.join(root, 'assets/voxels/voxel-data.js'), 'utf8');
+const engineFiles = fs.readdirSync(path.join(root, 'src/engine')).filter(f => f.endsWith('.js')).sort();
+const worldFiles = fs.readdirSync(path.join(root, 'src/terrain-world')).filter(f => f.endsWith('.js')).sort();
+
+const elements = new Map();
+function makeEl(id, extra = {}) {
+  const listeners = {};
+  const el = {
+    id, value: '', textContent: '', innerHTML: '', className: '',
+    style: {}, dataset: {},
+    classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} },
+    addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (listeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: el, ...e })); },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1280, height: 720 }),
+    setPointerCapture(){}, releasePointerCapture(){},
+    parentElement: { clientWidth: 1280, clientHeight: 720 },
+    width: 1280, height: 720, clientWidth: 1280, clientHeight: 720,
+    ...extra
+  };
+  if (id) elements.set(id, el);
+  return el;
+}
+function makeCtx() {
+  return {
+    imageSmoothingEnabled: false, globalCompositeOperation: 'source-over',
+    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle', globalAlpha: 1,
+    save(){}, restore(){}, translate(){}, scale(){}, rotate(){}, setTransform(){},
+    beginPath(){}, closePath(){}, moveTo(){}, lineTo(){}, ellipse(){}, arc(){}, roundRect(){},
+    fill(){}, stroke(){}, fillRect(){}, clearRect(){}, fillText(){},
+    measureText: () => ({ width: 20 }),
+    createLinearGradient: () => ({ addColorStop(){} }),
+    createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    putImageData(){}, drawImage(){}
+  };
+}
+const vp = makeEl('viewport', { getContext: () => makeCtx() });
+makeEl('minimapCanvas', { width: 120, height: 120, getContext: () => makeCtx() });
+for (const id of ['btnSkin','btnHat','btnTool','btnAction','btnRotL','btnRotR','btnReset','btnSeed','btnTravel','btnTouchJump','biomeToast','biomeLabel','fishCounter','biomeCounter','statElev','statObstacle']) makeEl(id);
+const winListeners = {};
+const sb = {
+  assert, Math, Number, String, Array, Object, JSON, Int16Array, Int32Array, Uint8Array, Uint32Array, Float32Array,
+  Set, Map, URLSearchParams, URL, console, performance: { now: () => 0 },
+  requestAnimationFrame: () => {},
+  window: {
+    innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1,
+    location: { search: '?grid=64', href: 'http://localhost/examples/terrain-world.html?grid=64' },
+    addEventListener(ev, fn) { (winListeners[ev] = winListeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (winListeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: { tagName: 'BODY' }, ...e })); },
+    dispatchEvent(){}
+  },
+  document: {
+    body: { classList: { _s: new Set(), add(){}, remove(){}, contains: () => false } },
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    createElement: () => ({ width: 0, height: 0, getContext: () => makeCtx() })
+  }
+};
+sb.globalThis = sb; sb.window.document = sb.document;
+vm.createContext(sb);
+let code = voxelData + '\n';
+for (const f of engineFiles) code += fs.readFileSync(path.join(root, 'src/engine', f), 'utf8') + '\n';
+for (const f of worldFiles) code += fs.readFileSync(path.join(root, 'src/terrain-world', f), 'utf8') + '\n';
+vm.runInContext(code, sb);
+const dbg = sb.window.__TERRAIN_DEBUG__;
+assert.strictEqual(dbg.getState().viewport.camZoom, 1.0);
+assert.strictEqual(dbg.getState().viewport.pixelScale, 2);
+vp._emit('wheel', { deltaY: -120 });
+assert(dbg.getState().viewport.camZoom > 1.1);
+sb.window._emit('keydown', { key: '0', code: 'Digit0', shiftKey: false });
+assert.strictEqual(dbg.getState().viewport.camZoom, 1.0);
+sb.window._emit('keydown', { key: '-', code: 'Minus' });
+assert(dbg.getState().viewport.camZoom < 1.0);
+sb.renderScene();
+console.log('TERRAIN_WORLD_ZOOM_OK');
+"""
+        res_tw = subprocess.run(['node', '-e', node_tw_zoom], capture_output=True, text=True)
+        self.assertEqual(res_tw.returncode, 0, f'Terrain-world zoom test failed:\n{res_tw.stderr}\n{res_tw.stdout}')
+        self.assertIn('TERRAIN_WORLD_ZOOM_OK', res_tw.stdout)
+
         # Verify all sfx*() calls across modules are defined in engine/01-voxel-audio.js
         with open(os.path.join(ROOT, 'src', 'engine', '01-voxel-audio.js'), 'r', encoding='utf-8') as f:
             assets_js = f.read()
@@ -360,7 +448,7 @@ console.log('SEED_OK');
             raw = self._assert_utf8_lf(out_html)
             studio_html = raw.decode('utf-8')
 
-            self.assertLess(len(raw), 15 * 1024, 'studio/index.html must stay < 15 KB')
+            self.assertLess(len(raw), 40 * 1024, 'studio/index.html must stay < 40 KB')
             for token in (
                 '__STUDIO_SCRIPTS__',
                 '__STUDIO_JS_BUNDLE__',
@@ -511,6 +599,1427 @@ console.log('SEED_OK');
                     continue
                 target = os.path.normpath(os.path.join(base_dir, ref))
                 self.assertTrue(os.path.exists(target), f'Broken link in {rel_html}: {ref} -> {target}')
+
+    def test_09_mountain_lakes_drainage_and_anti_aquarium(self):
+        node_test = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = process.cwd();
+const mathCode = fs.readFileSync(path.join(root, 'src/engine/00-math-noise.js'), 'utf8');
+const bakerCode = fs.readFileSync(path.join(root, 'src/engine/02-slice-baker.js'), 'utf8');
+const sculptorCode = fs.readFileSync(path.join(root, 'src/engine/03-terrain-sculptor.js'), 'utf8');
+const fluidsCode = fs.readFileSync(path.join(root, 'src/engine/06-fluids-weather.js'), 'utf8');
+
+const mw = 64, mh = 64, VOX = 2, HALF_GRID = 32;
+const Z_MIN = -6, TERRAIN_Z_MAX = 66, Z_GRASS_MAX = 70;
+const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
+      MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7, MAT_SHALLOW = 8;
+
+const fakeCanvases = [];
+const sandbox = {
+  assert, Math, Number, Array, Int16Array, Int32Array, Uint8Array, Uint32Array, Float32Array,
+  Set, Map, URLSearchParams, console, performance: { now: () => 0 },
+  WORLD_CFG: { gridW: mw, gridH: mh, vox: VOX, isDefault: false },
+  mw, mh, VOX, HALF_GRID, HALF_WORLD: HALF_GRID * VOX,
+  Z_MIN, TERRAIN_Z_MAX, Z_GRASS_MAX, AUTO_STEP_MAX: 5.5,
+  MAT_GRASS, MAT_PATH, MAT_SAND, MAT_STONE, MAT_WATER, MAT_BRIDGE, MAT_PEAK, MAT_LILYPAD, MAT_SHALLOW,
+  isWetMat: (m) => m === MAT_WATER || m === MAT_SHALLOW,
+  hmap: new Int16Array(mw * mh),
+  waterDepth: new Uint8Array(mw * mh),
+  waterfallDropMask: new Uint8Array(mw * mh),
+  waterSprings: [],
+  matMap: new Uint8Array(mw * mh),
+  biomeMap: new Uint8Array(mw * mh),
+  cliffMask: new Uint8Array(mw * mh),
+  shadowMask: new Uint8Array(mw * mh),
+  noGrassMask: new Uint8Array(mw * mh),
+  standableMap: new Uint8Array(mw * mh),
+  cliffTopMap: new Int16Array(mw * mh),
+  props: [],
+  debrisDrops: [],
+  cat: { x: 0, y: 0, z: 0, onGround: true, scale: 1 },
+  camX: 0, camY: 0,
+  RIVER_SEGMENTS: [],
+  PROP_COLLIDER_META: {},
+  getBridgeAt: () => null,
+  getBridgeDeckZ: () => 0,
+  getCellAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    const idx = my * mw + mx;
+    return { mx, my, idx, h: sandbox.hmap[idx], mat: sandbox.matMap[idx], waterDepth: sandbox.waterDepth[idx] };
+  },
+  getHeightAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    return sandbox.hmap[my * mw + mx];
+  },
+  worldToGrid: (wx, wy) => ({ mx: Math.floor(wx / VOX + HALF_GRID), my: Math.floor(wy / VOX + HALF_GRID) }),
+  window: { __IS_STUDIO__: true, location: { search: '' } },
+  document: {
+    createElement: () => {
+      const cv = {
+        width: 0, height: 0, _buf: null,
+        getContext: () => ({
+          createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+          putImageData: (img) => { cv._buf = new Uint32Array(img.data.buffer.slice(0)); }
+        })
+      };
+      fakeCanvases.push(cv);
+      return cv;
+    }
+  }
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+function runTestsInVm() {
+  function resetIslandWithMountain() {
+    hmap.fill(-6);
+    matMap.fill(MAT_WATER);
+    waterDepth.fill(0);
+    waterfallDropMask.fill(0);
+    waterSprings.length = 0;
+    for (let my = 10; my <= 54; my++) {
+      for (let mx = 10; mx <= 54; mx++) {
+        const d = Math.hypot(mx - 32, my - 32);
+        const idx = my * mw + mx;
+        if (d <= 14) {
+          hmap[idx] = 20;
+          matMap[idx] = MAT_GRASS;
+        } else if (d <= 22) {
+          const h = Math.round(20 * (1 - (d - 14) / 8) - 2);
+          hmap[idx] = Math.max(-6, h);
+          matMap[idx] = h > -2 ? (h <= 2 ? MAT_SAND : MAT_GRASS) : MAT_WATER;
+        }
+      }
+    }
+  }
+
+  // A. Cratera fechada na montanha: preenche até spillZ - 1 com centro fundo e borda rasa
+  resetIslandWithMountain();
+  for (let my = 27; my <= 37; my++) {
+    for (let mx = 27; mx <= 37; mx++) {
+      const d = Math.hypot(mx - 32, my - 32);
+      if (d <= 4.5) {
+        const idx = my * mw + mx;
+        hmap[idx] = Math.round(12 + d * 1.4);
+      }
+    }
+  }
+  applyWaterBrushHydrology(32, 32, 2, 'mat_water');
+  const centerIdx = 32 * mw + 32;
+  assert.strictEqual(matMap[centerIdx], MAT_WATER, 'Center of deep mountain crater should be MAT_WATER');
+  assert.strictEqual(hmap[centerIdx], 19, 'Crater surface should level at spillZ - 1 = 19');
+  assert.strictEqual(waterDepth[centerIdx], 7, 'Crater center waterDepth should be 19 - 12 = 7');
+  const edgeIdx = 32 * mw + 36;
+  assert.strictEqual(matMap[edgeIdx], MAT_SHALLOW, 'Shallow crater edge should be MAT_SHALLOW');
+  assert(waterDepth[edgeIdx] >= 1 && waterDepth[edgeIdx] <= 2, 'Shallow edge depth 1..2');
+  assert.strictEqual(matMap[32 * mw + 40], MAT_GRASS, 'Outer mountain rim must stay dry');
+
+  // B. Anti-Aquário: parede lateral exposta abaixo da superfície sem cachoeira ativa deve ser ROCHA sólida
+  resetIslandWithMountain();
+  const aqIdx = 32 * mw + 32;
+  hmap[aqIdx] = 20;
+  matMap[aqIdx] = MAT_WATER;
+  waterDepth[aqIdx] = 5; // bedZ = 15
+  hmap[32 * mw + 33] = 4;
+  matMap[32 * mw + 33] = MAT_GRASS;
+  bakeTerrainSlices();
+  assert.strictEqual(waterfallDropMask[aqIdx], 0, 'Dry drop next to lake must NOT trigger waterfall curtain');
+  const sl18 = terrainSlices[18];
+  assert(sl18 && sl18.canvas && sl18.canvas._buf, 'Slice 18 should be baked');
+  const px18 = sl18.canvas._buf[(32 - sl18.offY) * sl18.w + (32 - sl18.offX)];
+  const r18 = px18 & 255, g18 = (px18 >>> 8) & 255, b18 = (px18 >>> 16) & 255;
+  assert(r18 > 40 && b18 < 180 && Math.abs(r18 - b18) < 40, 'Exposed lake wall at z=18 must be solid rock, got rgb(' + r18 + ',' + g18 + ',' + b18 + ')');
+
+  // C. Nascente (spring) em montanha com queda abrupta + encosta suave: escoa até o mar, gera cachoeira e -∇h
+  resetIslandWithMountain();
+  for (let mx = 32; mx <= 38; mx++) hmap[32 * mw + mx] = 20 - Math.floor((mx - 32) / 3);
+  hmap[32 * mw + 39] = 6;
+  matMap[32 * mw + 39] = MAT_GRASS;
+  for (let mx = 40; mx <= 50; mx++) {
+    const h = Math.max(-3, 6 - (mx - 39));
+    hmap[32 * mw + mx] = h;
+    matMap[32 * mw + mx] = h <= -2 ? MAT_WATER : MAT_GRASS;
+  }
+  placeSpringHydrology(32, 32);
+  computeWaterfallDrops();
+  assert(waterfallDrops.length >= 1, 'Steep drop (18 -> 6) must create dynamic waterfall drop');
+  assert(waterfallDrops[0].botWx !== undefined && waterfallDrops[0].botWy !== undefined, 'Waterfall drop must record plunge-pool base coordinates');
+  let reachedSea = false;
+  for (let mx = 45; mx <= 52; mx++) {
+    const idx = 32 * mw + mx;
+    if (isWetMat(matMap[idx]) && hmap[idx] <= -2) reachedSea = true;
+  }
+  assert(reachedSea, 'Spring drainage must reach sea level (Z <= -2)');
+  const wxSlope = (42 - HALF_GRID + 0.5) * VOX;
+  const wySlope = (32 - HALF_GRID + 0.5) * VOX;
+  const flow = sampleBaseWaterFlow(wxSlope, wySlope);
+  assert(flow.speed > 5 && flow.vx > 0, 'Sloped mountain stream must flow downhill (+x), got vx=' + flow.vx + ', speed=' + flow.speed);
+
+  // D. Rompimento de barragem: baixar a borda do lago da cratera drena o lago e escoa pelo corte
+  resetIslandWithMountain();
+  for (let my = 27; my <= 37; my++) {
+    for (let mx = 27; mx <= 37; mx++) {
+      const d = Math.hypot(mx - 32, my - 32);
+      if (d <= 4.5) hmap[my * mw + mx] = Math.round(12 + d * 1.4);
+    }
+  }
+  applyWaterBrushHydrology(32, 32, 2, 'mat_water');
+  assert.strictEqual(hmap[32 * mw + 32], 19);
+  for (let mx = 37; mx <= 50; mx++) {
+    const h = Math.max(-3, 10 - (mx - 37));
+    hmap[32 * mw + mx] = h;
+    matMap[32 * mw + mx] = h <= -2 ? MAT_WATER : MAT_GRASS;
+  }
+  const breachRes = drainBreachedLakesInRect(35, 30, 39, 34);
+  assert(breachRes.changed, 'Dam breach must detect and drain lake');
+  assert(!isWetMat(matMap[centerIdx]), 'Lake bed at Z=12 must drain dry when breach is at Z=10');
+
+  // E. Escoamento ao subir terreno do mar (elevação > -2 vira solo seco)
+  const seaIdx = 5 * mw + 5;
+  hmap[seaIdx] = 5;
+  matMap[seaIdx] = MAT_WATER;
+  waterDepth[seaIdx] = 0;
+  assert(drainElevatedWetCell(seaIdx), 'Elevated uncontained sea cell must drain');
+  assert.strictEqual(matMap[seaIdx], MAT_GRASS, 'Drained cell at Z=5 must become MAT_GRASS');
+  assert.strictEqual(waterDepth[seaIdx], 0);
+
+  // F. Encosta suave com degraus planos (> 18 degraus): nascente deve alcançar o mar sem parar no meio da montanha
+  hmap.fill(-6); matMap.fill(MAT_WATER); waterDepth.fill(0);
+  for (let my = 4; my <= 60; my++) {
+    for (let mx = 4; mx <= 60; mx++) {
+      const d = Math.hypot(mx - 32, my - 32);
+      if (d <= 28) {
+        const h = Math.round(28 * (1 - d / 28));
+        const idx = my * mw + mx;
+        hmap[idx] = h;
+        matMap[idx] = h <= -2 ? MAT_WATER : (h <= 2 ? MAT_SAND : MAT_GRASS);
+      }
+    }
+  }
+  placeSpringHydrology(32, 32);
+  let gentleTouchesSea = false;
+  for (let my = 1; my < mh - 1; my++) {
+    for (let mx = 1; mx < mw - 1; mx++) {
+      const i = my * mw + mx;
+      if (waterDepth[i] > 0) {
+        for (const nb of [i-1, i+1, i-mw, i+mw, i-mw-1, i-mw+1, i+mw-1, i+mw+1]) {
+          if (isWetMat(matMap[nb]) && hmap[nb] <= -2) gentleTouchesSea = true;
+        }
+      }
+    }
+  }
+  assert(gentleTouchesSea, 'Gentle terraced mountain spring (>18 steps) must reach sea level');
+
+  // G. Arrastar pincel de água sobre platô plano não deve perfurar o terreno repetidamente
+  hmap.fill(20); matMap.fill(MAT_GRASS); waterDepth.fill(0);
+  for (let step = 0; step < 8; step++) {
+    applyWaterBrushHydrology(28 + step, 32, 3, 'mat_water', null, step === 0);
+  }
+  for (let i = 0; i < hmap.length; i++) {
+    if (isWetMat(matMap[i])) {
+      assert.strictEqual(hmap[i], 19, 'Flat plateau pond surface must stay at 19');
+      assert(waterDepth[i] <= 3, 'Flat plateau pond must not drill deeper than depth 3');
+    }
+  }
+
+  // H. Lago raso (waterDepth=1) rompido deve escoar e MAT_SHALLOW no mar deve ter hmap=-2
+  hmap.fill(20); matMap.fill(MAT_GRASS); waterDepth.fill(0);
+  for (let my = 29; my <= 35; my++) {
+    for (let mx = 29; mx <= 35; mx++) {
+      if (Math.hypot(mx - 32, my - 32) <= 2.5) paintWetCell(my * mw + mx, 20, 19, MAT_SHALLOW);
+    }
+  }
+  for (let mx = 35; mx <= 48; mx++) hmap[32 * mw + mx] = 10 - (mx - 35);
+  const shallowBreach = drainBreachedLakesInRect(33, 30, 36, 34);
+  assert(shallowBreach.changed, 'Shallow breached pond must drain');
+  assert(!isWetMat(matMap[32 * mw + 32]), 'Shallow breached pond bed must become dry');
+  paintWetCell(6 * mw + 6, -2, -2, MAT_SHALLOW);
+  assert.strictEqual(hmap[6 * mw + 6], -2, 'Sea-level MAT_SHALLOW must have hmap=-2');
+
+  console.log('HYDROLOGY_AND_ANTI_AQUARIUM_OK');
+}
+vm.runInContext(
+  mathCode + '\n' + bakerCode + '\n' + sculptorCode + '\n' + fluidsCode + '\n(' + runTestsInVm.toString() + ')()',
+  sandbox
+);
+"""
+        res = subprocess.run(['node', '-e', node_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node hydrology test failed:\n{res.stderr}\n{res.stdout}')
+        self.assertIn('HYDROLOGY_AND_ANTI_AQUARIUM_OK', res.stdout)
+
+    def test_10_caves_and_dual_sidebar_studio(self):
+        # 1. Dual sidebar DOM/CSS contract in built studio/index.html & studio/studio.css
+        studio_html_path = os.path.join(ROOT, 'studio', 'index.html')
+        studio_css_path = os.path.join(ROOT, 'studio', 'studio.css')
+        with open(studio_html_path, 'r', encoding='utf-8') as f:
+            studio_html = f.read()
+        with open(studio_css_path, 'r', encoding='utf-8') as f:
+            studio_css = f.read()
+
+        idx_left = studio_html.find('class="sidebar sidebar-left"')
+        idx_stage = studio_html.find('class="stage"')
+        idx_right = studio_html.find('class="sidebar sidebar-right"')
+        self.assertGreater(idx_left, 0)
+        self.assertGreater(idx_stage, idx_left)
+        self.assertGreater(idx_right, idx_stage)
+
+        left_html = studio_html[idx_left:idx_stage]
+        right_html = studio_html[idx_right:]
+        for tool in ('data-tool="raise"', 'data-tool="cave_carve"', 'data-tool="cave_fill"', 'data-tool="mat_water"', 'data-tool="spring"', 'id="slRadius"'):
+            self.assertIn(tool, left_html, f'Missing {tool} in left sidebar')
+        for item in ('data-tool="prop_pine_tree"', 'id="customAssetGrid"', 'id="avatarSelect"', 'id="slWind"', 'id="slGravity"', 'id="slCool"', 'id="slTalus"'):
+            self.assertIn(item, right_html, f'Missing {item} in right sidebar')
+        self.assertNotIn('data-tool="prop_pine_tree"', left_html)
+        self.assertIn('.sidebar-right', studio_css)
+        self.assertIn('border-left', studio_css)
+        self.assertIn('.play-only .topbar, .play-only .sidebar', studio_css)
+        self.assertIn('id="btnZoomOut"', studio_html)
+        self.assertIn('id="btnZoomReset"', studio_html)
+        self.assertIn('id="btnZoomIn"', studio_html)
+        self.assertIn('Scroll: Zoom', studio_html)
+        self.assertIn('.zoom-pill', studio_css)
+
+        # 2. Caves: baking, 2-floor physics, cutaway X-ray, brushes, undo/redo, JSON persistence
+        node_cave_test = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = process.cwd();
+const mathCode = fs.readFileSync(path.join(root, 'src/engine/00-math-noise.js'), 'utf8');
+const bakerCode = fs.readFileSync(path.join(root, 'src/engine/02-slice-baker.js'), 'utf8');
+const sculptorCode = fs.readFileSync(path.join(root, 'src/engine/03-terrain-sculptor.js'), 'utf8');
+const rendererCode = fs.readFileSync(path.join(root, 'src/engine/04-renderer.js'), 'utf8');
+const fluidsCode = fs.readFileSync(path.join(root, 'src/engine/06-fluids-weather.js'), 'utf8');
+const physCode = fs.readFileSync(path.join(root, 'src/engine/07-physics-movement.js'), 'utf8');
+const destrCode = fs.readFileSync(path.join(root, 'src/engine/08-destruction-carry.js'), 'utf8');
+const brushesCode = fs.readFileSync(path.join(root, 'src/studio/01-studio-state-brushes.js'), 'utf8');
+const regenCode = fs.readFileSync(path.join(root, 'src/studio/02-studio-regen-undo.js'), 'utf8');
+const uiCode = fs.readFileSync(path.join(root, 'src/studio/03-studio-ui-io.js'), 'utf8');
+
+const mw = 64, mh = 64, VOX = 2, HALF_GRID = 32;
+const Z_MIN = -6, TERRAIN_Z_MAX = 66, Z_GRASS_MAX = 70;
+const MAT_GRASS = 0, MAT_PATH = 1, MAT_SAND = 2, MAT_STONE = 3,
+      MAT_WATER = 4, MAT_BRIDGE = 5, MAT_PEAK = 6, MAT_LILYPAD = 7, MAT_SHALLOW = 8;
+
+const elements = new Map();
+function makeEl(id, extra = {}) {
+  const listeners = {};
+  const el = {
+    id, value: '', textContent: '', innerHTML: '', className: '',
+    style: {}, dataset: {},
+    classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} },
+    addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (listeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: el, ...e })); },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 480 }),
+    setPointerCapture(){}, releasePointerCapture(){},
+    parentElement: { clientWidth: 640, clientHeight: 480 },
+    width: 640, height: 480, clientWidth: 640, clientHeight: 480,
+    ...extra
+  };
+  if (id) elements.set(id, el);
+  return el;
+}
+
+const alphaLog = [];
+function makeCtx(trackAlpha = false) {
+  let _alpha = 1.0;
+  return {
+    imageSmoothingEnabled: false,
+    globalCompositeOperation: 'source-over',
+    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle',
+    get globalAlpha() { return _alpha; },
+    set globalAlpha(v) { _alpha = v; if (trackAlpha) alphaLog.push(v); },
+    save(){}, restore(){}, translate(){}, scale(){}, rotate(){}, setTransform(){},
+    beginPath(){}, closePath(){}, moveTo(){}, lineTo(){}, ellipse(){}, arc(){}, roundRect(){},
+    fill(){}, stroke(){}, fillRect(){}, clearRect(){}, fillText(){},
+    measureText: () => ({ width: 20 }),
+    createLinearGradient: () => ({ addColorStop(){} }),
+    createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    putImageData(img) { if (this._owner) this._owner._buf = new Uint32Array(img.data.buffer.slice(0)); },
+    drawImage(src) { if (trackAlpha && src && src._isSlice) alphaLog.push('draw:' + _alpha.toFixed(2)); }
+  };
+}
+
+const viewportCv = makeEl('viewport');
+viewportCv.getContext = () => makeCtx(false);
+makeEl('studioOverlay').getContext = () => makeCtx(false);
+makeEl('baseKindSelect', { value: 'flat' });
+makeEl('genModeSelect', { value: 'hybrid' });
+makeEl('gridSizeSelect', { value: '64' });
+makeEl('seedInput', { value: '1337' });
+makeEl('avatarSelect', { value: 'human' });
+makeEl('slAvatarScale', { value: '1.0' });
+makeEl('valAvatarScale');
+makeEl('slRadius', { value: '16' });
+makeEl('valRadius');
+makeEl('slStrength', { value: '1.2' });
+makeEl('valStrength');
+makeEl('slWind', { value: '1.0' });
+makeEl('valWind');
+makeEl('slGravity', { value: '1200' });
+makeEl('valGravity');
+makeEl('slCool', { value: '0.22' });
+makeEl('valCool');
+makeEl('slTalus', { value: '2' });
+makeEl('valTalus');
+for (const id of [
+  'btnModeEdit','btnModeTest','btnRandSeed','btnNewFlat','btnUndo','btnRedo',
+  'btnPinSel','btnUnpinSel','btnPinAll','btnUnpinAll','btnClearSel',
+  'btnRegenAll','btnRegenUnpinned','btnExportJson','btnPublishHtml','btnImportJson',
+  'fileImportInput','btnTouchJump','helpPill','coordPill','biomeToast',
+  'biomeLabel','fishCounter','biomeCounter','statElev','statObstacle',
+  'btnZoomOut','btnZoomReset','btnZoomIn'
+]) makeEl(id);
+
+const winListeners = {};
+
+const sidebars = [makeEl('sbL'), makeEl('sbR')];
+const btnLeft = makeEl('btnLeft', { dataset: { tool: 'raise' }, classList: { _s: new Set(['tool-btn', 'active']), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } });
+const btnRight = makeEl('btnRight', { dataset: { tool: 'prop_pine_tree' }, classList: { _s: new Set(['tool-btn']), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } });
+const sandbox = {
+  assert, Math, Number, Array, Object, JSON, Int16Array, Int32Array, Uint8Array, Uint32Array, Float32Array,
+  Set, Map, URLSearchParams, URL: class { static createObjectURL(){ return 'blob:test'; } constructor(u){ this.href = u; this.searchParams = new URLSearchParams(); } toString(){ return this.href; } },
+  __exportedPayload: null,
+  Blob: class { constructor(parts){ sandbox.__exportedPayload = parts[0]; } },
+  FileReader: class { readAsText(file) { this.result = file._text; if (this.onload) this.onload(); } },
+  __leftBtn: btnLeft, __rightBtn: btnRight, __sidebars: sidebars,
+  console, performance: { now: () => 0 },
+  confirm: () => true, alert: () => {},
+  WORLD_CFG: { gridW: mw, gridH: mh, vox: VOX, isDefault: false },
+  mw, mh, VOX, HALF_GRID, HALF_WORLD: HALF_GRID * VOX,
+  WORLD_MIN: -HALF_GRID * VOX, WORLD_MAX: HALF_GRID * VOX,
+  Z_MIN, TERRAIN_Z_MAX, Z_GRASS_MAX, CAT_HEIGHT: 16, AUTO_STEP_MAX: 5.5,
+  GRAVITY: 1200, JUMP_VEL: Math.sqrt(2 * 1200 * 35.0),
+  MAT_GRASS, MAT_PATH, MAT_SAND, MAT_STONE, MAT_WATER, MAT_BRIDGE, MAT_PEAK, MAT_LILYPAD, MAT_SHALLOW,
+  isWetMat: (m) => m === MAT_WATER || m === MAT_SHALLOW,
+  hmap: new Int16Array(mw * mh),
+  caveFloor: new Int16Array(mw * mh).fill(-32768),
+  caveCeil: new Int16Array(mw * mh).fill(-32768),
+  waterDepth: new Uint8Array(mw * mh),
+  waterfallDropMask: new Uint8Array(mw * mh),
+  waterSprings: [],
+  matMap: new Uint8Array(mw * mh),
+  biomeMap: new Uint8Array(mw * mh),
+  cliffMask: new Uint8Array(mw * mh),
+  shadowMask: new Uint8Array(mw * mh),
+  noGrassMask: new Uint8Array(mw * mh),
+  standableMap: new Uint8Array(mw * mh).fill(1),
+  cliffTopMap: new Int16Array(mw * mh),
+  props: [], foliageProps: [], propColliders: [], platformColliders: [],
+  fishes: [], npcs: [], toolPickups: [], fallingBodies: [], debrisDrops: [],
+  verletChains: [], catSkinModels: [{ paw: { count: 4, w: 4, h: 4, sheet: {} }, body: { count: 8, w: 8, h: 8, sheet: {} } }],
+  HAT_PRESETS: [{ id: 'none' }], hatModels: {}, TOOLS_META: { none: { modelKey: null } },
+  PROP_COLLIDER_META: {},
+  propModels: { wood_log: { count: 6, w: 6, h: 6, sheet: {} } },
+  lastRustleCell: -1,
+  sfxJump(){}, sfxLand(){}, sfxBlocked(){}, sfxShallowStep(){}, sfxBiome(){}, sfxFish(){}, sfxChop(){}, sfxCrumble(){},
+  addProp(){}, bakeMinimapBase(){},
+  worldToGrid: (wx, wy) => ({ mx: Math.floor(wx / VOX + HALF_GRID), my: Math.floor(wy / VOX + HALF_GRID) }),
+  getCellAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    const idx = my * mw + mx;
+    const cf = sandbox.caveFloor[idx], cc = sandbox.caveCeil[idx];
+    const mat = sandbox.matMap[idx], wd = sandbox.waterDepth[idx];
+    const wet = mat === MAT_WATER || mat === MAT_SHALLOW;
+    const solidTop = (wet && wd > 0) ? Math.max(Z_MIN, sandbox.hmap[idx] - wd) : sandbox.hmap[idx];
+    return {
+      mx, my, idx,
+      h: sandbox.hmap[idx], mat, waterDepth: wd,
+      hasCave: cc > cf && solidTop > cc, caveFloor: cf, caveCeil: cc,
+      biomeId: 0, biomeKey: 'vila', biome: 'Vila',
+      standable: sandbox.standableMap[idx] === 1, cliffTop: sandbox.cliffTopMap[idx]
+    };
+  },
+  getHeightAt: (wx, wy) => {
+    const mx = Math.floor(wx / VOX + HALF_GRID);
+    const my = Math.floor(wy / VOX + HALF_GRID);
+    if (mx < 0 || my < 0 || mx >= mw || my >= mh) return null;
+    return sandbox.hmap[my * mw + mx];
+  },
+  window: {
+    __IS_STUDIO__: true, innerWidth: 640, innerHeight: 480, devicePixelRatio: 1,
+    location: { search: '', href: 'http://localhost/studio/index.html' },
+    addEventListener(ev, fn){ (winListeners[ev] = winListeners[ev] || []).push(fn); },
+    _emit(ev, e = {}){ (winListeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: { tagName: 'BODY' }, ...e })); },
+    dispatchEvent(){}
+  },
+  document: {
+    body: { classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } },
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: (sel) => sel === '.sidebar' ? sidebars[0] : makeEl('q'),
+    querySelectorAll: (sel) => sel === '.sidebar' ? sidebars : (sel === '.sidebar .tool-btn' ? [btnLeft, btnRight] : []),
+    createElement: (tag) => {
+      if (tag === 'a') return { click(){}, href: '', download: '' };
+      const cv = { width: 0, height: 0, _buf: null, _isSlice: true };
+      const c2d = makeCtx(false);
+      c2d._owner = cv;
+      cv.getContext = () => c2d;
+      return cv;
+    }
+  }
+};
+sandbox.globalThis = sandbox;
+sandbox.window.document = sandbox.document;
+vm.createContext(sandbox);
+
+function runCaveSuite() {
+  let sawCutawayAlpha = false;
+  let sawRestoreAlpha = false;
+  let _curAlpha = 1.0;
+  Object.defineProperty(lowCtx, 'globalAlpha', {
+    get() { return _curAlpha; },
+    set(v) {
+      if (Math.abs(v - 0.22) < 0.01) sawCutawayAlpha = true;
+      if (sawCutawayAlpha && Math.abs(v - 1.0) < 0.01) sawRestoreAlpha = true;
+      _curAlpha = v;
+    }
+  });
+
+  // Build flat world with a steep rectangular mountain block on mx=30..44, my=26..38 (h=26)
+  hmap.fill(0);
+  caveFloor.fill(-32768);
+  caveCeil.fill(-32768);
+  matMap.fill(MAT_GRASS);
+  for (let my = 26; my <= 38; my++) {
+    for (let mx = 30; mx <= 44; mx++) {
+      hmap[my * mw + mx] = 26;
+    }
+  }
+  buildStandableMap();
+
+  // Carve cave inside mountain (mx=30..38, my=30..34) with floor=0, ceil=14; mouth at mx=29 (h=0)
+  for (let my = 30; my <= 34; my++) {
+    for (let mx = 30; mx <= 38; mx++) {
+      const idx = my * mw + mx;
+      caveFloor[idx] = 0;
+      caveCeil[idx] = 14;
+    }
+  }
+  bakeTerrainSlices();
+
+  // 1. Slice baker checks: hollow air at z=5, solid floor at z=0, roof at z=16, 4-conn wall at mx=39
+  const caveMx = 34, caveMy = 32;
+  const wallMx = 39, wallMy = 32;
+  const sl5 = terrainSlices[5];
+  assert(sl5 && sl5.canvas && sl5.canvas._buf, 'Slice 5 must exist for cave walls');
+  const pxHollow = sl5.canvas._buf[(caveMy - sl5.offY) * sl5.w + (caveMx - sl5.offX)];
+  assert.strictEqual(pxHollow, 0, 'Interior cave slice z=5 must be hollow/transparent (0)');
+
+  const pxWall = sl5.canvas._buf[(wallMy - sl5.offY) * sl5.w + (wallMx - sl5.offX)];
+  assert.notStrictEqual(pxWall, 0, '4-connected solid wall at mx=39, z=5 must NOT be culled by min8');
+
+  const sl0 = terrainSlices[0];
+  assert(sl0 && sl0.canvas && sl0.canvas._buf, 'Slice 0 must exist for cave floor');
+  const pxFloor = sl0.canvas._buf[(caveMy - sl0.offY) * sl0.w + (caveMx - sl0.offX)];
+  assert.notStrictEqual(pxFloor, 0, 'Cave floor at z=0 must be painted even when min8 >= 0');
+
+  const sl16 = terrainSlices[16];
+  assert(sl16 && sl16.canvas && sl16.canvas._buf, 'Slice 16 must exist for cave roof');
+  const pxRoof = sl16.canvas._buf[(caveMy - sl16.offY) * sl16.w + (caveMx - sl16.offX)];
+  assert.notStrictEqual(pxRoof, 0, 'Cave roof at z=16 must be solid');
+
+  // 2. 2-Floor physics: enter cave mouth at z=0, walk inside, jump hits ceiling, and walk on mountain roof z=26
+  const mouthWx = (29 - HALF_GRID + 0.5) * VOX;
+  const inCaveWx = (32 - HALF_GRID + 0.5) * VOX;
+  const caveWy = (32 - HALF_GRID + 0.5) * VOX;
+  cat.scale = 1.0;
+  teleportToWorld(mouthWx, caveWy, null, 0);
+  assert.strictEqual(getEffectiveGroundAt(inCaveWx, caveWy, 0, 1.0), 0, 'Lower floor effective ground must be caveFloor=0');
+  assert.strictEqual(getEffectiveGroundAt(inCaveWx, caveWy, 26, 1.0), 26, 'Upper floor effective ground must be hmap=26');
+  assert.strictEqual(checkCollisionAt(inCaveWx, caveWy, 0, true).blocked, false, 'Player at z=0 must be able to enter cave');
+
+  // Move player inside cave and check cutaway rendering
+  teleportToWorld(inCaveWx, caveWy, null, 0);
+  window.__STUDIO_EDIT_MODE__ = false;
+  sawCutawayAlpha = false;
+  sawRestoreAlpha = false;
+  renderScene();
+  assert(sawCutawayAlpha, 'Cutaway X-ray must apply globalAlpha = 0.22 when player is inside cave');
+  assert(sawRestoreAlpha, 'Cutaway X-ray must restore globalAlpha = 1.0 after drawing slice');
+  assert.strictEqual(lowCtx.globalAlpha, 1.0, 'lowCtx.globalAlpha must end at 1.0');
+
+  // Jump inside cave must not clip through roof (z must stay < caveCeil)
+  cat.jumpBuffer = 0.14;
+  for (let s = 0; s < 30; s++) updatePhysics(1 / 60);
+  assert(cat.z < 14, 'Jumping inside cave must bump ceiling and stay below caveCeil=14, got z=' + cat.z);
+
+  // Low-ceiling cave (headroom 8 < 10*scale) must block entry
+  caveCeil[32 * mw + 31] = 8;
+  const lowWx = (31 - HALF_GRID + 0.5) * VOX;
+  assert.strictEqual(checkCollisionAt(lowWx, caveWy, 0, true).blocked, true, 'Low-ceiling cave (<10*scale) must block entry');
+  caveCeil[32 * mw + 31] = 14;
+
+  // Walking on top of mountain above cave
+  teleportToWorld(inCaveWx, caveWy, null, 26);
+  assert.strictEqual(checkCollisionAt(inCaveWx + 2, caveWy, 26, true).blocked, false, 'Player on mountain top z=26 must walk over cave roof');
+
+  // 3. Studio brushes (cave_carve, cave_fill), Undo/Redo, and JSON persistence
+  window.__STUDIO_EDIT_MODE__ = true;
+  const S = window.__STUDIO__;
+  S.syncSculptFromHmap();
+  S.pushUndoSnapshot();
+  S.activeTool = 'cave_carve';
+  S.brushRadius = 8;
+  const brushWx = (36 - HALF_GRID + 0.5) * VOX;
+  const brushWy = (28 - HALF_GRID + 0.5) * VOX;
+  S.applyTerrainBrush(brushWx, brushWy, true);
+  const cBr = getCellAt(brushWx, brushWy);
+  assert(cBr.hasCave, 'cave_carve brush on mountain must carve a cave');
+
+  // Dual sidebar tool-btn delegation check (left & right sidebars share active state)
+  __sidebars[1]._emit('click', { target: { closest: () => __rightBtn } });
+  assert.strictEqual(S.activeTool, 'prop_pine_tree', 'Right sidebar tool click must update S.activeTool');
+  assert(!__leftBtn.classList.contains('active'), 'Left sidebar tool must be deactivated when right sidebar tool is clicked');
+  assert(__rightBtn.classList.contains('active'), 'Right sidebar tool must become active');
+
+  // Export JSON, wipe flat, re-import JSON, verify cave restored
+  document.getElementById('btnExportJson')._emit('click');
+  assert(globalThis.__exportedPayload, 'Export JSON must emit payload');
+  const parsed = JSON.parse(globalThis.__exportedPayload);
+  assert(Array.isArray(parsed.caveSparse) && parsed.caveSparse.length > 0, 'Export JSON must include non-empty caveSparse');
+
+  document.getElementById('btnNewFlat')._emit('click');
+  assert.strictEqual(getCellAt(brushWx, brushWy).hasCave, false, 'btnNewFlat must clear caves');
+
+  // Re-import JSON via fileImportInput and verify cave restored
+  document.getElementById('fileImportInput')._emit('change', { target: { files: [{ _text: globalThis.__exportedPayload }], value: 'x' } });
+  const cImported = getCellAt(brushWx, brushWy);
+  assert(cImported.hasCave, 'Importing JSON must restore carved cave via caveSparse');
+  assert.strictEqual(cImported.caveFloor, cBr.caveFloor);
+  assert.strictEqual(cImported.caveCeil, cBr.caveCeil);
+
+  // Studio cutaway X-ray when cave_carve active and hoverWorld over cave
+  window.__STUDIO_EDIT_MODE__ = true;
+  S.activeTool = 'cave_carve';
+  S.hoverWorld = { wx: brushWx, wy: brushWy, z: cImported.h };
+  sawCutawayAlpha = false;
+  sawRestoreAlpha = false;
+  renderScene();
+  assert(sawCutawayAlpha && sawRestoreAlpha, 'Studio cave_carve hover over cave must trigger cutaway X-ray');
+
+  // Undo restores cave after btnNewFlat
+  document.getElementById('btnNewFlat')._emit('click');
+  assert.strictEqual(getCellAt(brushWx, brushWy).hasCave, false);
+  S.popUndoSnapshot();
+  assert(getCellAt(brushWx, brushWy).hasCave, 'Undo must restore carved cave');
+
+  // cave_fill closes cave
+  S.pushUndoSnapshot();
+  S.activeTool = 'cave_fill';
+  S.applyTerrainBrush(brushWx, brushWy, true);
+  assert.strictEqual(getCellAt(brushWx, brushWy).hasCave, false, 'cave_fill brush must close cave');
+  S.popUndoSnapshot();
+  assert(getCellAt(brushWx, brushWy).hasCave, 'Undo after cave_fill must reopen cave');
+
+  // 4. Regression checks:
+  // 4a. Sloped cave mouth (h=12) must open cleanly for human scale=1.0 (no 9u headroom bottleneck)
+  document.getElementById('btnNewFlat')._emit('click');
+  for (let my = 28; my <= 36; my++) {
+    hmap[my * mw + 30] = 12;
+    for (let mx = 31; mx <= 40; mx++) hmap[my * mw + mx] = 26;
+  }
+  buildStandableMap();
+  S.syncSculptFromHmap();
+  S.activeTool = 'cave_carve';
+  S.brushRadius = 10;
+  S.applyTerrainBrush((29 - HALF_GRID + 0.5) * VOX, (32 - HALF_GRID + 0.5) * VOX, true);
+  cat.scale = 1.0;
+  teleportToWorld((29 - HALF_GRID + 0.5) * VOX, (32 - HALF_GRID + 0.5) * VOX, null, 0);
+  assert.strictEqual(
+    checkCollisionAt((30 - HALF_GRID + 0.5) * VOX, (32 - HALF_GRID + 0.5) * VOX, 0, true).blocked,
+    false,
+    'Sloped foothill carved with cave_carve must allow human (scale=1.0) to enter'
+  );
+
+  // 4b. Lake over cave preserves water body slices (blue, not rock) & clamps punctured roof
+  document.getElementById('btnNewFlat')._emit('click');
+  for (let my = 28; my <= 36; my++) {
+    for (let mx = 28; mx <= 36; mx++) {
+      const idx = my * mw + mx;
+      hmap[idx] = 20; caveFloor[idx] = 0; caveCeil[idx] = 12;
+      if (mx >= 31 && mx <= 33 && my >= 31 && my <= 33) {
+        matMap[idx] = MAT_WATER; waterDepth[idx] = 5;
+      }
+    }
+  }
+  bakeTerrainSlices();
+  const sl17 = terrainSlices[17];
+  const px17 = sl17.canvas._buf[(32 - sl17.offY) * sl17.w + (32 - sl17.offX)];
+  assert((px17 >>> 16 & 255) > (px17 & 255) + 40, 'Water body above cave at z=17 must stay blue water, not rock');
+  paintWetCell(32 * mw + 32, 13, 10, MAT_WATER);
+  assert(caveCeil[32 * mw + 32] < 10, 'Water bed puncturing cave ceiling must clamp caveCeil below bedZ');
+
+  // 4c. Dropping & throwing carried item inside cave keeps item on caveFloor instead of mountain roof
+  document.getElementById('btnNewFlat')._emit('click');
+  for (let my = 24; my <= 40; my++) {
+    for (let mx = 24; mx <= 40; mx++) {
+      const idx = my * mw + mx;
+      hmap[idx] = 26; caveFloor[idx] = 0; caveCeil[idx] = 14;
+    }
+  }
+  const cWx = (32 - HALF_GRID + 0.5) * VOX, cWy = (32 - HALF_GRID + 0.5) * VOX;
+  cat.avatar = 'human'; cat.scale = 1.0;
+  teleportToWorld(cWx, cWy, null, 0);
+  spawnPushableLog(cWx, cWy, 0);
+  debrisDrops[debrisDrops.length - 1].z = 0;
+  pickOrDropItem();
+  stepDebrisDrops(1 / 60);
+  pickOrDropItem();
+  for (let i = 0; i < 60; i++) stepDebrisDrops(1 / 60);
+  assert(debrisDrops[debrisDrops.length - 1].z < 2, 'Dropped log inside cave must land on caveFloor=0, not roof=26');
+  pickOrDropItem();
+  stepDebrisDrops(1 / 60);
+  throwCarriedItem();
+  for (let i = 0; i < 90; i++) stepDebrisDrops(1 / 60);
+  assert(debrisDrops[debrisDrops.length - 1].z < 2, 'Thrown log inside cave must bounce off ceiling and land on caveFloor=0');
+
+  // 5. Engine & Studio 3D Map Zoom (camZoom, setCamZoom, adjustCamZoom, wheel, keys, pill buttons)
+  assert.strictEqual(camZoom, 1.0, 'Initial camZoom must be 1.0');
+  assert.strictEqual(pixelScale, 2, 'Initial pixelScale at 640x480 must be 2');
+  assert.strictEqual(LOW_W, 320);
+  assert.strictEqual(LOW_H, 240);
+  assert.strictEqual(document.getElementById('btnZoomReset').textContent, '🔍 100%');
+
+  setCamZoom(2.5);
+  assert.strictEqual(camZoom, 2.5);
+  assert.strictEqual(pixelScale, 5);
+  assert.strictEqual(LOW_W, 128);
+  assert.strictEqual(LOW_H, 96);
+  assert.strictEqual(document.getElementById('btnZoomReset').textContent, '🔍 250%');
+
+  setCamZoom(0.05);
+  assert.strictEqual(camZoom, 0.35, 'camZoom must clamp to min 0.35');
+  assert.strictEqual(pixelScale, 1, 'pixelScale must clamp to min 1');
+  assert.strictEqual(LOW_W, 640);
+  assert.strictEqual(LOW_H, 480);
+
+  setCamZoom(10.0);
+  assert.strictEqual(camZoom, 3.0, 'camZoom must clamp to max 3.0');
+  assert.strictEqual(pixelScale, 6);
+  adjustCamZoom(-0.5);
+  assert.strictEqual(camZoom, 2.5);
+  setCamZoom(NaN);
+  assert.strictEqual(camZoom, 1.0, 'NaN camZoom must fallback safely to 1.0');
+
+  // Wheel zoom in & out on #viewport
+  const vpEl = document.getElementById('viewport');
+  vpEl._emit('wheel', { deltaY: -120 });
+  assert(camZoom > 1.0, 'Wheel up on viewport must zoom in');
+  vpEl._emit('wheel', { deltaY: 120 });
+  assert(Math.abs(camZoom - 1.0) < 0.001, 'Wheel down must return to ~1.0');
+
+  // Render & 3D picker remain valid across extreme & fractional zoom levels (round-trip alignment)
+  window.__STUDIO_EDIT_MODE__ = true;
+  document.getElementById('btnNewFlat')._emit('click');
+  const testWx = 12, testWy = -8;
+  for (const zLevel of [0.35, 1.73, 3.0]) {
+    setCamZoom(zLevel);
+    renderScene();
+    const scr = project(testWx, testWy, 0);
+    vpEl._emit('pointermove', { clientX: scr.x * pixelScale, clientY: scr.y * pixelScale });
+    assert(S.hoverWorld && Math.abs(S.hoverWorld.wx - testWx) <= VOX && Math.abs(S.hoverWorld.wy - testWy) <= VOX,
+      `pickTerrainAtClient round-trip failed at camZoom=${zLevel}: got (${S.hoverWorld?.wx}, ${S.hoverWorld?.wy})`);
+  }
+  setCamZoom(1.0);
+
+  // Zoom pill buttons
+  document.getElementById('btnZoomIn')._emit('click');
+  assert(camZoom > 1.1, 'btnZoomIn must increase camZoom');
+  document.getElementById('btnZoomOut')._emit('click');
+  assert(Math.abs(camZoom - 1.0) < 0.001, 'btnZoomOut must decrease camZoom');
+  setCamZoom(2.0);
+  document.getElementById('btnZoomReset')._emit('click');
+  assert.strictEqual(camZoom, 1.0, 'btnZoomReset must reset camZoom to 1.0');
+
+  // Keyboard shortcuts (+ / - / 0) in Edit mode and Test mode, ignored in <input>/contentEditable/Shift+0/Modeler
+  window.__STUDIO_EDIT_MODE__ = true;
+  window._emit('keydown', { key: '=', code: 'Equal' });
+  assert(camZoom > 1.0, 'Key =/+ must zoom in during Edit mode');
+  window._emit('keydown', { key: ')', code: 'Digit0', shiftKey: true });
+  assert(camZoom > 1.0, 'Shift+0 (")") must NOT reset camZoom');
+  window._emit('keydown', { key: '0', code: 'Digit0', shiftKey: false });
+  assert.strictEqual(camZoom, 1.0, 'Key 0 must reset zoom in Edit mode');
+  window.__STUDIO_EDIT_MODE__ = false;
+  window._emit('keydown', { key: '-', code: 'Minus' });
+  assert(camZoom < 1.0, 'Key - must zoom out during Test mode');
+  const prevZoom = camZoom;
+  window._emit('keydown', { key: '0', code: 'Digit0', target: { tagName: 'INPUT' } });
+  assert.strictEqual(camZoom, prevZoom, 'Zoom hotkeys must be ignored inside INPUT');
+  window._emit('keydown', { key: '0', code: 'Digit0', target: { tagName: 'DIV', isContentEditable: true } });
+  assert.strictEqual(camZoom, prevZoom, 'Zoom hotkeys must be ignored inside contentEditable');
+  setCamZoom(1.0);
+
+  console.log('CAVES_AND_DUAL_SIDEBAR_OK');
+}
+
+vm.runInContext(
+  mathCode + '\n' + bakerCode + '\n' + sculptorCode + '\n' + rendererCode + '\n' +
+  fluidsCode + '\n' + physCode + '\n' + destrCode + '\n' + brushesCode + '\n' + regenCode + '\n' + uiCode +
+  '\n(' + runCaveSuite.toString() + ')()',
+  sandbox
+);
+"""
+        res = subprocess.run(['node', '-e', node_cave_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node cave & dual-sidebar test failed:\n{res.stderr}\n{res.stdout}')
+        self.assertIn('CAVES_AND_DUAL_SIDEBAR_OK', res.stdout)
+
+    def test_11_modular_tree_studio_and_2d_to_3d_math_converter(self):
+        # 1. Verify 3-column Modeler layout, topbar hiding, and Section 8.1 / 8.2 DOM+CSS contract
+        studio_html_path = os.path.join(ROOT, 'studio', 'index.html')
+        studio_css_path = os.path.join(ROOT, 'studio', 'studio.css')
+        with open(studio_html_path, 'r', encoding='utf-8') as f:
+            studio_html = f.read()
+        with open(studio_css_path, 'r', encoding='utf-8') as f:
+            studio_css = f.read()
+
+        self.assertIn('world-only-top', studio_html)
+        self.assertIn('body.in-modeler .world-only-top', studio_css)
+        self.assertIn('.topbar::-webkit-scrollbar', studio_css)
+        self.assertIn('@supports not selector(::-webkit-scrollbar)', studio_css)
+
+        idx_mleft = studio_html.find('class="m-sidebar-left"')
+        idx_mcenter = studio_html.find('class="m-stage-center"')
+        idx_mright = studio_html.find('class="m-sidebar-right"')
+        self.assertGreater(idx_mleft, 0)
+        self.assertGreater(idx_mcenter, idx_mleft)
+        self.assertGreater(idx_mright, idx_mcenter)
+
+        center_html = studio_html[idx_mcenter:idx_mright]
+        self.assertIn('id="mEditCanvas"', center_html)
+        self.assertIn('id="mPreviewCanvas"', center_html)
+        for z_id in ('id="mEditZoomOut"', 'id="mEditZoomReset"', 'id="mEditZoomIn"', 'id="mPrevZoomOut"', 'id="mPrevZoomReset"', 'id="mPrevZoomIn"'):
+            self.assertIn(z_id, center_html, f'Missing {z_id} in modeler center stage')
+
+        right_html = studio_html[idx_mright:]
+        for req_id in (
+            'id="mRightTabs"', 'id="mTabChars"', 'id="mTabProps"', 'id="mTabTrees"', 'id="mTabConv2d"',
+            'id="mCharType"', 'value="biped_beast"', 'value="lizard"',
+            'id="mCharLegH"', 'id="mCharTorsoW"', 'id="mCharHeadS"',
+            'id="mCharPartMode"', 'value="outfit_only"', 'value="rhand_only"', 'value="headgear_only"',
+            'id="mCharHead"', 'id="mCharHat"', 'id="mCharTorso"', 'id="mCharLegs"',
+            'id="mCharBack"', 'id="mCharRHand"', 'id="mCharLHand"',
+            'id="mCharColSkin"', 'id="mCharColHair"', 'id="mCharColShirt"',
+            'id="mCharColPants"', 'id="mCharColArmor"', 'id="mCharColEquip"',
+            'id="mPropFamily"', 'id="mPropWidth"', 'id="mPropHeight"', 'id="mPropDepth"',
+            'id="mPropSubtype"', 'id="mPropDetail"',
+            'id="mPropColMain"', 'id="mPropColSec"', 'id="mPropColAcc"', 'id="mPropColGem"',
+            'id="mBtnGenProp"', 'id="mBtnVaryProp"',
+            'id="mGenTree"', 'id="mGenRock"', 'id="mGenHouse"', 'id="mGenChest"', 'id="mGenMushroom"', 'id="mGenSword"',
+            'id="mTreeBranch"', 'id="mTreeThick"', 'id="mTreeCurve"', 'id="mTreeCrown"',
+            'id="mTreeFlowerPct"', 'id="mTreeFruitPct"',
+            'id="mTreeColTrunk"', 'id="mTreeColLeaf"', 'id="mTreeColFlower"', 'id="mTreeColFruit"',
+            'id="mBtnGenModularTree"',
+            'id="m2dFrontCanvas"', 'id="m2dSideCanvas"', 'id="m2dMode"',
+            'id="m2dThickness"', 'id="mBtnConvert2d3d"', 'id="m2dLoadPreset"'
+        ):
+            self.assertIn(req_id, right_html, f'Missing {req_id} in modeler right sidebar')
+        for panel_id in ('mTabChars', 'mTabProps', 'mTabTrees'):
+            p_idx = right_html.find(f'id="{panel_id}"')
+            self.assertGreater(p_idx, -1)
+            next_idx = right_html.find('class="m-rtab-panel', p_idx + 40)
+            panel_slice = right_html[p_idx:next_idx] if next_idx > p_idx else right_html[p_idx:]
+            self.assertIn('📐 1. FORMA', panel_slice, f'Missing 1. FORMA block in {panel_id}')
+            self.assertIn('🎨 2. ESTILO', panel_slice, f'Missing 2. ESTILO block in {panel_id}')
+            self.assertIn('🌈 3. CORES', panel_slice, f'Missing 3. CORES block in {panel_id}')
+
+        # 2. Execute src/studio/00-modeler.js in Node VM and verify Section 8.1, 8.2, Chars/Beasts/Loose-Equips, Modular Props & Sprite-Stack Preview
+        node_mod_test = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = process.cwd();
+const mathCode = fs.readFileSync(path.join(root, 'src/engine/00-math-noise.js'), 'utf8');
+const modelerCode = fs.readFileSync(path.join(root, 'src/studio/00-modeler.js'), 'utf8');
+
+const elements = new Map();
+function makeEl(id, extra = {}) {
+  const listeners = {};
+  const el = {
+    id, value: '', textContent: '', innerHTML: '', className: '',
+    checked: false, style: {}, dataset: {},
+    options: [{ textContent: 'Opt' }], selectedIndex: 0,
+    classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} },
+    addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (listeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: el, ...e })); },
+    appendChild(child) { this._children = this._children || []; this._children.push(child); },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 384, height: 384 }),
+    setPointerCapture(){}, releasePointerCapture(){},
+    width: 384, height: 384,
+    ...extra
+  };
+  if (id) elements.set(id, el);
+  return el;
+}
+const prevDraws = [];
+const prevStrokes = [];
+const offscreenLogs = [];
+function make2dCtx(kind = 'generic') {
+  const ctx = {
+    _kind: kind,
+    fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
+    font: '', imageSmoothingEnabled: false,
+    _pts: [],
+    save(){}, restore(){}, translate(){}, scale(){}, rotate(){}, setLineDash(){},
+    clearRect(){},
+    fillRect(x, y, w, h){
+      if (kind === 'offscreen' && this.globalCompositeOperation === 'source-in') {
+        offscreenLogs.push({ op: 'fillRect-sil', fillStyle: this.fillStyle, w, h });
+      }
+    },
+    strokeRect(){},
+    beginPath(){ this._pts = []; },
+    moveTo(x, y){ this._pts.push({ x, y }); },
+    lineTo(x, y){ this._pts.push({ x, y }); },
+    closePath(){},
+    ellipse(){},
+    fill(){},
+    stroke(){
+      if (kind === 'preview') {
+        prevStrokes.push({ strokeStyle: this.strokeStyle, pts: this._pts.slice() });
+      }
+    },
+    fillText(){},
+    drawImage(src, ...args){
+      if (kind === 'preview') {
+        prevDraws.push({ args });
+      } else if (kind === 'offscreen') {
+        offscreenLogs.push({ op: 'drawImage', srcW: src && src.width, args });
+      }
+    },
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) })
+  };
+  return ctx;
+}
+
+makeEl('modelerView');
+makeEl('mEditCanvas', { width: 384, height: 384, getContext: () => make2dCtx('edit') });
+makeEl('mPreviewCanvas', { width: 300, height: 300, getContext: () => make2dCtx('preview'), getBoundingClientRect: () => ({ left: 0, top: 0, width: 300, height: 300 }) });
+makeEl('m2dFrontCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
+makeEl('m2dSideCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
+makeEl('mSize', { value: '24' });
+makeEl('mZ', { value: '0', max: '23' });
+makeEl('mZLabel');
+makeEl('mMirror', { checked: true });
+makeEl('mOnion', { checked: true });
+makeEl('mExtrudeZ', { value: '1' });
+makeEl('mExtrudeZVal');
+makeEl('mPalPreset', { value: 'default', options: [{ textContent: 'Default' }], selectedIndex: 0 });
+makeEl('mPalette');
+makeEl('mColor', { value: '#4F83C2' });
+makeEl('mAutoSpin', { checked: false });
+makeEl('mRefHuman', { checked: false });
+makeEl('mName', { value: 'meu_modelo' });
+makeEl('mKind', { value: 'decor' });
+makeEl('mDestrOpts');
+makeEl('mHp', { value: '3' });
+makeEl('mDropKey', { value: 'stone_chunk' });
+makeEl('mMsg');
+
+// Chars tab mocks
+makeEl('mCharType', { value: 'humanoid', type: 'select-one' });
+makeEl('mCharLegH', { value: '6', type: 'range' });
+makeEl('mCharLegHVal');
+makeEl('mCharTorsoW', { value: '6', type: 'range' });
+makeEl('mCharTorsoWVal');
+makeEl('mCharHeadS', { value: '6', type: 'range' });
+makeEl('mCharHeadSVal');
+makeEl('mCharPartMode', { value: 'full', type: 'select-one' });
+makeEl('mCharHead', { value: 'short_hair', type: 'select-one' });
+makeEl('mCharHat', { value: 'none', type: 'select-one' });
+makeEl('mCharTorso', { value: 'shirt', type: 'select-one' });
+makeEl('mCharLegs', { value: 'pants', type: 'select-one' });
+makeEl('mCharBack', { value: 'none', type: 'select-one' });
+makeEl('mCharRHand', { value: 'none', type: 'select-one' });
+makeEl('mCharLHand', { value: 'none', type: 'select-one' });
+makeEl('mCharColSkin', { value: '#F2C9A0', type: 'color' });
+makeEl('mCharColHair', { value: '#5B3A22', type: 'color' });
+makeEl('mCharColShirt', { value: '#3B82F6', type: 'color' });
+makeEl('mCharColPants', { value: '#374151', type: 'color' });
+makeEl('mCharColArmor', { value: '#9CA3AF', type: 'color' });
+makeEl('mCharColEquip', { value: '#F59E0B', type: 'color' });
+
+// Props tab mocks
+makeEl('mPropFamily', { value: 'weapon', type: 'select-one' });
+makeEl('mPropWidth', { value: '6', type: 'range' });
+makeEl('mPropWidthVal');
+makeEl('mPropHeight', { value: '14', type: 'range' });
+makeEl('mPropHeightVal');
+makeEl('mPropDepth', { value: '5', type: 'range' });
+makeEl('mPropDepthVal');
+makeEl('mPropSubtype', { value: 'sword', type: 'select-one' });
+makeEl('mPropDetail', { value: '1', type: 'select-one' });
+makeEl('mPropColMain', { value: '#8A5A2B', type: 'color' });
+makeEl('mPropColSec', { value: '#9AA3A8', type: 'color' });
+makeEl('mPropColAcc', { value: '#F59E0B', type: 'color' });
+makeEl('mPropColGem', { value: '#38BDF8', type: 'color' });
+
+// Trees tab mocks
+makeEl('mTreeBranch', { value: '3', type: 'select-one' });
+makeEl('mTreeThick', { value: '2', type: 'range' });
+makeEl('mTreeThickVal');
+makeEl('mTreeCurve', { value: '1', type: 'range' });
+makeEl('mTreeCurveVal');
+makeEl('mTreeCrown', { value: 'spheres', type: 'select-one' });
+makeEl('mTreeFlowerPct', { value: '25', type: 'range' });
+makeEl('mTreeFlowerPctVal');
+makeEl('mTreeFruitPct', { value: '20', type: 'range' });
+makeEl('mTreeFruitPctVal');
+makeEl('mTreeColTrunk', { value: '#7C4D2B', type: 'color' });
+makeEl('mTreeColLeaf', { value: '#3F8F3A', type: 'color' });
+makeEl('mTreeColFlower', { value: '#F472B6', type: 'color' });
+makeEl('mTreeColFruit', { value: '#EF4444', type: 'color' });
+makeEl('m2dPreset', { value: 'sword' });
+makeEl('m2dMode', { value: 'edt_blade' });
+makeEl('m2dThickness', { value: '10' });
+makeEl('m2dThicknessVal');
+for (const id of [
+  'mBtnAutoShade','mZUp','mZDown','mCopyDown','mCopyUp','mBtnClearLayer','mBtnNew',
+  'mBtnSave','mBtnExport','mBtnImport','mFileImport','btnTabWorld','btnTabModeler',
+  'mBtnGenModularTree','mBtnVaryTree','m2dFromSlice','m2dCopyFrontToSide','m2dClear','m2dImportImg','m2dFileImg',
+  'm2dLoadPreset','mBtnConvert2d3d','mRightTabs','mTabChars','mTabProps','mTabTrees','mTabConv2d',
+  'mBtnGenChar','mBtnVaryChar','mBtnGenProp','mBtnVaryProp','mProcProps','btnOpenModelerSide',
+  'mGenTree','mGenRock','mGenHouse','mGenChest','mGenMushroom','mGenSword',
+  'mEditZoomOut','mEditZoomReset','mEditZoomIn','mPrevZoomOut','mPrevZoomReset','mPrevZoomIn'
+]) makeEl(id);
+
+const workspaceEl = makeEl('workspaceMock');
+const bodyClassList = { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} };
+const sandbox = {
+  assert, Math, Number, Array, Object, JSON, Int16Array, Uint8Array, Float32Array, Set, Map,
+  URLSearchParams, Event: class { constructor(t){ this.type = t; } }, console, confirm: () => true,
+  propModels: {}, PROP_COLLIDER_META: {}, DESTRUCTIBLE_META: {}, FOLIAGE_META: {},
+  buildSliceSheet: (data, pal) => ({ count: data.length, w: data[0].length, h: data[0].length, sheet: { width: data.length * data[0].length, height: data[0].length } }),
+  __prevDraws: prevDraws,
+  __prevStrokes: prevStrokes,
+  __offscreenLogs: offscreenLogs,
+  __rafCallback: null,
+  requestAnimationFrame: (cb) => { sandbox.__rafCallback = cb; },
+  window: { dispatchEvent(){}, customAvatarModels: {}, location: { search: '' } },
+  document: {
+    body: { classList: bodyClassList },
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: (sel) => sel === '.workspace' ? workspaceEl : null,
+    querySelectorAll: () => [],
+    createElement: (tag) => {
+      const el = makeEl('', { width: 0, height: 0 });
+      if (tag === 'canvas') {
+        const c2 = make2dCtx('offscreen');
+        el.getContext = () => c2;
+      }
+      return el;
+    }
+  }
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+
+function runModelerTests() {
+  // 1. Topbar body.in-modeler class toggles on tab switch
+  document.getElementById('btnTabModeler')._emit('click');
+  assert(document.body.classList.contains('in-modeler'), 'btnTabModeler must add body.in-modeler');
+  document.getElementById('btnTabWorld')._emit('click');
+  assert(!document.body.classList.contains('in-modeler'), 'btnTabWorld must remove body.in-modeler');
+
+  const M = window.StudioModeler;
+  const N = M.getSize();
+  assert.strictEqual(N, 24);
+
+  const countVoxels = (v) => {
+    let n = 0, minZ = 99, maxZ = -1;
+    for (let z = 0; z < N; z++) {
+      for (let i = 0; i < v[z].length; i++) {
+        if (v[z][i] > 0) { n++; if (z < minZ) minZ = z; if (z > maxZ) maxZ = z; }
+      }
+    }
+    return { n, minZ, maxZ };
+  };
+
+  // 2. Section 8.1: Modular Tree Studio (trifurcated + spheres + flowers + fruits)
+  document.getElementById('mBtnGenModularTree')._emit('click');
+  let vol = M.getVol();
+  let trunkCount = 0, leafCount = 0, flowerCount = 0, fruitCount = 0;
+  for (let z = 0; z < N; z++) {
+    for (let i = 0; i < vol[z].length; i++) {
+      const v = vol[z][i];
+      if (v >= 1 && v <= 3) trunkCount++;
+      else if (v >= 4 && v <= 7) leafCount++;
+      else if (v === 8 || v === 9) flowerCount++;
+      else if (v === 10 || v === 11) fruitCount++;
+    }
+  }
+  assert(trunkCount > 30, 'Modular tree must generate trunk & branches');
+  assert(leafCount > 100, 'Modular tree must generate crown foliage');
+  assert(flowerCount > 0, 'flowerPct=25 must place flowers on outer crown surface');
+  assert(fruitCount > 0, 'fruitPct=20 must place fruits on outer crown surface');
+  assert.strictEqual(document.getElementById('mKind').value, 'foliage');
+
+  // Single trunk + pine cones + 0% flowers/fruits
+  M.generateModularTree({ branchCount: 1, crownType: 'cones', flowerPct: 0, fruitPct: 0 }, 301);
+  let coneLeaves = 0, zeroFlowFruit = 0;
+  for (let z = 0; z < N; z++) {
+    for (let i = 0; i < vol[z].length; i++) {
+      const v = vol[z][i];
+      if (v >= 4 && v <= 7) coneLeaves++;
+      if (v >= 8 && v <= 11) zeroFlowFruit++;
+    }
+  }
+  assert(coneLeaves > 80, 'Conical pine crown must generate foliage');
+  assert.strictEqual(zeroFlowFruit, 0, '0% flower/fruit must place zero flowers/fruits');
+
+  // Multi-branch + weeping willow with curvature reaches lower Z layers
+  M.generateModularTree({ branchCount: 4, curve: 3, crownType: 'weeping', flowerPct: 0, fruitPct: 0 }, 302);
+  let lowWillowLeaves = 0;
+  for (let z = 4; z <= 10; z++) {
+    for (let i = 0; i < vol[z].length; i++) if (vol[z][i] >= 4 && vol[z][i] <= 7) lowWillowLeaves++;
+  }
+  assert(lowWillowLeaves > 15, 'Weeping willow crown must drape tendrils down to Z=4..10');
+
+  // Dead tree ('none') has trunk/branches and zero leaves
+  M.generateModularTree({ branchCount: 3, crownType: 'none', flowerPct: 20, fruitPct: 20 }, 303);
+  let deadTrunk = 0, deadLeaves = 0;
+  for (let z = 0; z < N; z++) {
+    for (let i = 0; i < vol[z].length; i++) {
+      if (vol[z][i] >= 1 && vol[z][i] <= 3) deadTrunk++;
+      if (vol[z][i] >= 4) deadLeaves++;
+    }
+  }
+  assert(deadTrunk > 40 && deadLeaves === 0, 'crownType=none must produce bare branches with zero leaves');
+
+  // 2b. Chars, Beasts (biped_beast, lizard) & Loose Equipment Export (mCharPartMode)
+  // Test 4-tab switching in right sidebar
+  const tabBtns = ['chars', 'props', 'trees', 'conv2d'].map(t => { const b = document.createElement('button'); b.dataset = { mtab: t }; return b; });
+  document.getElementById('mRightTabs').querySelectorAll = () => tabBtns;
+  for (const tb of tabBtns) {
+    document.getElementById('mRightTabs')._emit('click', { target: { closest: () => tb } });
+    assert(tb.classList.contains('active'), `Tab ${tb.dataset.mtab} must become active`);
+  }
+  const panelActiveMap = { chars: 'mTabChars', props: 'mTabProps', trees: 'mTabTrees', conv2d: 'mTabConv2d' };
+  assert(document.getElementById(panelActiveMap.conv2d).classList.contains('active'));
+  document.getElementById('mRightTabs')._emit('click', { target: { closest: () => tabBtns[0] } });
+  assert(document.getElementById('mTabChars').classList.contains('active'));
+
+  // Switching mCharType in UI adapts creature defaults (no human hair wig on beasts) and mBtnVaryChar respects archetype
+  document.getElementById('mCharHead').value = 'short_hair';
+  document.getElementById('mCharTorso').value = 'shirt';
+  document.getElementById('mCharLegs').value = 'pants';
+  document.getElementById('mCharType').value = 'biped_beast';
+  document.getElementById('mCharType')._emit('change');
+  assert.strictEqual(document.getElementById('mCharHead').value, 'mohawk', 'biped_beast UI switch must swap human hair for mohawk/crest');
+  assert.strictEqual(document.getElementById('mCharTorso').value, 'none', 'biped_beast UI switch must clear default shirt');
+  document.getElementById('mBtnVaryChar')._emit('click');
+  assert(['mohawk', 'horns', 'none'].includes(document.getElementById('mCharHead').value), 'Vary on biped_beast must not pick human hair/beard');
+
+  document.getElementById('mCharHead').value = 'short_hair';
+  document.getElementById('mCharType').value = 'lizard';
+  document.getElementById('mCharType')._emit('change');
+  assert.strictEqual(document.getElementById('mCharHead').value, 'none', 'lizard UI switch must clear human hair');
+
+  // Restore humanoid defaults for subsequent tests
+  document.getElementById('mCharType').value = 'humanoid';
+  document.getElementById('mCharType')._emit('change');
+
+  M.generateCharacter({ charType: 'biped_beast', partMode: 'full', headStyle: 'mohawk', torsoStyle: 'none', legsStyle: 'none', hatStyle: 'none', colSkin: '#D97706' }, 1);
+  const beastStats = countVoxels(vol);
+  assert(beastStats.n > 150 && beastStats.minZ === 0, 'biped_beast must generate grounded 3D creature');
+  assert.strictEqual(document.getElementById('mKind').value, 'avatar');
+  // Bipedal feet at z=0 should be near middle Y (no 4-corner back legs at y <= 7)
+  let backCornerFeet = 0;
+  for (let y = 0; y <= 7; y++) for (let x = 0; x < N; x++) if (vol[0][y * N + x] > 0) backCornerFeet++;
+  assert.strictEqual(backCornerFeet, 0, 'biped_beast must have 2 bipedal legs, not 4 quadruped legs');
+
+  M.generateCharacter({ charType: 'lizard', partMode: 'full', headStyle: 'none', torsoStyle: 'none', legsStyle: 'none', colSkin: '#22C55E', colHair: '#EAB308' }, 1);
+  const lizStats = countVoxels(vol);
+  assert(lizStats.n > 120 && lizStats.minZ === 0, 'lizard must generate grounded 3D reptile');
+  // Lizard tail extends into rear Y (y <= 5) at elevated z
+  let lizTail = 0;
+  for (let z = 1; z <= 6; z++) for (let y = 0; y <= 5; y++) for (let x = 0; x < N; x++) if (vol[z][y * N + x] > 0) lizTail++;
+  assert(lizTail > 5, 'lizard must generate long rear tail');
+  // Lizard neck must connect torso to head at z=5..6 without floating gap
+  let lizNeck = 0;
+  for (let z = 5; z <= 6; z++) for (let y = 14; y <= 16; y++) for (let x = 10; x <= 13; x++) if (vol[z][y * N + x] > 0) lizNeck++;
+  assert(lizNeck >= 4, 'lizard neck must connect body and head cleanly');
+
+  // Loose parts: rhand_only, lhand_only, headgear_only, outfit_only, back_only
+  M.generateCharacter({ charType: 'lizard', partMode: 'rhand_only', rhandStyle: 'sword' }, 1);
+  let pStat = countVoxels(vol);
+  assert(pStat.n > 30 && pStat.minZ === 0, 'rhand_only sword must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'espada_heroi');
+
+  M.generateCharacter({ charType: 'humanoid', partMode: 'lhand_only', lhandStyle: 'shield' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 40 && pStat.minZ === 0, 'lhand_only shield must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'escudo_heroi');
+
+  M.generateCharacter({ charType: 'humanoid', partMode: 'headgear_only', hatStyle: 'helmet' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 40 && pStat.minZ === 0, 'headgear_only helmet must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'elmo_cavaleiro');
+
+  M.generateCharacter({ charType: 'lizard', partMode: 'outfit_only', torsoStyle: 'armor', legsStyle: 'greaves' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 80 && pStat.minZ === 0, 'outfit_only armor must be grounded at z=0 even when charType=lizard');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'armadura_peitoral');
+
+  // outfit_only with shirt + legs=none must NOT force metal greaves
+  M.generateCharacter({ charType: 'humanoid', partMode: 'outfit_only', torsoStyle: 'shirt', legsStyle: 'none' }, 1);
+  let forcedArmor = 0;
+  for (let z = 0; z < N; z++) for (let i = 0; i < N * N; i++) if (vol[z][i] >= 13 && vol[z][i] <= 15) forcedArmor++;
+  assert.strictEqual(forcedArmor, 0, 'outfit_only with shirt + legs=none must not force armor/greaves');
+
+  M.generateCharacter({ charType: 'humanoid', partMode: 'back_only', backStyle: 'cape' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 30 && pStat.minZ === 0, 'back_only cape must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'capa_heroi');
+
+  // Grid size N=16 and N=32 generation & preview compatibility
+  for (const gSz of ['16', '32']) {
+    document.getElementById('mSize').value = gSz;
+    document.getElementById('mSize')._emit('change');
+    M.generateCharacter({ charType: 'biped_beast', partMode: 'full', headStyle: 'mohawk', torsoStyle: 'none', legsStyle: 'none' }, 1);
+    let cntG = 0;
+    for (let z = 0; z < M.getSize(); z++) for (let i = 0; i < M.getSize() * M.getSize(); i++) if (M.getVol()[z][i] > 0) cntG++;
+    assert(cntG > 80, `biped_beast must generate cleanly at N=${gSz}`);
+    M.generateModularProp({ family: 'house', subtype: 'tower', width: 7, height: 15, depth: 5, detail: 2 }, 500);
+    let cntP = 0;
+    for (let z = 0; z < M.getSize(); z++) for (let i = 0; i < M.getSize() * M.getSize(); i++) if (M.getVol()[z][i] > 0) cntP++;
+    assert(cntP > 80, `tower prop must generate cleanly at N=${gSz}`);
+  }
+  document.getElementById('mSize').value = '24';
+  document.getElementById('mSize')._emit('change');
+  vol = M.getVol();
+
+  // Live input regeneration on color picker
+  document.getElementById('mCharPartMode').value = 'full';
+  document.getElementById('mCharType').value = 'biped_beast';
+  document.getElementById('mCharColSkin').value = '#EF4444';
+  document.getElementById('mCharColSkin')._emit('input');
+  assert.strictEqual(M.getPalette()[2], '#EF4444', 'Live char color input must regenerate palette & model');
+
+  // 2c. Modular Props Builder (weapon, house, chest, rock, plant + shortcuts)
+  const famAssertions = [
+    ['weapon', 'greatsword', 'pickable'],
+    ['house', 'tower', 'solid'],
+    ['chest', 'barrel', 'solid'],
+    ['rock', 'crystal', 'destructible'],
+    ['plant', 'cactus', 'foliage']
+  ];
+  for (const [fam, sub, expKind] of famAssertions) {
+    M.generateModularProp({ family: fam, subtype: sub, width: 7, height: 15, depth: 5, detail: 2, colMain: '#123456', colGem: '#ABCDEF' }, 500);
+    const st = countVoxels(vol);
+    assert(st.n > 40, `Modular prop ${fam}/${sub} must generate voxels`);
+    assert.strictEqual(document.getElementById('mKind').value, expKind);
+    assert.strictEqual(M.getPalette()[2], '#123456');
+    assert.strictEqual(M.getPalette()[11], '#ABCDEF');
+  }
+  M.generateProcProp('gen_house', 601);
+  assert.strictEqual(document.getElementById('mPropFamily').value, 'house');
+  assert(countVoxels(vol).n > 80);
+
+  // 3. Section 8.2: Mathematical 2D -> 3D Converter
+  document.getElementById('m2dClear')._emit('click');
+  const emptyRes = M.convert2dTo3d('edt_blade', 10);
+  assert.strictEqual(emptyRes.ok, false, 'Empty 2D canvas must return ok=false');
+
+  document.getElementById('m2dPreset').value = 'sword';
+  document.getElementById('m2dLoadPreset')._emit('click');
+  const bladeRes = M.convert2dTo3d('edt_blade', 10);
+  assert(bladeRes.ok && bladeRes.voxels > 80, 'edt_blade must convert sword silhouette to 3D');
+  let minSpan = 99, maxSpan = 0;
+  for (let z = 0; z < N; z++) {
+    for (let x = 0; x < N; x++) {
+      let yCnt = 0;
+      for (let y = 0; y < N; y++) if (vol[z][y * N + x] > 0) yCnt++;
+      if (yCnt > 0) {
+        if (yCnt < minSpan) minSpan = yCnt;
+        if (yCnt > maxSpan) maxSpan = yCnt;
+      }
+    }
+  }
+  assert.strictEqual(minSpan, 1, 'edt_blade must keep sharp 1-voxel edges');
+  assert(maxSpan >= 3, 'edt_blade interior must thicken beyond 1 voxel');
+
+  const bufs = M.get2dBuffers();
+  bufs.front2D.fill(0);
+  for (let z = 4; z <= 19; z++) for (let x = 6; x <= 17; x++) bufs.front2D[z * N + x] = 2;
+  const orgRes = M.convert2dTo3d('edt_organic', 12);
+  assert(orgRes.ok && orgRes.voxels > 200, 'edt_organic must inflate volume');
+  let edgeY = 0, centerY = 0;
+  for (let y = 0; y < N; y++) {
+    if (vol[4][y * N + 6] > 0) edgeY++;
+    if (vol[12][y * N + 12] > 0) centerY++;
+  }
+  assert.strictEqual(edgeY, 1, 'edt_organic outer rim must taper to 1 voxel instead of thick wall');
+  assert(centerY >= 11 && centerY > edgeY, 'edt_organic center must be thicker than corner edge');
+
+  document.getElementById('m2dPreset').value = 'vase';
+  document.getElementById('m2dLoadPreset')._emit('click');
+  const latheRes = M.convert2dTo3d('lathe', 10);
+  assert(latheRes.ok && latheRes.voxels > 300, 'lathe must revolve vase into 3D');
+  let xMinL = N, xMaxL = -1, yMinL = N, yMaxL = -1;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (vol[8][y * N + x] > 0) {
+      if (x < xMinL) xMinL = x; if (x > xMaxL) xMaxL = x;
+      if (y < yMinL) yMinL = y; if (y > yMaxL) yMaxL = y;
+    }
+  }
+  assert.strictEqual(xMaxL - xMinL, yMaxL - yMinL, 'lathe must produce equal X and Y diameters');
+  assert((xMaxL - xMinL) >= 8, 'lathe vase belly must span wide circular cross-section');
+
+  document.getElementById('m2dPreset').value = 'creature';
+  document.getElementById('m2dLoadPreset')._emit('click');
+  const hullRes = M.convert2dTo3d('visual_hull', 10);
+  assert(hullRes.ok && hullRes.voxels > 200, 'visual_hull must intersect Front and Side silhouettes');
+  for (let z = 0; z < N; z++) {
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        if (vol[z][y * N + x] > 0) {
+          assert(bufs.front2D[z * N + x] > 0, `Visual hull voxel (${x},${y},${z}) outside front2D`);
+          assert(bufs.side2D[z * N + y] > 0, `Visual hull voxel (${x},${y},${z}) outside side2D`);
+        }
+      }
+    }
+  }
+  let snoutVoxels = 0;
+  for (let x = 0; x < N; x++) if (vol[13][17 * N + x] > 0) snoutVoxels++;
+  assert(snoutVoxels > 0 && snoutVoxels < 10, 'Visual hull must preserve side snout within front head bounds');
+
+  document.getElementById('m2dClear')._emit('click');
+  M.setZ(13);
+  document.getElementById('m2dFromSlice')._emit('click');
+  document.getElementById('m2dCopyFrontToSide')._emit('click');
+  let copiedCount = 0;
+  for (let i = 0; i < bufs.side2D.length; i++) if (bufs.side2D[i] > 0) copiedCount++;
+  assert(copiedCount > 0, 'm2dFromSlice + m2dCopyFrontToSide must populate side2D');
+
+  // 4. Modeler Zoom + Engine Sprite-Stacking Preview (1px #3B2219 outline + curZ ring + Alt+Click)
+  assert.strictEqual(M.getPreviewZoom(), 1.0, 'Initial previewZoom must be 1.0');
+  document.getElementById('mPrevZoomIn')._emit('click');
+  assert(M.getPreviewZoom() > 1.0, 'mPrevZoomIn must increase previewZoom');
+  assert.notStrictEqual(document.getElementById('mPrevZoomReset').textContent, '100%');
+  document.getElementById('mPrevZoomOut')._emit('click');
+  assert(Math.abs(M.getPreviewZoom() - 1.0) < 0.001, 'mPrevZoomOut must decrease previewZoom');
+  document.getElementById('mPrevZoomReset')._emit('click');
+  assert.strictEqual(M.getPreviewZoom(), 1.0);
+  document.getElementById('mPreviewCanvas')._emit('wheel', { deltaY: -100 });
+  assert(M.getPreviewZoom() > 1.0, 'Wheel up on mPreviewCanvas must zoom in');
+  document.getElementById('mPreviewCanvas')._emit('wheel', { deltaY: 100 });
+  assert(Math.abs(M.getPreviewZoom() - 1.0) < 0.001, 'Wheel down on mPreviewCanvas must zoom out');
+
+  M.setPreviewZoom(0.1);
+  assert.strictEqual(M.getPreviewZoom(), 0.4, 'previewZoom min clamp 0.4');
+  document.getElementById('modelerView').classList.add('show');
+  M.setZ(0);
+  __prevDraws.length = 0;
+  __prevStrokes.length = 0;
+  __offscreenLogs.length = 0;
+  __rafCallback(16);
+  assert(__prevDraws.length >= 1, 'drawPreview must upscale low-res offscreen buffer via drawImage');
+  const prevMinDrawW = __prevDraws[0].args[2];
+  const ringZ0Y = __prevStrokes.find(s => s.strokeStyle === '#FBBF24').pts[0].y;
+  const silFill = __offscreenLogs.find(l => l.op === 'fillRect-sil');
+  assert(silFill && silFill.fillStyle === '#3B2219', 'drawPreview must generate #3B2219 silhouette mask');
+  const silOffsets = __offscreenLogs.filter(l => l.op === 'drawImage' && l.args.length === 2).map(l => l.args.join(','));
+  for (const off of ['-1,0', '1,0', '0,-1', '0,1']) {
+    assert(silOffsets.includes(off), `drawPreview must dilate 1px outline at offset ${off}`);
+  }
+
+  M.setPreviewZoom(9.0);
+  assert.strictEqual(M.getPreviewZoom(), 3.0, 'previewZoom max clamp 3.0');
+  M.setZ(15);
+  __prevDraws.length = 0;
+  __prevStrokes.length = 0;
+  __rafCallback(32);
+  const prevMaxDrawW = __prevDraws[0].args[2];
+  assert(prevMaxDrawW > prevMinDrawW * 5, 'drawPreview upscaled image width must scale with previewZoom');
+
+  // Verify curZ wireframe ring moves upward when curZ increases
+  M.setPreviewZoom(1.0);
+  M.setZ(0);
+  __prevStrokes.length = 0;
+  __rafCallback(40);
+  const yLowZ = __prevStrokes.find(s => s.strokeStyle === '#FBBF24').pts[0].y;
+  M.setZ(16);
+  __prevStrokes.length = 0;
+  __rafCallback(48);
+  const yHighZ = __prevStrokes.find(s => s.strokeStyle === '#FBBF24').pts[0].y;
+  assert(yHighZ < yLowZ - 20, 'curZ wireframe ring must move up on screen when curZ increases');
+
+  // Alt+Click on mPreviewCanvas picks Z layer
+  document.getElementById('mPreviewCanvas')._emit('pointerdown', { altKey: true, clientX: 150, clientY: 234, pointerId: 9 });
+  assert(M.getZ() <= 3, `Alt+Click near bottom of preview must pick low Z, got ${M.getZ()}`);
+  document.getElementById('mPreviewCanvas')._emit('pointerdown', { altKey: true, clientX: 150, clientY: 160, pointerId: 10 });
+  assert(M.getZ() >= 12, `Alt+Click near upper half of preview must pick high Z, got ${M.getZ()}`);
+
+  document.getElementById('modelerView').classList.remove('show');
+  M.setPreviewZoom(1.0);
+
+  assert.strictEqual(M.getEditZoom(), 1.0, 'Initial editZoom must be 1.0');
+  const editCvEl = document.getElementById('mEditCanvas');
+  const beforeCell = M.cellAt({ clientX: 96, clientY: 96 });
+  assert.deepStrictEqual(beforeCell, { x: 6, y: 6 });
+  editCvEl._emit('wheel', { deltaY: -120, clientX: 96, clientY: 96 });
+  assert(M.getEditZoom() > 1.0, 'Wheel up on mEditCanvas must increase editZoom');
+  const afterCell = M.cellAt({ clientX: 96, clientY: 96 });
+  assert.deepStrictEqual(afterCell, beforeCell, 'Cursor-centered wheel zoom must keep target cell under cursor');
+  const pan = M.getEditPan();
+  assert(pan.x > 0 && pan.y > 0, 'Zooming around (96,96) must offset editPan');
+
+  // Right-click pan & clamp + pointercancel cleanup + non-left button guard
+  editCvEl._emit('pointerdown', { button: 2, clientX: 100, clientY: 100, pointerId: 1 });
+  editCvEl._emit('pointermove', { clientX: 40, clientY: 40 });
+  editCvEl._emit('pointercancel', { pointerId: 1 });
+  assert.strictEqual(editCvEl.style.cursor, '', 'pointercancel must clear grabbing cursor');
+  const maxPan = 384 * (M.getEditZoom() - 1);
+  const panned = M.getEditPan();
+  assert(panned.x >= 0 && panned.x <= maxPan + 1e-6 && panned.y >= 0 && panned.y <= maxPan + 1e-6, 'editPan must stay clamped');
+  const panBeforeExtraBtn = M.getEditPan();
+  M.setZ(0);
+  const beforeCellVal = vol[0][0];
+  editCvEl._emit('pointerdown', { button: 3, clientX: 0, clientY: 0, pointerId: 2 });
+  editCvEl._emit('pointerup', { pointerId: 2 });
+  assert.strictEqual(vol[0][0], beforeCellVal, 'Non-left mouse button (button 3) must not paint');
+  assert.deepStrictEqual(M.getEditPan(), panBeforeExtraBtn);
+
+  document.getElementById('mEditZoomIn')._emit('click');
+  assert(M.getEditZoom() <= 4.0);
+  const zoomedIn = M.getEditZoom();
+  document.getElementById('mEditZoomOut')._emit('click');
+  assert(M.getEditZoom() < zoomedIn, 'mEditZoomOut must decrease editZoom');
+  M.setEditZoom(9.0);
+  assert.strictEqual(M.getEditZoom(), 4.0, 'editZoom max clamp 4.0');
+  document.getElementById('mEditZoomReset')._emit('click');
+  assert.strictEqual(M.getEditZoom(), 1.0, 'mEditZoomReset must restore 1.0');
+  assert.deepStrictEqual(M.getEditPan(), { x: 0, y: 0 }, 'Resetting editZoom to 1.0 must reset pan to 0,0');
+
+  console.log('MODULAR_TREE_AND_2D3D_OK');
+}
+
+vm.runInContext(mathCode + '\n' + modelerCode + '\n(' + runModelerTests.toString() + ')()', sandbox);
+"""
+        res = subprocess.run(['node', '-e', node_mod_test], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f'Node modeler 8.1/8.2 test failed:\n{res.stderr}\n{res.stdout}')
+        self.assertIn('MODULAR_TREE_AND_2D3D_OK', res.stdout)
 
 
 if __name__ == '__main__':
