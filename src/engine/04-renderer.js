@@ -355,9 +355,63 @@
 
         const catBlinkHidden = cat.hurtTimer > 0 && (Math.floor((1.0 - cat.hurtTimer) * 6) % 2 === 0);
         const bob = inAir ? 0 : (cat.isWalking ? Math.abs(Math.sin(t * 2)) * 0.7 : Math.sin(cat.idleTimer * 2.4) * 0.35);
+        const customAvModel = (typeof cat.avatar === 'string' && cat.avatar.startsWith('custom_'))
+          ? ((typeof customAvatarModels !== 'undefined' && customAvatarModels[cat.avatar]) ||
+             (typeof window !== 'undefined' && window.customAvatarModels && window.customAvatarModels[cat.avatar]) ||
+             propModels[cat.avatar])
+          : null;
         if (!catBlinkHidden && cat.avatar === 'human' && typeof pushHumanoidDrawables === 'function') {
           const humanTop = pushHumanoidDrawables(activeDrawables, cat, cosA, sinA, bob);
           if (humanTop > maxEntityTopZ) maxEntityTopZ = humanTop;
+        } else if (!catBlinkHidden && customAvModel) {
+          const S = cat.scale || 1;
+          const avBaseZ = Math.round(cat.z + bob * S);
+          const avTopZ = avBaseZ + Math.ceil(customAvModel.count * S);
+          const legCut = Math.max(1, Math.floor(customAvModel.count * 0.28));
+          const legSway = (cat.isWalking && !inAir) ? Math.sin(t) * 0.8 * S : 0;
+          const swayWx = legSway * cosC;
+          const swayWy = legSway * sinC;
+          activeDrawables.push({
+            baseZ: avBaseZ,
+            topZ: avTopZ,
+            depth: dpCat + 0.5,
+            drawSlice: (z) => {
+              const sz = Math.min(customAvModel.count - 1, Math.floor((z - avBaseZ) / S));
+              const isLeg = sz < legCut;
+              const wx = isLeg ? cat.x + swayWx : cat.x;
+              const wy = isLeg ? cat.y + swayWy : cat.y;
+              stampModelSlice(entityCtx, customAvModel, sz, wx, wy, z, cat.selfAngle, S, cosA, sinA);
+            }
+          });
+          if (avTopZ > maxEntityTopZ) maxEntityTopZ = avTopZ;
+
+          if (typeof swingTimer !== 'undefined' && swingTimer > 0 && typeof equippedTool !== 'undefined' && equippedTool !== 'none') {
+            const tKey = TOOLS_META[equippedTool].modelKey;
+            const tModel = tKey ? propModels[tKey] : null;
+            if (tModel) {
+              const prog = 1 - Math.max(0, Math.min(1, swingTimer / 0.22));
+              const arcAngle = (prog - 0.5) * 2.1;
+              const swAngle = cat.selfAngle + arcAngle;
+              const fxC = -Math.sin(swAngle);
+              const fyC = Math.cos(swAngle);
+              const tx = cat.x + fxC * 10 * S;
+              const ty = cat.y + fyC * 10 * S;
+              const tScale = 0.68 * S;
+              const tBaseZ = Math.round(cat.z + (6 + Math.sin(prog * Math.PI) * 4) * S);
+              const tTopZ = tBaseZ + Math.ceil(tModel.count * tScale);
+              const tDp = (tx - camX) * sinA + (ty - camY) * cosA;
+              activeDrawables.push({
+                baseZ: tBaseZ,
+                topZ: tTopZ,
+                depth: tDp + 0.65,
+                drawSlice: (z) => {
+                  const sz = Math.min(tModel.count - 1, Math.floor((z - tBaseZ) / tScale));
+                  stampModelSlice(entityCtx, tModel, sz, tx, ty, z, swAngle, tScale, cosA, sinA);
+                }
+              });
+              if (tTopZ > maxEntityTopZ) maxEntityTopZ = tTopZ;
+            }
+          }
         } else if (!catBlinkHidden) {
           const pawSpecs = [
             [-4.5, -7.5, inAir ? 0.0 : (cat.isWalking ? Math.max(0, Math.sin(t + Math.PI + 0.3) * 3.0) : 0), inAir ? -2.2 : (cat.isWalking ? -Math.cos(t + Math.PI + 0.3) * 2.3 : 0)],
