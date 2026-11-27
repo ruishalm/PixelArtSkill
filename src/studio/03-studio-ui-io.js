@@ -569,8 +569,8 @@
             return true;
           }
           try {
-            const fn = new Function('VoxelEngine', currentCustomScript);
-            fn(window.VoxelEngine);
+            const fn = new Function('ThreeDish', 'VoxelEngine', currentCustomScript);
+            fn(window.ThreeDish, window.VoxelEngine);
             if (msgEl) { msgEl.style.color = '#86EFAC'; msgEl.textContent = '✅ Script ativo no modo Testar!'; }
             return true;
           } catch (err) {
@@ -579,6 +579,7 @@
           }
         }
       };
+      window.ThreeDish = window.VoxelEngine;
 
       window.addEventListener('keydown', (e) => {
         if (window.__STUDIO_EDIT_MODE__) return;
@@ -603,10 +604,10 @@
 
       const BLINK_PRESET_CODE =
 `// Blink: mini-teleport de 10 unidades (Tecla B ou Shift)
-VoxelEngine.onKeyDown((code) => {
+ThreeDish.onKeyDown((code) => {
   if (code === 'KeyB' || code === 'ShiftLeft') {
-    if (VoxelEngine.teleportForward(10)) {
-      VoxelEngine.speak('⚡ Blink!', 45);
+    if (ThreeDish.teleportForward(10)) {
+      ThreeDish.speak('⚡ Blink!', 45);
     }
   }
 });`;
@@ -721,7 +722,7 @@ VoxelEngine.onKeyDown((code) => {
 
           // 2. Metadados do projeto + script customizado
           entries.push({ name: 'project.json', data: JSON.stringify(payload, null, 2) });
-          entries.push({ name: 'scripts/custom.js', data: currentCustomScript || '// Scripts do projeto (VoxelEngine API)\n' });
+          entries.push({ name: 'scripts/custom.js', data: currentCustomScript || '// Scripts do projeto (ThreeDish API)\n' });
           entries.push({ name: 'project-boot.js', data: `window.__WORLD_CFG__=${cfg};window.__STUDIO_BOOT__=${bootJson};` });
 
           // 3. Clona o HTML e mapeia CSS/JS locais para pastas do projeto
@@ -765,7 +766,7 @@ VoxelEngine.onKeyDown((code) => {
           const zipBlob = buildZipBlob(entries);
           const a = document.createElement('a');
           a.href = URL.createObjectURL(zipBlob);
-          a.download = `projeto-voxel-${mw}-seed-${WORLD_SEED}.zip`;
+          a.download = `3dish-project-${mw}-seed-${WORLD_SEED}.zip`;
           a.click();
         } catch (err) {
           alert(
