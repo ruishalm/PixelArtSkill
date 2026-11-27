@@ -112,7 +112,12 @@
   <main class="stage">
    <canvas id="viewport"></canvas>
    <canvas id="studioOverlay"></canvas>
-   <div class="help-pill" id="helpPill">Editar: Clique/Arraste pincel • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira</div>
+   <div class="help-pill" id="helpPill">Editar: Clique/Arraste pincel • Scroll: Zoom • [ ] Raio • Ctrl+Z/Y • Dir. orbita • WASD câmera • Q/E gira</div>
+   <div class="zoom-pill" aria-label="Zoom do mapa 3D">
+    <button id="btnZoomOut" class="zoom-btn" title="Afastar zoom (-)">−</button>
+    <button id="btnZoomReset" class="zoom-btn zoom-val" title="Resetar zoom para 100% (0)">🔍 100%</button>
+    <button id="btnZoomIn" class="zoom-btn" title="Aproximar zoom (+)">+</button>
+   </div>
    <div class="coord-pill" id="coordPill">wx: 0, wy: 0, z: 0</div>
    <div class="biome-toast" id="biomeToast"></div>
    <div class="minimap-wrap">
@@ -247,7 +252,14 @@
   </aside>
   <div class="m-stage-center">
    <div class="mpanel">
-    <div class="sec-title">Editor de Fatias (Camada Z)</div>
+    <div class="mrow mpanel-head">
+     <div class="sec-title" style="margin-bottom:0;">Editor de Fatias (Camada Z)</div>
+     <div class="mzoom-grp">
+      <button class="btn mzoom-btn" id="mEditZoomOut" title="Afastar zoom (Scroll)">−</button>
+      <button class="btn mzoom-btn" id="mEditZoomReset" title="Resetar zoom 100%">100%</button>
+      <button class="btn mzoom-btn" id="mEditZoomIn" title="Aproximar zoom (Scroll)">+</button>
+     </div>
+    </div>
     <div class="mrow">
      <span style="font-size:11px;color:#A8A29E;">Tamanho:</span>
      <select id="mSize" class="mtxt"><option>16</option><option selected>24</option><option>32</option></select>
@@ -267,7 +279,14 @@
     </div>
    </div>
    <div class="mpanel">
-    <div class="sec-title">Preview 3D ao Vivo</div>
+    <div class="mrow mpanel-head">
+     <div class="sec-title" style="margin-bottom:0;">Preview 3D ao Vivo</div>
+     <div class="mzoom-grp">
+      <button class="btn mzoom-btn" id="mPrevZoomOut" title="Afastar Preview 3D (Scroll)">−</button>
+      <button class="btn mzoom-btn" id="mPrevZoomReset" title="Resetar zoom 100%">100%</button>
+      <button class="btn mzoom-btn" id="mPrevZoomIn" title="Aproximar Preview 3D (Scroll)">+</button>
+     </div>
+    </div>
     <canvas id="mPreviewCanvas" width="300" height="300"></canvas>
     <div class="mrow">
      <label style="font-size:11px;color:#D6D3D1;"><input type="checkbox" id="mAutoSpin" checked /> Auto-girar</label>

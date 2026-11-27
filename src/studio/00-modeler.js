@@ -52,6 +52,13 @@
       let angle = 0.6;
       let dragRotX = null;
       let voxCache = null;
+      let previewZoom = 1.0;
+      let editZoom = 1.0;
+      let editPanX = 0;
+      let editPanY = 0;
+      let isPanningEdit = false;
+      let panLastX = 0;
+      let panLastY = 0;
       const customAssets = []; // { key, name, size, pal, slices, kind, solid, hp, dropKey }
 
       function newVolume(size) {
@@ -60,6 +67,8 @@
         front2D = new Uint8Array(N * N);
         side2D = new Uint8Array(N * N);
         curZ = 0;
+        editPanX = 0;
+        editPanY = 0;
         voxCache = null;
         const zEl = document.getElementById('mZ');
         zEl.max = String(N - 1);
@@ -187,7 +196,29 @@
       }
 
       // ---------- Edição ----------
-      const cell = () => editCv.width / N;
+      const cell = () => (editCv.width / N) * editZoom;
+
+      function clampEditPan() {
+        const maxPanX = Math.max(0, editCv.width * (editZoom - 1));
+        const maxPanY = Math.max(0, editCv.height * (editZoom - 1));
+        editPanX = Math.max(0, Math.min(maxPanX, editPanX));
+        editPanY = Math.max(0, Math.min(maxPanY, editPanY));
+      }
+
+      function setEditZoom(newZoom, focusCanvasX = editCv.width / 2, focusCanvasY = editCv.height / 2) {
+        const oldZoom = editZoom;
+        const v = Number.isFinite(newZoom) ? newZoom : 1.0;
+        editZoom = Math.max(1.0, Math.min(4.0, +v.toFixed(4)));
+        const worldX = (focusCanvasX + editPanX) / oldZoom;
+        const worldY = (focusCanvasY + editPanY) / oldZoom;
+        editPanX = worldX * editZoom - focusCanvasX;
+        editPanY = worldY * editZoom - focusCanvasY;
+        clampEditPan();
+        const lbl = document.getElementById('mEditZoomReset');
+        if (lbl) lbl.textContent = `${Math.round(editZoom * 100)}%`;
+        drawEdit();
+        return editZoom;
+      }
 
       function getExtrudeZ() {
         const el = document.getElementById('mExtrudeZ');
@@ -205,9 +236,12 @@
 
       function cellAt(e) {
         const r = editCv.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
         const cs = cell();
-        const x = Math.floor(((e.clientX - r.left) / r.width) * editCv.width / cs);
-        const y = Math.floor(((e.clientY - r.top) / r.height) * editCv.height / cs);
+        const px = ((e.clientX - r.left) / r.width) * editCv.width + editPanX;
+        const py = ((e.clientY - r.top) / r.height) * editCv.height + editPanY;
+        const x = Math.floor(px / cs);
+        const y = Math.floor(py / cs);
         if (x < 0 || y < 0 || x >= N || y >= N) return null;
         return { x, y };
       }
@@ -257,26 +291,77 @@
         drawEdit();
       }
 
+      editCv.addEventListener('contextmenu', (e) => { if (e.preventDefault) e.preventDefault(); });
+      editCv.addEventListener('wheel', (e) => {
+        if (e.preventDefault) e.preventDefault();
+        const r = editCv.getBoundingClientRect();
+        const fx = r.width ? ((e.clientX - r.left) / r.width) * editCv.width : editCv.width / 2;
+        const fy = r.height ? ((e.clientY - r.top) / r.height) * editCv.height : editCv.height / 2;
+        if (e.deltaY < 0) setEditZoom(editZoom * 1.15, fx, fy);
+        else if (e.deltaY > 0) setEditZoom(editZoom / 1.15, fx, fy);
+      }, { passive: false });
+
+      const mEditZoomOut = document.getElementById('mEditZoomOut');
+      const mEditZoomReset = document.getElementById('mEditZoomReset');
+      const mEditZoomIn = document.getElementById('mEditZoomIn');
+      if (mEditZoomOut) mEditZoomOut.addEventListener('click', () => setEditZoom(editZoom / 1.25));
+      if (mEditZoomReset) mEditZoomReset.addEventListener('click', () => setEditZoom(1.0));
+      if (mEditZoomIn) mEditZoomIn.addEventListener('click', () => setEditZoom(editZoom * 1.25));
+
       editCv.addEventListener('pointerdown', (e) => {
+        if (e.button === 1 || e.button === 2) {
+          if (e.preventDefault) e.preventDefault();
+          if (editZoom > 1) {
+            isPanningEdit = true;
+            panLastX = e.clientX;
+            panLastY = e.clientY;
+            if (editCv.style) editCv.style.cursor = 'grabbing';
+            editCv.setPointerCapture(e.pointerId);
+          }
+          return;
+        }
         painting = true;
         editCv.setPointerCapture(e.pointerId);
         applyTool(cellAt(e));
       });
       editCv.addEventListener('pointermove', (e) => {
+        if (isPanningEdit) {
+          const r = editCv.getBoundingClientRect();
+          const sx = r.width ? (editCv.width / r.width) : 1;
+          const sy = r.height ? (editCv.height / r.height) : 1;
+          editPanX -= (e.clientX - panLastX) * sx;
+          editPanY -= (e.clientY - panLastY) * sy;
+          panLastX = e.clientX;
+          panLastY = e.clientY;
+          clampEditPan();
+          drawEdit();
+          return;
+        }
         hover = cellAt(e);
         if (painting && tool !== 'fill' && tool !== 'pick') applyTool(hover);
         else drawEdit();
       });
-      editCv.addEventListener('pointerup', () => { painting = false; });
+      editCv.addEventListener('pointerup', (e) => {
+        if (isPanningEdit) {
+          isPanningEdit = false;
+          if (editCv.style) editCv.style.cursor = '';
+          try { editCv.releasePointerCapture(e.pointerId); } catch (_) {}
+          return;
+        }
+        painting = false;
+      });
       editCv.addEventListener('pointerleave', () => { hover = null; drawEdit(); });
 
       function drawEdit() {
         const cs = cell();
+        const ox = -editPanX;
+        const oy = -editPanY;
+        const gridSpan = N * cs;
         eCtx.clearRect(0, 0, editCv.width, editCv.height);
         for (let y = 0; y < N; y++) {
           for (let x = 0; x < N; x++) {
             eCtx.fillStyle = ((x + y) & 1) ? '#1F1B19' : '#171412';
-            eCtx.fillRect(x * cs, y * cs, cs, cs);
+            eCtx.fillRect(x * cs + ox, y * cs + oy, cs, cs);
           }
         }
         if (document.getElementById('mOnion').checked && curZ > 0) {
@@ -284,27 +369,27 @@
           const below = vol[curZ - 1];
           for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
             const v = below[y * N + x];
-            if (v > 0) { eCtx.fillStyle = pal[v]; eCtx.fillRect(x * cs, y * cs, cs, cs); }
+            if (v > 0) { eCtx.fillStyle = pal[v]; eCtx.fillRect(x * cs + ox, y * cs + oy, cs, cs); }
           }
           eCtx.globalAlpha = 1;
         }
         const layer = vol[curZ];
         for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
           const v = layer[y * N + x];
-          if (v > 0) { eCtx.fillStyle = pal[v]; eCtx.fillRect(x * cs, y * cs, cs, cs); }
+          if (v > 0) { eCtx.fillStyle = pal[v]; eCtx.fillRect(x * cs + ox, y * cs + oy, cs, cs); }
         }
         eCtx.strokeStyle = 'rgba(255,255,255,0.06)';
         eCtx.lineWidth = 1;
         eCtx.beginPath();
         for (let i = 0; i <= N; i++) {
-          eCtx.moveTo(i * cs + 0.5, 0); eCtx.lineTo(i * cs + 0.5, editCv.height);
-          eCtx.moveTo(0, i * cs + 0.5); eCtx.lineTo(editCv.width, i * cs + 0.5);
+          eCtx.moveTo(i * cs + ox + 0.5, oy); eCtx.lineTo(i * cs + ox + 0.5, oy + gridSpan);
+          eCtx.moveTo(ox, i * cs + oy + 0.5); eCtx.lineTo(ox + gridSpan, i * cs + oy + 0.5);
         }
         eCtx.stroke();
         if (hover) {
           eCtx.strokeStyle = '#FBBF24';
           eCtx.lineWidth = 2;
-          eCtx.strokeRect(hover.x * cs + 1, hover.y * cs + 1, cs - 2, cs - 2);
+          eCtx.strokeRect(hover.x * cs + ox + 1, hover.y * cs + oy + 1, cs - 2, cs - 2);
         }
         document.getElementById('mZLabel').textContent = `Z ${curZ} / ${N - 1}`;
       }
@@ -354,6 +439,27 @@
       });
 
       // ---------- Preview 3D (mesma ideia do sprite-stacking: camadas giradas e empilhadas) ----------
+      function setPreviewZoom(z) {
+        const v = Number.isFinite(z) ? z : 1.0;
+        previewZoom = Math.max(0.4, Math.min(3.0, +v.toFixed(4)));
+        const lbl = document.getElementById('mPrevZoomReset');
+        if (lbl) lbl.textContent = `${Math.round(previewZoom * 100)}%`;
+        return previewZoom;
+      }
+
+      prevCv.addEventListener('wheel', (e) => {
+        if (e.preventDefault) e.preventDefault();
+        if (e.deltaY < 0) setPreviewZoom(previewZoom * 1.12);
+        else if (e.deltaY > 0) setPreviewZoom(previewZoom / 1.12);
+      }, { passive: false });
+
+      const mPrevZoomOut = document.getElementById('mPrevZoomOut');
+      const mPrevZoomReset = document.getElementById('mPrevZoomReset');
+      const mPrevZoomIn = document.getElementById('mPrevZoomIn');
+      if (mPrevZoomOut) mPrevZoomOut.addEventListener('click', () => setPreviewZoom(previewZoom / 1.15));
+      if (mPrevZoomReset) mPrevZoomReset.addEventListener('click', () => setPreviewZoom(1.0));
+      if (mPrevZoomIn) mPrevZoomIn.addEventListener('click', () => setPreviewZoom(previewZoom * 1.15));
+
       prevCv.addEventListener('pointerdown', (e) => { dragRotX = e.clientX; prevCv.setPointerCapture(e.pointerId); });
       prevCv.addEventListener('pointermove', (e) => {
         if (dragRotX === null) return;
@@ -381,7 +487,7 @@
         const list = voxCache || buildVoxList();
         const W = prevCv.width, H = prevCv.height;
         pCtx.clearRect(0, 0, W, H);
-        const k = Math.max(3, Math.floor(180 / N) + 1);
+        const k = Math.max(1.5, (Math.floor(180 / N) + 1) * previewZoom);
         const cx = W / 2;
         const baseY = H * 0.78;
         const squash = 0.5;
@@ -1919,7 +2025,13 @@
         getVol: () => vol,
         setZ,
         setTool: (t) => { tool = t; },
-        applyCell: (x, y) => applyTool({ x, y })
+        applyCell: (x, y) => applyTool({ x, y }),
+        getPreviewZoom: () => previewZoom,
+        setPreviewZoom,
+        getEditZoom: () => editZoom,
+        setEditZoom,
+        getEditPan: () => ({ x: editPanX, y: editPanY }),
+        cellAt
       };
 
       // modelo inicial: uma "caixa de madeira" simples para o usuário ver o fluxo funcionando

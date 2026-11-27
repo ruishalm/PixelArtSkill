@@ -378,18 +378,37 @@
     let LOW_W = 480;
     let LOW_H = 300;
     let pixelScale = 3;
+    let camZoom = 1.0;
     let viewW = window.innerWidth;
     let viewH = window.innerHeight;
     let dpr = 1;
+
+    function syncZoomUi() {
+      const btnReset = document.getElementById('btnZoomReset');
+      if (btnReset) btnReset.textContent = `🔍 ${Math.round(camZoom * 100)}%`;
+    }
+
+    function setCamZoom(newZoom) {
+      const v = Number.isFinite(newZoom) ? newZoom : 1.0;
+      camZoom = Math.max(0.35, Math.min(3.0, +v.toFixed(4)));
+      handleResize();
+      syncZoomUi();
+      return camZoom;
+    }
+
+    function adjustCamZoom(delta) {
+      return setCamZoom(camZoom + (Number.isFinite(delta) ? delta : 0));
+    }
 
     function handleResize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       const host = canvas.parentElement;
       viewW = (host && host.clientWidth > 0) ? host.clientWidth : window.innerWidth;
       viewH = (host && host.clientHeight > 0) ? host.clientHeight : window.innerHeight;
-      pixelScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2));
-      LOW_W = Math.ceil(viewW / pixelScale);
-      LOW_H = Math.ceil(viewH / pixelScale);
+      const baseScale = Math.max(2, Math.min(4, Math.floor(Math.min(viewW, viewH) / 260) || 2));
+      pixelScale = Math.max(1, Math.min(10, +(baseScale * camZoom).toFixed(2)));
+      LOW_W = Math.max(64, Math.ceil(viewW / pixelScale));
+      LOW_H = Math.max(64, Math.ceil(viewH / pixelScale));
 
       for (const [cv, cx] of [[lowCanvas, lowCtx], [entityCanvas, entityCtx], [entitySilCanvas, entitySilCtx]]) {
         cv.width = LOW_W;
@@ -404,6 +423,13 @@
     }
     window.addEventListener('resize', handleResize);
     handleResize();
+    syncZoomUi();
+
+    canvas.addEventListener('wheel', (e) => {
+      if (e.preventDefault) e.preventDefault();
+      if (e.deltaY < 0) setCamZoom(camZoom * 1.15);
+      else if (e.deltaY > 0) setCamZoom(camZoom / 1.15);
+    }, { passive: false });
 
     window.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
@@ -412,9 +438,25 @@
       if (modelerEl && modelerEl.classList && modelerEl.classList.contains('show')) return;
 
       const code = e.code;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '+' || e.key === '=' || code === 'Equal' || code === 'NumpadAdd') {
+          if (e.preventDefault) e.preventDefault();
+          setCamZoom(camZoom * 1.15);
+          return;
+        } else if (e.key === '-' || e.key === '_' || code === 'Minus' || code === 'NumpadSubtract') {
+          if (e.preventDefault) e.preventDefault();
+          setCamZoom(camZoom / 1.15);
+          return;
+        } else if (e.key === '0' || code === 'Digit0' || code === 'Numpad0') {
+          if (e.preventDefault) e.preventDefault();
+          setCamZoom(1.0);
+          return;
+        }
+      }
+
       keys[code] = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
-        e.preventDefault();
+        if (e.preventDefault) e.preventDefault();
       }
       if (window.__STUDIO_EDIT_MODE__) return;
       if (code === 'Space') {
