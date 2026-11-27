@@ -99,6 +99,94 @@ class TestPixelArtSkill(unittest.TestCase):
             res = subprocess.run(['node', '--check', mod], capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, f'Syntax error in {mod}:\n{res.stderr}')
 
+        # Verify terrain-world runtime zoom (camZoom, wheel, keydown, __TERRAIN_DEBUG__)
+        node_tw_zoom = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const root = process.cwd();
+const voxelData = fs.readFileSync(path.join(root, 'assets/voxels/voxel-data.js'), 'utf8');
+const engineFiles = fs.readdirSync(path.join(root, 'src/engine')).filter(f => f.endsWith('.js')).sort();
+const worldFiles = fs.readdirSync(path.join(root, 'src/terrain-world')).filter(f => f.endsWith('.js')).sort();
+
+const elements = new Map();
+function makeEl(id, extra = {}) {
+  const listeners = {};
+  const el = {
+    id, value: '', textContent: '', innerHTML: '', className: '',
+    style: {}, dataset: {},
+    classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} },
+    addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (listeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: el, ...e })); },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1280, height: 720 }),
+    setPointerCapture(){}, releasePointerCapture(){},
+    parentElement: { clientWidth: 1280, clientHeight: 720 },
+    width: 1280, height: 720, clientWidth: 1280, clientHeight: 720,
+    ...extra
+  };
+  if (id) elements.set(id, el);
+  return el;
+}
+function makeCtx() {
+  return {
+    imageSmoothingEnabled: false, globalCompositeOperation: 'source-over',
+    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textBaseline: 'middle', globalAlpha: 1,
+    save(){}, restore(){}, translate(){}, scale(){}, rotate(){}, setTransform(){},
+    beginPath(){}, closePath(){}, moveTo(){}, lineTo(){}, ellipse(){}, arc(){}, roundRect(){},
+    fill(){}, stroke(){}, fillRect(){}, clearRect(){}, fillText(){},
+    measureText: () => ({ width: 20 }),
+    createLinearGradient: () => ({ addColorStop(){} }),
+    createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    putImageData(){}, drawImage(){}
+  };
+}
+const vp = makeEl('viewport', { getContext: () => makeCtx() });
+makeEl('minimapCanvas', { width: 120, height: 120, getContext: () => makeCtx() });
+for (const id of ['btnSkin','btnHat','btnTool','btnAction','btnRotL','btnRotR','btnReset','btnSeed','btnTravel','btnTouchJump','biomeToast','biomeLabel','fishCounter','biomeCounter','statElev','statObstacle']) makeEl(id);
+const winListeners = {};
+const sb = {
+  assert, Math, Number, String, Array, Object, JSON, Int16Array, Int32Array, Uint8Array, Uint32Array, Float32Array,
+  Set, Map, URLSearchParams, URL, console, performance: { now: () => 0 },
+  requestAnimationFrame: () => {},
+  window: {
+    innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1,
+    location: { search: '?grid=64', href: 'http://localhost/examples/terrain-world.html?grid=64' },
+    addEventListener(ev, fn) { (winListeners[ev] = winListeners[ev] || []).push(fn); },
+    _emit(ev, e = {}) { (winListeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: { tagName: 'BODY' }, ...e })); },
+    dispatchEvent(){}
+  },
+  document: {
+    body: { classList: { _s: new Set(), add(){}, remove(){}, contains: () => false } },
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    createElement: () => ({ width: 0, height: 0, getContext: () => makeCtx() })
+  }
+};
+sb.globalThis = sb; sb.window.document = sb.document;
+vm.createContext(sb);
+let code = voxelData + '\n';
+for (const f of engineFiles) code += fs.readFileSync(path.join(root, 'src/engine', f), 'utf8') + '\n';
+for (const f of worldFiles) code += fs.readFileSync(path.join(root, 'src/terrain-world', f), 'utf8') + '\n';
+vm.runInContext(code, sb);
+const dbg = sb.window.__TERRAIN_DEBUG__;
+assert.strictEqual(dbg.getState().viewport.camZoom, 1.0);
+assert.strictEqual(dbg.getState().viewport.pixelScale, 2);
+vp._emit('wheel', { deltaY: -120 });
+assert(dbg.getState().viewport.camZoom > 1.1);
+sb.window._emit('keydown', { key: '0', code: 'Digit0', shiftKey: false });
+assert.strictEqual(dbg.getState().viewport.camZoom, 1.0);
+sb.window._emit('keydown', { key: '-', code: 'Minus' });
+assert(dbg.getState().viewport.camZoom < 1.0);
+sb.renderScene();
+console.log('TERRAIN_WORLD_ZOOM_OK');
+"""
+        res_tw = subprocess.run(['node', '-e', node_tw_zoom], capture_output=True, text=True)
+        self.assertEqual(res_tw.returncode, 0, f'Terrain-world zoom test failed:\n{res_tw.stderr}\n{res_tw.stdout}')
+        self.assertIn('TERRAIN_WORLD_ZOOM_OK', res_tw.stdout)
+
         # Verify all sfx*() calls across modules are defined in engine/01-voxel-audio.js
         with open(os.path.join(ROOT, 'src', 'engine', '01-voxel-audio.js'), 'r', encoding='utf-8') as f:
             assets_js = f.read()
@@ -1232,14 +1320,18 @@ function runCaveSuite() {
   vpEl._emit('wheel', { deltaY: 120 });
   assert(Math.abs(camZoom - 1.0) < 0.001, 'Wheel down must return to ~1.0');
 
-  // Render & 3D picker remain valid across extreme zoom levels
+  // Render & 3D picker remain valid across extreme & fractional zoom levels (round-trip alignment)
   window.__STUDIO_EDIT_MODE__ = true;
-  setCamZoom(0.35);
-  renderScene();
-  setCamZoom(3.0);
-  renderScene();
-  vpEl._emit('pointermove', { clientX: 320, clientY: 240 });
-  assert(S.hoverWorld && Number.isFinite(S.hoverWorld.wx) && Number.isFinite(S.hoverWorld.wy), 'pickTerrainAtClient must resolve hoverWorld when zoomed');
+  document.getElementById('btnNewFlat')._emit('click');
+  const testWx = 12, testWy = -8;
+  for (const zLevel of [0.35, 1.73, 3.0]) {
+    setCamZoom(zLevel);
+    renderScene();
+    const scr = project(testWx, testWy, 0);
+    vpEl._emit('pointermove', { clientX: scr.x * pixelScale, clientY: scr.y * pixelScale });
+    assert(S.hoverWorld && Math.abs(S.hoverWorld.wx - testWx) <= VOX && Math.abs(S.hoverWorld.wy - testWy) <= VOX,
+      `pickTerrainAtClient round-trip failed at camZoom=${zLevel}: got (${S.hoverWorld?.wx}, ${S.hoverWorld?.wy})`);
+  }
   setCamZoom(1.0);
 
   // Zoom pill buttons
@@ -1251,11 +1343,13 @@ function runCaveSuite() {
   document.getElementById('btnZoomReset')._emit('click');
   assert.strictEqual(camZoom, 1.0, 'btnZoomReset must reset camZoom to 1.0');
 
-  // Keyboard shortcuts (+ / - / 0) in Edit mode and Test mode, ignored in <input>
+  // Keyboard shortcuts (+ / - / 0) in Edit mode and Test mode, ignored in <input>/contentEditable/Shift+0/Modeler
   window.__STUDIO_EDIT_MODE__ = true;
   window._emit('keydown', { key: '=', code: 'Equal' });
   assert(camZoom > 1.0, 'Key =/+ must zoom in during Edit mode');
-  window._emit('keydown', { key: '0', code: 'Digit0' });
+  window._emit('keydown', { key: ')', code: 'Digit0', shiftKey: true });
+  assert(camZoom > 1.0, 'Shift+0 (")") must NOT reset camZoom');
+  window._emit('keydown', { key: '0', code: 'Digit0', shiftKey: false });
   assert.strictEqual(camZoom, 1.0, 'Key 0 must reset zoom in Edit mode');
   window.__STUDIO_EDIT_MODE__ = false;
   window._emit('keydown', { key: '-', code: 'Minus' });
@@ -1263,6 +1357,8 @@ function runCaveSuite() {
   const prevZoom = camZoom;
   window._emit('keydown', { key: '0', code: 'Digit0', target: { tagName: 'INPUT' } });
   assert.strictEqual(camZoom, prevZoom, 'Zoom hotkeys must be ignored inside INPUT');
+  window._emit('keydown', { key: '0', code: 'Digit0', target: { tagName: 'DIV', isContentEditable: true } });
+  assert.strictEqual(camZoom, prevZoom, 'Zoom hotkeys must be ignored inside contentEditable');
   setCamZoom(1.0);
 
   console.log('CAVES_AND_DUAL_SIDEBAR_OK');
@@ -1350,17 +1446,20 @@ function makeEl(id, extra = {}) {
   if (id) elements.set(id, el);
   return el;
 }
-function make2dCtx() {
+const prevRects = [];
+function make2dCtx(trackPreviewRects = false) {
   return {
     fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, font: '', imageSmoothingEnabled: false,
-    clearRect(){}, fillRect(){}, strokeRect(){}, beginPath(){}, moveTo(){}, lineTo(){}, ellipse(){}, fill(){}, stroke(){}, fillText(){},
+    clearRect(){},
+    fillRect(x, y, w, h){ if (trackPreviewRects) prevRects.push({ x, y, w, h }); },
+    strokeRect(){}, beginPath(){}, moveTo(){}, lineTo(){}, ellipse(){}, fill(){}, stroke(){}, fillText(){},
     drawImage(){}, getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) })
   };
 }
 
 makeEl('modelerView');
-makeEl('mEditCanvas', { width: 384, height: 384, getContext: () => make2dCtx() });
-makeEl('mPreviewCanvas', { width: 300, height: 300, getContext: () => make2dCtx() });
+makeEl('mEditCanvas', { width: 384, height: 384, getContext: () => make2dCtx(false) });
+makeEl('mPreviewCanvas', { width: 300, height: 300, getContext: () => make2dCtx(true) });
 makeEl('m2dFrontCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
 makeEl('m2dSideCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
 makeEl('mSize', { value: '24' });
@@ -1415,6 +1514,9 @@ const sandbox = {
   URLSearchParams, Event: class { constructor(t){ this.type = t; } }, console, confirm: () => true,
   propModels: {}, PROP_COLLIDER_META: {}, DESTRUCTIBLE_META: {}, FOLIAGE_META: {},
   buildSliceSheet: () => ({ count: 1, w: 24, h: 24, sheet: {} }),
+  __prevRects: prevRects,
+  __rafCallback: null,
+  requestAnimationFrame: (cb) => { sandbox.__rafCallback = cb; },
   window: { dispatchEvent(){}, customAvatarModels: {}, location: { search: '' } },
   document: {
     body: { classList: bodyClassList },
@@ -1575,19 +1677,32 @@ function runModelerTests() {
   for (let i = 0; i < bufs.side2D.length; i++) if (bufs.side2D[i] > 0) copiedCount++;
   assert(copiedCount > 0, 'm2dFromSlice + m2dCopyFrontToSide must populate side2D');
 
-  // 4. Modeler Zoom (previewZoom + editZoom + cursor-centered wheel + pan clamp)
+  // 4. Modeler Zoom (previewZoom + drawPreview scaling + editZoom + cursor-centered wheel + pan clamp + pointercancel)
   assert.strictEqual(M.getPreviewZoom(), 1.0, 'Initial previewZoom must be 1.0');
   document.getElementById('mPrevZoomIn')._emit('click');
   assert(M.getPreviewZoom() > 1.0, 'mPrevZoomIn must increase previewZoom');
   assert.notStrictEqual(document.getElementById('mPrevZoomReset').textContent, '100%');
+  document.getElementById('mPrevZoomOut')._emit('click');
+  assert(Math.abs(M.getPreviewZoom() - 1.0) < 0.001, 'mPrevZoomOut must decrease previewZoom');
   document.getElementById('mPrevZoomReset')._emit('click');
   assert.strictEqual(M.getPreviewZoom(), 1.0);
   document.getElementById('mPreviewCanvas')._emit('wheel', { deltaY: -100 });
   assert(M.getPreviewZoom() > 1.0, 'Wheel up on mPreviewCanvas must zoom in');
+  document.getElementById('mPreviewCanvas')._emit('wheel', { deltaY: 100 });
+  assert(Math.abs(M.getPreviewZoom() - 1.0) < 0.001, 'Wheel down on mPreviewCanvas must zoom out');
   M.setPreviewZoom(0.1);
   assert.strictEqual(M.getPreviewZoom(), 0.4, 'previewZoom min clamp 0.4');
+  document.getElementById('modelerView').classList.add('show');
+  __prevRects.length = 0;
+  __rafCallback(16);
+  const prevMinW = __prevRects[0].w;
   M.setPreviewZoom(9.0);
   assert.strictEqual(M.getPreviewZoom(), 3.0, 'previewZoom max clamp 3.0');
+  __prevRects.length = 0;
+  __rafCallback(32);
+  const prevMaxW = __prevRects[0].w;
+  assert(prevMaxW > prevMinW * 5, 'drawPreview voxel width must scale with previewZoom');
+  document.getElementById('modelerView').classList.remove('show');
   M.setPreviewZoom(1.0);
 
   assert.strictEqual(M.getEditZoom(), 1.0, 'Initial editZoom must be 1.0');
@@ -1601,16 +1716,27 @@ function runModelerTests() {
   const pan = M.getEditPan();
   assert(pan.x > 0 && pan.y > 0, 'Zooming around (96,96) must offset editPan');
 
-  // Right-click pan & clamp
+  // Right-click pan & clamp + pointercancel cleanup + non-left button guard
   editCvEl._emit('pointerdown', { button: 2, clientX: 100, clientY: 100, pointerId: 1 });
   editCvEl._emit('pointermove', { clientX: 40, clientY: 40 });
-  editCvEl._emit('pointerup', { pointerId: 1 });
+  editCvEl._emit('pointercancel', { pointerId: 1 });
+  assert.strictEqual(editCvEl.style.cursor, '', 'pointercancel must clear grabbing cursor');
   const maxPan = 384 * (M.getEditZoom() - 1);
   const panned = M.getEditPan();
   assert(panned.x >= 0 && panned.x <= maxPan + 1e-6 && panned.y >= 0 && panned.y <= maxPan + 1e-6, 'editPan must stay clamped');
+  const panBeforeExtraBtn = M.getEditPan();
+  M.setZ(0);
+  const beforeCellVal = vol[0][0];
+  editCvEl._emit('pointerdown', { button: 3, clientX: 0, clientY: 0, pointerId: 2 });
+  editCvEl._emit('pointerup', { pointerId: 2 });
+  assert.strictEqual(vol[0][0], beforeCellVal, 'Non-left mouse button (button 3) must not paint');
+  assert.deepStrictEqual(M.getEditPan(), panBeforeExtraBtn);
 
   document.getElementById('mEditZoomIn')._emit('click');
   assert(M.getEditZoom() <= 4.0);
+  const zoomedIn = M.getEditZoom();
+  document.getElementById('mEditZoomOut')._emit('click');
+  assert(M.getEditZoom() < zoomedIn, 'mEditZoomOut must decrease editZoom');
   M.setEditZoom(9.0);
   assert.strictEqual(M.getEditZoom(), 4.0, 'editZoom max clamp 4.0');
   document.getElementById('mEditZoomReset')._emit('click');

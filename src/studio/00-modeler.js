@@ -320,6 +320,7 @@
           }
           return;
         }
+        if (e.button !== undefined && e.button !== 0) return;
         painting = true;
         editCv.setPointerCapture(e.pointerId);
         applyTool(cellAt(e));
@@ -341,15 +342,18 @@
         if (painting && tool !== 'fill' && tool !== 'pick') applyTool(hover);
         else drawEdit();
       });
-      editCv.addEventListener('pointerup', (e) => {
+      function endEditPointer(e) {
         if (isPanningEdit) {
           isPanningEdit = false;
           if (editCv.style) editCv.style.cursor = '';
-          try { editCv.releasePointerCapture(e.pointerId); } catch (_) {}
-          return;
         }
         painting = false;
-      });
+        if (e && e.pointerId !== undefined) {
+          try { editCv.releasePointerCapture(e.pointerId); } catch (_) {}
+        }
+      }
+      editCv.addEventListener('pointerup', endEditPointer);
+      editCv.addEventListener('pointercancel', endEditPointer);
       editCv.addEventListener('pointerleave', () => { hover = null; drawEdit(); });
 
       function drawEdit() {

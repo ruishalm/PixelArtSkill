@@ -433,7 +433,7 @@
 
     window.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
       const modelerEl = document.getElementById('modelerView');
       if (modelerEl && modelerEl.classList && modelerEl.classList.contains('show')) return;
 
@@ -447,7 +447,7 @@
           if (e.preventDefault) e.preventDefault();
           setCamZoom(camZoom / 1.15);
           return;
-        } else if (e.key === '0' || code === 'Digit0' || code === 'Numpad0') {
+        } else if (e.key === '0' || (code === 'Digit0' && !e.shiftKey) || code === 'Numpad0') {
           if (e.preventDefault) e.preventDefault();
           setCamZoom(1.0);
           return;
