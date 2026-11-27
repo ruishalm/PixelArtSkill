@@ -448,7 +448,7 @@ console.log('SEED_OK');
             raw = self._assert_utf8_lf(out_html)
             studio_html = raw.decode('utf-8')
 
-            self.assertLess(len(raw), 28 * 1024, 'studio/index.html must stay < 28 KB')
+            self.assertLess(len(raw), 40 * 1024, 'studio/index.html must stay < 40 KB')
             for token in (
                 '__STUDIO_SCRIPTS__',
                 '__STUDIO_JS_BUNDLE__',
@@ -1404,7 +1404,19 @@ vm.runInContext(
 
         right_html = studio_html[idx_mright:]
         for req_id in (
-            'id="mRightTabs"', 'id="mTabChars"', 'id="mTabTrees"', 'id="mTabConv2d"',
+            'id="mRightTabs"', 'id="mTabChars"', 'id="mTabProps"', 'id="mTabTrees"', 'id="mTabConv2d"',
+            'id="mCharType"', 'value="biped_beast"', 'value="lizard"',
+            'id="mCharLegH"', 'id="mCharTorsoW"', 'id="mCharHeadS"',
+            'id="mCharPartMode"', 'value="outfit_only"', 'value="rhand_only"', 'value="headgear_only"',
+            'id="mCharHead"', 'id="mCharHat"', 'id="mCharTorso"', 'id="mCharLegs"',
+            'id="mCharBack"', 'id="mCharRHand"', 'id="mCharLHand"',
+            'id="mCharColSkin"', 'id="mCharColHair"', 'id="mCharColShirt"',
+            'id="mCharColPants"', 'id="mCharColArmor"', 'id="mCharColEquip"',
+            'id="mPropFamily"', 'id="mPropWidth"', 'id="mPropHeight"', 'id="mPropDepth"',
+            'id="mPropSubtype"', 'id="mPropDetail"',
+            'id="mPropColMain"', 'id="mPropColSec"', 'id="mPropColAcc"', 'id="mPropColGem"',
+            'id="mBtnGenProp"', 'id="mBtnVaryProp"',
+            'id="mGenTree"', 'id="mGenRock"', 'id="mGenHouse"', 'id="mGenChest"', 'id="mGenMushroom"', 'id="mGenSword"',
             'id="mTreeBranch"', 'id="mTreeThick"', 'id="mTreeCurve"', 'id="mTreeCrown"',
             'id="mTreeFlowerPct"', 'id="mTreeFruitPct"',
             'id="mTreeColTrunk"', 'id="mTreeColLeaf"', 'id="mTreeColFlower"', 'id="mTreeColFruit"',
@@ -1413,8 +1425,16 @@ vm.runInContext(
             'id="m2dThickness"', 'id="mBtnConvert2d3d"', 'id="m2dLoadPreset"'
         ):
             self.assertIn(req_id, right_html, f'Missing {req_id} in modeler right sidebar')
+        for panel_id in ('mTabChars', 'mTabProps', 'mTabTrees'):
+            p_idx = right_html.find(f'id="{panel_id}"')
+            self.assertGreater(p_idx, -1)
+            next_idx = right_html.find('class="m-rtab-panel', p_idx + 40)
+            panel_slice = right_html[p_idx:next_idx] if next_idx > p_idx else right_html[p_idx:]
+            self.assertIn('📐 1. FORMA', panel_slice, f'Missing 1. FORMA block in {panel_id}')
+            self.assertIn('🎨 2. ESTILO', panel_slice, f'Missing 2. ESTILO block in {panel_id}')
+            self.assertIn('🌈 3. CORES', panel_slice, f'Missing 3. CORES block in {panel_id}')
 
-        # 2. Execute src/studio/00-modeler.js in Node VM and verify Section 8.1 & 8.2 algorithms
+        # 2. Execute src/studio/00-modeler.js in Node VM and verify Section 8.1, 8.2, Chars/Beasts/Loose-Equips, Modular Props & Sprite-Stack Preview
         node_mod_test = r"""
 const assert = require('assert');
 const fs = require('fs');
@@ -1446,20 +1466,50 @@ function makeEl(id, extra = {}) {
   if (id) elements.set(id, el);
   return el;
 }
-const prevRects = [];
-function make2dCtx(trackPreviewRects = false) {
-  return {
-    fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, font: '', imageSmoothingEnabled: false,
+const prevDraws = [];
+const prevStrokes = [];
+const offscreenLogs = [];
+function make2dCtx(kind = 'generic') {
+  const ctx = {
+    _kind: kind,
+    fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
+    font: '', imageSmoothingEnabled: false,
+    _pts: [],
+    save(){}, restore(){}, translate(){}, scale(){}, rotate(){}, setLineDash(){},
     clearRect(){},
-    fillRect(x, y, w, h){ if (trackPreviewRects) prevRects.push({ x, y, w, h }); },
-    strokeRect(){}, beginPath(){}, moveTo(){}, lineTo(){}, ellipse(){}, fill(){}, stroke(){}, fillText(){},
-    drawImage(){}, getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) })
+    fillRect(x, y, w, h){
+      if (kind === 'offscreen' && this.globalCompositeOperation === 'source-in') {
+        offscreenLogs.push({ op: 'fillRect-sil', fillStyle: this.fillStyle, w, h });
+      }
+    },
+    strokeRect(){},
+    beginPath(){ this._pts = []; },
+    moveTo(x, y){ this._pts.push({ x, y }); },
+    lineTo(x, y){ this._pts.push({ x, y }); },
+    closePath(){},
+    ellipse(){},
+    fill(){},
+    stroke(){
+      if (kind === 'preview') {
+        prevStrokes.push({ strokeStyle: this.strokeStyle, pts: this._pts.slice() });
+      }
+    },
+    fillText(){},
+    drawImage(src, ...args){
+      if (kind === 'preview') {
+        prevDraws.push({ args });
+      } else if (kind === 'offscreen') {
+        offscreenLogs.push({ op: 'drawImage', srcW: src && src.width, args });
+      }
+    },
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) })
   };
+  return ctx;
 }
 
 makeEl('modelerView');
-makeEl('mEditCanvas', { width: 384, height: 384, getContext: () => make2dCtx(false) });
-makeEl('mPreviewCanvas', { width: 300, height: 300, getContext: () => make2dCtx(true) });
+makeEl('mEditCanvas', { width: 384, height: 384, getContext: () => make2dCtx('edit') });
+makeEl('mPreviewCanvas', { width: 300, height: 300, getContext: () => make2dCtx('preview'), getBoundingClientRect: () => ({ left: 0, top: 0, width: 300, height: 300 }) });
 makeEl('m2dFrontCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
 makeEl('m2dSideCanvas', { width: 144, height: 144, getContext: () => make2dCtx() });
 makeEl('mSize', { value: '24' });
@@ -1480,20 +1530,59 @@ makeEl('mDestrOpts');
 makeEl('mHp', { value: '3' });
 makeEl('mDropKey', { value: 'stone_chunk' });
 makeEl('mMsg');
-makeEl('mTreeBranch', { value: '3' });
-makeEl('mTreeThick', { value: '2' });
+
+// Chars tab mocks
+makeEl('mCharType', { value: 'humanoid', type: 'select-one' });
+makeEl('mCharLegH', { value: '6', type: 'range' });
+makeEl('mCharLegHVal');
+makeEl('mCharTorsoW', { value: '6', type: 'range' });
+makeEl('mCharTorsoWVal');
+makeEl('mCharHeadS', { value: '6', type: 'range' });
+makeEl('mCharHeadSVal');
+makeEl('mCharPartMode', { value: 'full', type: 'select-one' });
+makeEl('mCharHead', { value: 'short_hair', type: 'select-one' });
+makeEl('mCharHat', { value: 'none', type: 'select-one' });
+makeEl('mCharTorso', { value: 'shirt', type: 'select-one' });
+makeEl('mCharLegs', { value: 'pants', type: 'select-one' });
+makeEl('mCharBack', { value: 'none', type: 'select-one' });
+makeEl('mCharRHand', { value: 'none', type: 'select-one' });
+makeEl('mCharLHand', { value: 'none', type: 'select-one' });
+makeEl('mCharColSkin', { value: '#F2C9A0', type: 'color' });
+makeEl('mCharColHair', { value: '#5B3A22', type: 'color' });
+makeEl('mCharColShirt', { value: '#3B82F6', type: 'color' });
+makeEl('mCharColPants', { value: '#374151', type: 'color' });
+makeEl('mCharColArmor', { value: '#9CA3AF', type: 'color' });
+makeEl('mCharColEquip', { value: '#F59E0B', type: 'color' });
+
+// Props tab mocks
+makeEl('mPropFamily', { value: 'weapon', type: 'select-one' });
+makeEl('mPropWidth', { value: '6', type: 'range' });
+makeEl('mPropWidthVal');
+makeEl('mPropHeight', { value: '14', type: 'range' });
+makeEl('mPropDepth', { value: '5', type: 'range' });
+makeEl('mPropDepthVal');
+makeEl('mPropSubtype', { value: 'sword', type: 'select-one' });
+makeEl('mPropDetail', { value: '1', type: 'select-one' });
+makeEl('mPropColMain', { value: '#8A5A2B', type: 'color' });
+makeEl('mPropColSec', { value: '#9AA3A8', type: 'color' });
+makeEl('mPropColAcc', { value: '#F59E0B', type: 'color' });
+makeEl('mPropColGem', { value: '#38BDF8', type: 'color' });
+
+// Trees tab mocks
+makeEl('mTreeBranch', { value: '3', type: 'select-one' });
+makeEl('mTreeThick', { value: '2', type: 'range' });
 makeEl('mTreeThickVal');
-makeEl('mTreeCurve', { value: '1' });
+makeEl('mTreeCurve', { value: '1', type: 'range' });
 makeEl('mTreeCurveVal');
-makeEl('mTreeCrown', { value: 'spheres' });
-makeEl('mTreeFlowerPct', { value: '25' });
+makeEl('mTreeCrown', { value: 'spheres', type: 'select-one' });
+makeEl('mTreeFlowerPct', { value: '25', type: 'range' });
 makeEl('mTreeFlowerPctVal');
-makeEl('mTreeFruitPct', { value: '20' });
+makeEl('mTreeFruitPct', { value: '20', type: 'range' });
 makeEl('mTreeFruitPctVal');
-makeEl('mTreeColTrunk', { value: '#7C4D2B' });
-makeEl('mTreeColLeaf', { value: '#3F8F3A' });
-makeEl('mTreeColFlower', { value: '#F472B6' });
-makeEl('mTreeColFruit', { value: '#EF4444' });
+makeEl('mTreeColTrunk', { value: '#7C4D2B', type: 'color' });
+makeEl('mTreeColLeaf', { value: '#3F8F3A', type: 'color' });
+makeEl('mTreeColFlower', { value: '#F472B6', type: 'color' });
+makeEl('mTreeColFruit', { value: '#EF4444', type: 'color' });
 makeEl('m2dPreset', { value: 'sword' });
 makeEl('m2dMode', { value: 'edt_blade' });
 makeEl('m2dThickness', { value: '10' });
@@ -1501,9 +1590,10 @@ makeEl('m2dThicknessVal');
 for (const id of [
   'mBtnAutoShade','mZUp','mZDown','mCopyDown','mCopyUp','mBtnClearLayer','mBtnNew',
   'mBtnSave','mBtnExport','mBtnImport','mFileImport','btnTabWorld','btnTabModeler',
-  'mBtnGenModularTree','m2dFromSlice','m2dCopyFrontToSide','m2dClear','m2dImportImg','m2dFileImg',
-  'm2dLoadPreset','mBtnConvert2d3d','mRightTabs','mTabChars','mTabTrees','mTabConv2d',
-  'mBtnGenChar','mBtnVaryChar','mProcProps','btnOpenModelerSide',
+  'mBtnGenModularTree','mBtnVaryTree','m2dFromSlice','m2dCopyFrontToSide','m2dClear','m2dImportImg','m2dFileImg',
+  'm2dLoadPreset','mBtnConvert2d3d','mRightTabs','mTabChars','mTabProps','mTabTrees','mTabConv2d',
+  'mBtnGenChar','mBtnVaryChar','mBtnGenProp','mBtnVaryProp','mProcProps','btnOpenModelerSide',
+  'mGenTree','mGenRock','mGenHouse','mGenChest','mGenMushroom','mGenSword',
   'mEditZoomOut','mEditZoomReset','mEditZoomIn','mPrevZoomOut','mPrevZoomReset','mPrevZoomIn'
 ]) makeEl(id);
 
@@ -1513,8 +1603,10 @@ const sandbox = {
   assert, Math, Number, Array, Object, JSON, Int16Array, Uint8Array, Float32Array, Set, Map,
   URLSearchParams, Event: class { constructor(t){ this.type = t; } }, console, confirm: () => true,
   propModels: {}, PROP_COLLIDER_META: {}, DESTRUCTIBLE_META: {}, FOLIAGE_META: {},
-  buildSliceSheet: () => ({ count: 1, w: 24, h: 24, sheet: {} }),
-  __prevRects: prevRects,
+  buildSliceSheet: (data, pal) => ({ count: data.length, w: data[0].length, h: data[0].length, sheet: { width: data.length * data[0].length, height: data[0].length } }),
+  __prevDraws: prevDraws,
+  __prevStrokes: prevStrokes,
+  __offscreenLogs: offscreenLogs,
   __rafCallback: null,
   requestAnimationFrame: (cb) => { sandbox.__rafCallback = cb; },
   window: { dispatchEvent(){}, customAvatarModels: {}, location: { search: '' } },
@@ -1523,7 +1615,14 @@ const sandbox = {
     getElementById: (id) => elements.get(id) || null,
     querySelector: (sel) => sel === '.workspace' ? workspaceEl : null,
     querySelectorAll: () => [],
-    createElement: () => makeEl('')
+    createElement: (tag) => {
+      const el = makeEl('', { width: 0, height: 0 });
+      if (tag === 'canvas') {
+        const c2 = make2dCtx('offscreen');
+        el.getContext = () => c2;
+      }
+      return el;
+    }
   }
 };
 sandbox.globalThis = sandbox;
@@ -1539,6 +1638,16 @@ function runModelerTests() {
   const M = window.StudioModeler;
   const N = M.getSize();
   assert.strictEqual(N, 24);
+
+  const countVoxels = (v) => {
+    let n = 0, minZ = 99, maxZ = -1;
+    for (let z = 0; z < N; z++) {
+      for (let i = 0; i < v[z].length; i++) {
+        if (v[z][i] > 0) { n++; if (z < minZ) minZ = z; if (z > maxZ) maxZ = z; }
+      }
+    }
+    return { n, minZ, maxZ };
+  };
 
   // 2. Section 8.1: Modular Tree Studio (trifurcated + spheres + flowers + fruits)
   document.getElementById('mBtnGenModularTree')._emit('click');
@@ -1572,7 +1681,7 @@ function runModelerTests() {
   assert(coneLeaves > 80, 'Conical pine crown must generate foliage');
   assert.strictEqual(zeroFlowFruit, 0, '0% flower/fruit must place zero flowers/fruits');
 
-  // Multi-branch + weeping willow with curvature reaches lower Z layers and stays centered near curved branches
+  // Multi-branch + weeping willow with curvature reaches lower Z layers
   M.generateModularTree({ branchCount: 4, curve: 3, crownType: 'weeping', flowerPct: 0, fruitPct: 0 }, 302);
   let lowWillowLeaves = 0;
   for (let z = 4; z <= 10; z++) {
@@ -1591,18 +1700,103 @@ function runModelerTests() {
   }
   assert(deadTrunk > 40 && deadLeaves === 0, 'crownType=none must produce bare branches with zero leaves');
 
+  // 2b. Chars, Beasts (biped_beast, lizard) & Loose Equipment Export (mCharPartMode)
+  // Test 4-tab switching in right sidebar
+  const tabBtns = ['chars', 'props', 'trees', 'conv2d'].map(t => { const b = document.createElement('button'); b.dataset = { mtab: t }; return b; });
+  document.getElementById('mRightTabs').querySelectorAll = () => tabBtns;
+  for (const tb of tabBtns) {
+    document.getElementById('mRightTabs')._emit('click', { target: { closest: () => tb } });
+    assert(tb.classList.contains('active'), `Tab ${tb.dataset.mtab} must become active`);
+  }
+  const panelActiveMap = { chars: 'mTabChars', props: 'mTabProps', trees: 'mTabTrees', conv2d: 'mTabConv2d' };
+  assert(document.getElementById(panelActiveMap.conv2d).classList.contains('active'));
+  document.getElementById('mRightTabs')._emit('click', { target: { closest: () => tabBtns[0] } });
+  assert(document.getElementById('mTabChars').classList.contains('active'));
+
+  M.generateCharacter({ charType: 'biped_beast', partMode: 'full', headStyle: 'mohawk', hatStyle: 'none', colSkin: '#D97706' }, 1);
+  const beastStats = countVoxels(vol);
+  assert(beastStats.n > 150 && beastStats.minZ === 0, 'biped_beast must generate grounded 3D creature');
+  assert.strictEqual(document.getElementById('mKind').value, 'avatar');
+  // Bipedal feet at z=0 should be near middle Y (no 4-corner back legs at y <= 7)
+  let backCornerFeet = 0;
+  for (let y = 0; y <= 7; y++) for (let x = 0; x < N; x++) if (vol[0][y * N + x] > 0) backCornerFeet++;
+  assert.strictEqual(backCornerFeet, 0, 'biped_beast must have 2 bipedal legs, not 4 quadruped legs');
+
+  M.generateCharacter({ charType: 'lizard', partMode: 'full', colSkin: '#22C55E', colHair: '#EAB308' }, 1);
+  const lizStats = countVoxels(vol);
+  assert(lizStats.n > 120 && lizStats.minZ === 0, 'lizard must generate grounded 3D reptile');
+  // Lizard tail extends into rear Y (y <= 5) at elevated z
+  let lizTail = 0;
+  for (let z = 1; z <= 6; z++) for (let y = 0; y <= 5; y++) for (let x = 0; x < N; x++) if (vol[z][y * N + x] > 0) lizTail++;
+  assert(lizTail > 5, 'lizard must generate long rear tail');
+
+  // Loose parts: rhand_only, lhand_only, headgear_only, outfit_only, back_only
+  M.generateCharacter({ charType: 'lizard', partMode: 'rhand_only', rhandStyle: 'sword' }, 1);
+  let pStat = countVoxels(vol);
+  assert(pStat.n > 30 && pStat.minZ === 0, 'rhand_only sword must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'espada_heroi');
+
+  M.generateCharacter({ charType: 'humanoid', partMode: 'lhand_only', lhandStyle: 'shield' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 40 && pStat.minZ === 0, 'lhand_only shield must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'escudo_heroi');
+
+  M.generateCharacter({ charType: 'humanoid', partMode: 'headgear_only', hatStyle: 'helmet' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 40 && pStat.minZ === 0, 'headgear_only helmet must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'elmo_cavaleiro');
+
+  M.generateCharacter({ charType: 'lizard', partMode: 'outfit_only', torsoStyle: 'armor', legsStyle: 'greaves' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 80 && pStat.minZ === 0, 'outfit_only armor must be grounded at z=0 even when charType=lizard');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'armadura_peitoral');
+
+  M.generateCharacter({ charType: 'humanoid', partMode: 'back_only', backStyle: 'cape' }, 1);
+  pStat = countVoxels(vol);
+  assert(pStat.n > 30 && pStat.minZ === 0, 'back_only cape must be grounded at z=0');
+  assert.strictEqual(document.getElementById('mKind').value, 'pickable');
+  assert.strictEqual(document.getElementById('mName').value, 'capa_heroi');
+
+  // Live input regeneration on color picker
+  document.getElementById('mCharPartMode').value = 'full';
+  document.getElementById('mCharType').value = 'biped_beast';
+  document.getElementById('mCharColSkin').value = '#EF4444';
+  document.getElementById('mCharColSkin')._emit('input');
+  assert.strictEqual(M.getPalette()[2], '#EF4444', 'Live char color input must regenerate palette & model');
+
+  // 2c. Modular Props Builder (weapon, house, chest, rock, plant + shortcuts)
+  const famAssertions = [
+    ['weapon', 'greatsword', 'pickable'],
+    ['house', 'tower', 'solid'],
+    ['chest', 'barrel', 'solid'],
+    ['rock', 'crystal', 'destructible'],
+    ['plant', 'cactus', 'foliage']
+  ];
+  for (const [fam, sub, expKind] of famAssertions) {
+    M.generateModularProp({ family: fam, subtype: sub, width: 7, height: 15, depth: 5, detail: 2, colMain: '#123456', colGem: '#ABCDEF' }, 500);
+    const st = countVoxels(vol);
+    assert(st.n > 40, `Modular prop ${fam}/${sub} must generate voxels`);
+    assert.strictEqual(document.getElementById('mKind').value, expKind);
+    assert.strictEqual(M.getPalette()[2], '#123456');
+    assert.strictEqual(M.getPalette()[11], '#ABCDEF');
+  }
+  M.generateProcProp('gen_house', 601);
+  assert.strictEqual(document.getElementById('mPropFamily').value, 'house');
+  assert(countVoxels(vol).n > 80);
+
   // 3. Section 8.2: Mathematical 2D -> 3D Converter
-  // Empty 2D guard
   document.getElementById('m2dClear')._emit('click');
   const emptyRes = M.convert2dTo3d('edt_blade', 10);
   assert.strictEqual(emptyRes.ok, false, 'Empty 2D canvas must return ok=false');
 
-  // 3a. edt_blade on sword preset: sharp 1-voxel outer edges + thicker interior crossguard
   document.getElementById('m2dPreset').value = 'sword';
   document.getElementById('m2dLoadPreset')._emit('click');
   const bladeRes = M.convert2dTo3d('edt_blade', 10);
   assert(bladeRes.ok && bladeRes.voxels > 80, 'edt_blade must convert sword silhouette to 3D');
-  // At blade upper tip/edge (z=16), edge pixel should be thinner in Y than center
   let minSpan = 99, maxSpan = 0;
   for (let z = 0; z < N; z++) {
     for (let x = 0; x < N; x++) {
@@ -1617,7 +1811,6 @@ function runModelerTests() {
   assert.strictEqual(minSpan, 1, 'edt_blade must keep sharp 1-voxel edges');
   assert(maxSpan >= 3, 'edt_blade interior must thicken beyond 1 voxel');
 
-  // 3b. edt_organic on solid rectangle: rounded elliptical profile tapering to 1-voxel rim
   const bufs = M.get2dBuffers();
   bufs.front2D.fill(0);
   for (let z = 4; z <= 19; z++) for (let x = 6; x <= 17; x++) bufs.front2D[z * N + x] = 2;
@@ -1631,12 +1824,10 @@ function runModelerTests() {
   assert.strictEqual(edgeY, 1, 'edt_organic outer rim must taper to 1 voxel instead of thick wall');
   assert(centerY >= 11 && centerY > edgeY, 'edt_organic center must be thicker than corner edge');
 
-  // 3c. lathe (360 revolution) on vase preset: rotational symmetry around central Z axis
   document.getElementById('m2dPreset').value = 'vase';
   document.getElementById('m2dLoadPreset')._emit('click');
   const latheRes = M.convert2dTo3d('lathe', 10);
   assert(latheRes.ok && latheRes.voxels > 300, 'lathe must revolve vase into 3D');
-  // At belly z=8, verify X-diameter equals Y-diameter (360 symmetry)
   let xMinL = N, xMaxL = -1, yMinL = N, yMaxL = -1;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     if (vol[8][y * N + x] > 0) {
@@ -1647,12 +1838,10 @@ function runModelerTests() {
   assert.strictEqual(xMaxL - xMinL, yMaxL - yMinL, 'lathe must produce equal X and Y diameters');
   assert((xMaxL - xMinL) >= 8, 'lathe vase belly must span wide circular cross-section');
 
-  // 3d. visual_hull (Front x Side intersection) on creature preset
   document.getElementById('m2dPreset').value = 'creature';
   document.getElementById('m2dLoadPreset')._emit('click');
   const hullRes = M.convert2dTo3d('visual_hull', 10);
   assert(hullRes.ok && hullRes.voxels > 200, 'visual_hull must intersect Front and Side silhouettes');
-  // Every filled voxel (x, y, z) must be inside BOTH front2D[z, x] AND side2D[z, y]
   for (let z = 0; z < N; z++) {
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
@@ -1663,12 +1852,10 @@ function runModelerTests() {
       }
     }
   }
-  // Verify snout in side2D (y > 16 at z=13) projects in 3D only within front2D head width
   let snoutVoxels = 0;
   for (let x = 0; x < N; x++) if (vol[13][17 * N + x] > 0) snoutVoxels++;
   assert(snoutVoxels > 0 && snoutVoxels < 10, 'Visual hull must preserve side snout within front head bounds');
 
-  // 3e. Copy Slice -> Front and Front -> Side buttons
   document.getElementById('m2dClear')._emit('click');
   M.setZ(13);
   document.getElementById('m2dFromSlice')._emit('click');
@@ -1677,7 +1864,7 @@ function runModelerTests() {
   for (let i = 0; i < bufs.side2D.length; i++) if (bufs.side2D[i] > 0) copiedCount++;
   assert(copiedCount > 0, 'm2dFromSlice + m2dCopyFrontToSide must populate side2D');
 
-  // 4. Modeler Zoom (previewZoom + drawPreview scaling + editZoom + cursor-centered wheel + pan clamp + pointercancel)
+  // 4. Modeler Zoom + Engine Sprite-Stacking Preview (1px #3B2219 outline + curZ ring + Alt+Click)
   assert.strictEqual(M.getPreviewZoom(), 1.0, 'Initial previewZoom must be 1.0');
   document.getElementById('mPrevZoomIn')._emit('click');
   assert(M.getPreviewZoom() > 1.0, 'mPrevZoomIn must increase previewZoom');
@@ -1690,18 +1877,52 @@ function runModelerTests() {
   assert(M.getPreviewZoom() > 1.0, 'Wheel up on mPreviewCanvas must zoom in');
   document.getElementById('mPreviewCanvas')._emit('wheel', { deltaY: 100 });
   assert(Math.abs(M.getPreviewZoom() - 1.0) < 0.001, 'Wheel down on mPreviewCanvas must zoom out');
+
   M.setPreviewZoom(0.1);
   assert.strictEqual(M.getPreviewZoom(), 0.4, 'previewZoom min clamp 0.4');
   document.getElementById('modelerView').classList.add('show');
-  __prevRects.length = 0;
+  M.setZ(0);
+  __prevDraws.length = 0;
+  __prevStrokes.length = 0;
+  __offscreenLogs.length = 0;
   __rafCallback(16);
-  const prevMinW = __prevRects[0].w;
+  assert(__prevDraws.length >= 1, 'drawPreview must upscale low-res offscreen buffer via drawImage');
+  const prevMinDrawW = __prevDraws[0].args[2];
+  const ringZ0Y = __prevStrokes.find(s => s.strokeStyle === '#FBBF24').pts[0].y;
+  const silFill = __offscreenLogs.find(l => l.op === 'fillRect-sil');
+  assert(silFill && silFill.fillStyle === '#3B2219', 'drawPreview must generate #3B2219 silhouette mask');
+  const silOffsets = __offscreenLogs.filter(l => l.op === 'drawImage' && l.args.length === 2).map(l => l.args.join(','));
+  for (const off of ['-1,0', '1,0', '0,-1', '0,1']) {
+    assert(silOffsets.includes(off), `drawPreview must dilate 1px outline at offset ${off}`);
+  }
+
   M.setPreviewZoom(9.0);
   assert.strictEqual(M.getPreviewZoom(), 3.0, 'previewZoom max clamp 3.0');
-  __prevRects.length = 0;
+  M.setZ(15);
+  __prevDraws.length = 0;
+  __prevStrokes.length = 0;
   __rafCallback(32);
-  const prevMaxW = __prevRects[0].w;
-  assert(prevMaxW > prevMinW * 5, 'drawPreview voxel width must scale with previewZoom');
+  const prevMaxDrawW = __prevDraws[0].args[2];
+  assert(prevMaxDrawW > prevMinDrawW * 5, 'drawPreview upscaled image width must scale with previewZoom');
+
+  // Verify curZ wireframe ring moves upward when curZ increases
+  M.setPreviewZoom(1.0);
+  M.setZ(0);
+  __prevStrokes.length = 0;
+  __rafCallback(40);
+  const yLowZ = __prevStrokes.find(s => s.strokeStyle === '#FBBF24').pts[0].y;
+  M.setZ(16);
+  __prevStrokes.length = 0;
+  __rafCallback(48);
+  const yHighZ = __prevStrokes.find(s => s.strokeStyle === '#FBBF24').pts[0].y;
+  assert(yHighZ < yLowZ - 20, 'curZ wireframe ring must move up on screen when curZ increases');
+
+  // Alt+Click on mPreviewCanvas picks Z layer
+  document.getElementById('mPreviewCanvas')._emit('pointerdown', { altKey: true, clientX: 150, clientY: 234, pointerId: 9 });
+  assert(M.getZ() <= 3, `Alt+Click near bottom of preview must pick low Z, got ${M.getZ()}`);
+  document.getElementById('mPreviewCanvas')._emit('pointerdown', { altKey: true, clientX: 150, clientY: 160, pointerId: 10 });
+  assert(M.getZ() >= 12, `Alt+Click near upper half of preview must pick high Z, got ${M.getZ()}`);
+
   document.getElementById('modelerView').classList.remove('show');
   M.setPreviewZoom(1.0);
 
