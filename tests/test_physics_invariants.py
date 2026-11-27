@@ -792,6 +792,11 @@ vm.runInContext(
         self.assertIn('.sidebar-right', studio_css)
         self.assertIn('border-left', studio_css)
         self.assertIn('.play-only .topbar, .play-only .sidebar', studio_css)
+        self.assertIn('id="btnZoomOut"', studio_html)
+        self.assertIn('id="btnZoomReset"', studio_html)
+        self.assertIn('id="btnZoomIn"', studio_html)
+        self.assertIn('Scroll: Zoom', studio_html)
+        self.assertIn('.zoom-pill', studio_css)
 
         # 2. Caves: baking, 2-floor physics, cutaway X-ray, brushes, undo/redo, JSON persistence
         node_cave_test = r"""
@@ -884,8 +889,11 @@ for (const id of [
   'btnPinSel','btnUnpinSel','btnPinAll','btnUnpinAll','btnClearSel',
   'btnRegenAll','btnRegenUnpinned','btnExportJson','btnPublishHtml','btnImportJson',
   'fileImportInput','btnTouchJump','helpPill','coordPill','biomeToast',
-  'biomeLabel','fishCounter','biomeCounter','statElev','statObstacle'
+  'biomeLabel','fishCounter','biomeCounter','statElev','statObstacle',
+  'btnZoomOut','btnZoomReset','btnZoomIn'
 ]) makeEl(id);
+
+const winListeners = {};
 
 const sidebars = [makeEl('sbL'), makeEl('sbR')];
 const btnLeft = makeEl('btnLeft', { dataset: { tool: 'raise' }, classList: { _s: new Set(['tool-btn', 'active']), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } });
@@ -955,7 +963,9 @@ const sandbox = {
   window: {
     __IS_STUDIO__: true, innerWidth: 640, innerHeight: 480, devicePixelRatio: 1,
     location: { search: '', href: 'http://localhost/studio/index.html' },
-    addEventListener(){}, dispatchEvent(){}
+    addEventListener(ev, fn){ (winListeners[ev] = winListeners[ev] || []).push(fn); },
+    _emit(ev, e = {}){ (winListeners[ev] || []).forEach(fn => fn({ preventDefault(){}, target: { tagName: 'BODY' }, ...e })); },
+    dispatchEvent(){}
   },
   document: {
     body: { classList: { _s: new Set(), add(c){this._s.add(c);}, remove(c){this._s.delete(c);}, contains(c){return this._s.has(c);} } },
@@ -1187,6 +1197,74 @@ function runCaveSuite() {
   for (let i = 0; i < 90; i++) stepDebrisDrops(1 / 60);
   assert(debrisDrops[debrisDrops.length - 1].z < 2, 'Thrown log inside cave must bounce off ceiling and land on caveFloor=0');
 
+  // 5. Engine & Studio 3D Map Zoom (camZoom, setCamZoom, adjustCamZoom, wheel, keys, pill buttons)
+  assert.strictEqual(camZoom, 1.0, 'Initial camZoom must be 1.0');
+  assert.strictEqual(pixelScale, 2, 'Initial pixelScale at 640x480 must be 2');
+  assert.strictEqual(LOW_W, 320);
+  assert.strictEqual(LOW_H, 240);
+  assert.strictEqual(document.getElementById('btnZoomReset').textContent, '🔍 100%');
+
+  setCamZoom(2.5);
+  assert.strictEqual(camZoom, 2.5);
+  assert.strictEqual(pixelScale, 5);
+  assert.strictEqual(LOW_W, 128);
+  assert.strictEqual(LOW_H, 96);
+  assert.strictEqual(document.getElementById('btnZoomReset').textContent, '🔍 250%');
+
+  setCamZoom(0.05);
+  assert.strictEqual(camZoom, 0.35, 'camZoom must clamp to min 0.35');
+  assert.strictEqual(pixelScale, 1, 'pixelScale must clamp to min 1');
+  assert.strictEqual(LOW_W, 640);
+  assert.strictEqual(LOW_H, 480);
+
+  setCamZoom(10.0);
+  assert.strictEqual(camZoom, 3.0, 'camZoom must clamp to max 3.0');
+  assert.strictEqual(pixelScale, 6);
+  adjustCamZoom(-0.5);
+  assert.strictEqual(camZoom, 2.5);
+  setCamZoom(NaN);
+  assert.strictEqual(camZoom, 1.0, 'NaN camZoom must fallback safely to 1.0');
+
+  // Wheel zoom in & out on #viewport
+  const vpEl = document.getElementById('viewport');
+  vpEl._emit('wheel', { deltaY: -120 });
+  assert(camZoom > 1.0, 'Wheel up on viewport must zoom in');
+  vpEl._emit('wheel', { deltaY: 120 });
+  assert(Math.abs(camZoom - 1.0) < 0.001, 'Wheel down must return to ~1.0');
+
+  // Render & 3D picker remain valid across extreme zoom levels
+  window.__STUDIO_EDIT_MODE__ = true;
+  setCamZoom(0.35);
+  renderScene();
+  setCamZoom(3.0);
+  renderScene();
+  vpEl._emit('pointermove', { clientX: 320, clientY: 240 });
+  assert(S.hoverWorld && Number.isFinite(S.hoverWorld.wx) && Number.isFinite(S.hoverWorld.wy), 'pickTerrainAtClient must resolve hoverWorld when zoomed');
+  setCamZoom(1.0);
+
+  // Zoom pill buttons
+  document.getElementById('btnZoomIn')._emit('click');
+  assert(camZoom > 1.1, 'btnZoomIn must increase camZoom');
+  document.getElementById('btnZoomOut')._emit('click');
+  assert(Math.abs(camZoom - 1.0) < 0.001, 'btnZoomOut must decrease camZoom');
+  setCamZoom(2.0);
+  document.getElementById('btnZoomReset')._emit('click');
+  assert.strictEqual(camZoom, 1.0, 'btnZoomReset must reset camZoom to 1.0');
+
+  // Keyboard shortcuts (+ / - / 0) in Edit mode and Test mode, ignored in <input>
+  window.__STUDIO_EDIT_MODE__ = true;
+  window._emit('keydown', { key: '=', code: 'Equal' });
+  assert(camZoom > 1.0, 'Key =/+ must zoom in during Edit mode');
+  window._emit('keydown', { key: '0', code: 'Digit0' });
+  assert.strictEqual(camZoom, 1.0, 'Key 0 must reset zoom in Edit mode');
+  window.__STUDIO_EDIT_MODE__ = false;
+  window._emit('keydown', { key: '-', code: 'Minus' });
+  assert(camZoom < 1.0, 'Key - must zoom out during Test mode');
+  const prevZoom = camZoom;
+  window._emit('keydown', { key: '0', code: 'Digit0', target: { tagName: 'INPUT' } });
+  assert.strictEqual(camZoom, prevZoom, 'Zoom hotkeys must be ignored inside INPUT');
+  setCamZoom(1.0);
+
   console.log('CAVES_AND_DUAL_SIDEBAR_OK');
 }
 
@@ -1225,6 +1303,8 @@ vm.runInContext(
         center_html = studio_html[idx_mcenter:idx_mright]
         self.assertIn('id="mEditCanvas"', center_html)
         self.assertIn('id="mPreviewCanvas"', center_html)
+        for z_id in ('id="mEditZoomOut"', 'id="mEditZoomReset"', 'id="mEditZoomIn"', 'id="mPrevZoomOut"', 'id="mPrevZoomReset"', 'id="mPrevZoomIn"'):
+            self.assertIn(z_id, center_html, f'Missing {z_id} in modeler center stage')
 
         right_html = studio_html[idx_mright:]
         for req_id in (
@@ -1324,7 +1404,8 @@ for (const id of [
   'mBtnSave','mBtnExport','mBtnImport','mFileImport','btnTabWorld','btnTabModeler',
   'mBtnGenModularTree','m2dFromSlice','m2dCopyFrontToSide','m2dClear','m2dImportImg','m2dFileImg',
   'm2dLoadPreset','mBtnConvert2d3d','mRightTabs','mTabChars','mTabTrees','mTabConv2d',
-  'mBtnGenChar','mBtnVaryChar','mProcProps','btnOpenModelerSide'
+  'mBtnGenChar','mBtnVaryChar','mProcProps','btnOpenModelerSide',
+  'mEditZoomOut','mEditZoomReset','mEditZoomIn','mPrevZoomOut','mPrevZoomReset','mPrevZoomIn'
 ]) makeEl(id);
 
 const workspaceEl = makeEl('workspaceMock');
@@ -1493,6 +1574,48 @@ function runModelerTests() {
   let copiedCount = 0;
   for (let i = 0; i < bufs.side2D.length; i++) if (bufs.side2D[i] > 0) copiedCount++;
   assert(copiedCount > 0, 'm2dFromSlice + m2dCopyFrontToSide must populate side2D');
+
+  // 4. Modeler Zoom (previewZoom + editZoom + cursor-centered wheel + pan clamp)
+  assert.strictEqual(M.getPreviewZoom(), 1.0, 'Initial previewZoom must be 1.0');
+  document.getElementById('mPrevZoomIn')._emit('click');
+  assert(M.getPreviewZoom() > 1.0, 'mPrevZoomIn must increase previewZoom');
+  assert.notStrictEqual(document.getElementById('mPrevZoomReset').textContent, '100%');
+  document.getElementById('mPrevZoomReset')._emit('click');
+  assert.strictEqual(M.getPreviewZoom(), 1.0);
+  document.getElementById('mPreviewCanvas')._emit('wheel', { deltaY: -100 });
+  assert(M.getPreviewZoom() > 1.0, 'Wheel up on mPreviewCanvas must zoom in');
+  M.setPreviewZoom(0.1);
+  assert.strictEqual(M.getPreviewZoom(), 0.4, 'previewZoom min clamp 0.4');
+  M.setPreviewZoom(9.0);
+  assert.strictEqual(M.getPreviewZoom(), 3.0, 'previewZoom max clamp 3.0');
+  M.setPreviewZoom(1.0);
+
+  assert.strictEqual(M.getEditZoom(), 1.0, 'Initial editZoom must be 1.0');
+  const editCvEl = document.getElementById('mEditCanvas');
+  const beforeCell = M.cellAt({ clientX: 96, clientY: 96 });
+  assert.deepStrictEqual(beforeCell, { x: 6, y: 6 });
+  editCvEl._emit('wheel', { deltaY: -120, clientX: 96, clientY: 96 });
+  assert(M.getEditZoom() > 1.0, 'Wheel up on mEditCanvas must increase editZoom');
+  const afterCell = M.cellAt({ clientX: 96, clientY: 96 });
+  assert.deepStrictEqual(afterCell, beforeCell, 'Cursor-centered wheel zoom must keep target cell under cursor');
+  const pan = M.getEditPan();
+  assert(pan.x > 0 && pan.y > 0, 'Zooming around (96,96) must offset editPan');
+
+  // Right-click pan & clamp
+  editCvEl._emit('pointerdown', { button: 2, clientX: 100, clientY: 100, pointerId: 1 });
+  editCvEl._emit('pointermove', { clientX: 40, clientY: 40 });
+  editCvEl._emit('pointerup', { pointerId: 1 });
+  const maxPan = 384 * (M.getEditZoom() - 1);
+  const panned = M.getEditPan();
+  assert(panned.x >= 0 && panned.x <= maxPan + 1e-6 && panned.y >= 0 && panned.y <= maxPan + 1e-6, 'editPan must stay clamped');
+
+  document.getElementById('mEditZoomIn')._emit('click');
+  assert(M.getEditZoom() <= 4.0);
+  M.setEditZoom(9.0);
+  assert.strictEqual(M.getEditZoom(), 4.0, 'editZoom max clamp 4.0');
+  document.getElementById('mEditZoomReset')._emit('click');
+  assert.strictEqual(M.getEditZoom(), 1.0, 'mEditZoomReset must restore 1.0');
+  assert.deepStrictEqual(M.getEditPan(), { x: 0, y: 0 }, 'Resetting editZoom to 1.0 must reset pan to 0,0');
 
   console.log('MODULAR_TREE_AND_2D3D_OK');
 }
