@@ -817,14 +817,16 @@
       if (typeof waterfallDrops !== 'undefined' && waterfallDrops.length > 0) {
         for (let i = 0; i < waterfallDrops.length; i++) {
           const wd = waterfallDrops[i];
-          if (Math.abs(wd.wx - camX) > 380 || Math.abs(wd.wy - camY) > 380) continue;
-          if (Math.random() < 0.25) {
-            injectWaterRipple(wd.wx, wd.wy, 0.55, 1);
+          const rx = wd.botWx !== undefined ? wd.botWx : wd.wx;
+          const ry = wd.botWy !== undefined ? wd.botWy : wd.wy;
+          if (Math.abs(rx - camX) > 380 || Math.abs(ry - camY) > 380) continue;
+          if (Math.random() < 0.28) {
+            injectWaterRipple(rx, ry, 0.70, 1);
           }
           if (emitSpray && particles.length < 220 && Math.random() < 0.18) {
             spawnParticles(
-              wd.wx + (Math.random() - 0.5) * 3,
-              wd.wy + (Math.random() - 0.5) * 3,
+              rx + (Math.random() - 0.5) * 3,
+              ry + (Math.random() - 0.5) * 3,
               wd.botZ + 0.6,
               1,
               ['#E0F2FE', '#FFFFFF', '#7DD3FC'],

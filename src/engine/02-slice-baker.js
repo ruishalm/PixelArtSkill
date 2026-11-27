@@ -72,8 +72,10 @@
     const COL_SHALLOW_SURF_B = packRGBA(125, 240, 252, 200);
     const COL_SHALLOW_SHIMMER = packRGBA(224, 252, 255, 225);
 
-    function getMinWetDropNeighborZ(mx, my, surfZ) {
+    function getMinWetDropInfo(mx, my, surfZ) {
       let minWet = surfZ;
+      let botMx = mx;
+      let botMy = my;
       for (let dy = -1; dy <= 1; dy++) {
         const ny = my + dy;
         if (ny < 0 || ny >= mh) continue;
@@ -86,10 +88,18 @@
           if (!isWetMat(matMap[nIdx])) continue;
           const nh = hmap[nIdx];
           const ns = nh < 0 ? (matMap[nIdx] === MAT_SHALLOW ? -1 : -2) : nh;
-          if (ns < minWet) minWet = ns;
+          if (ns < minWet) {
+            minWet = ns;
+            botMx = nx;
+            botMy = ny;
+          }
         }
       }
-      return minWet;
+      return { minWet, botMx, botMy };
+    }
+
+    function getMinWetDropNeighborZ(mx, my, surfZ) {
+      return getMinWetDropInfo(mx, my, surfZ).minWet;
     }
 
     function computeWaterfallDrops() {
@@ -102,15 +112,17 @@
           if (!isWetMat(matMap[idx])) continue;
           const h = hmap[idx];
           if (h < 0) continue;
-          const minWet = getMinWetDropNeighborZ(mx, my, h);
-          if (h - minWet >= 3) {
+          const info = getMinWetDropInfo(mx, my, h);
+          if (h - info.minWet >= 3) {
             waterfallDropMask[idx] = 1;
             waterfallDrops.push({
               mx, my,
               wx: (mx - HALF_GRID + 0.5) * VOX,
               wy: (my - HALF_GRID + 0.5) * VOX,
+              botWx: (info.botMx - HALF_GRID + 0.5) * VOX,
+              botWy: (info.botMy - HALF_GRID + 0.5) * VOX,
               topZ: h,
-              botZ: minWet
+              botZ: info.minWet
             });
           }
         }
@@ -639,9 +651,16 @@
       }
 
       if (maxZDirty < minZDirty) return;
-      const clearTopZ = Math.min(TERRAIN_Z_MAX - 1, maxZDirty + 6);
+      const clearTopZ = TERRAIN_Z_MAX - 1;
       for (let z = minZDirty; z <= clearTopZ; z++) {
-        const sl = terrainSlices[z];
+        let sl = terrainSlices[z];
+        if (!sl && z <= maxZDirty) {
+          const cv = document.createElement('canvas');
+          cv.width = x1 - x0 + 1;
+          cv.height = y1 - y0 + 1;
+          sl = { canvas: cv, offX: x0, offY: y0, w: cv.width, h: cv.height };
+          terrainSlices[z] = sl;
+        }
         if (!sl) continue;
         const rx0 = Math.max(sl.offX, x0);
         const ry0 = Math.max(sl.offY, y0);

@@ -662,6 +662,7 @@ function runTestsInVm() {
   placeSpringHydrology(32, 32);
   computeWaterfallDrops();
   assert(waterfallDrops.length >= 1, 'Steep drop (18 -> 6) must create dynamic waterfall drop');
+  assert(waterfallDrops[0].botWx !== undefined && waterfallDrops[0].botWy !== undefined, 'Waterfall drop must record plunge-pool base coordinates');
   let reachedSea = false;
   for (let mx = 45; mx <= 52; mx++) {
     const idx = 32 * mw + mx;
@@ -700,6 +701,59 @@ function runTestsInVm() {
   assert(drainElevatedWetCell(seaIdx), 'Elevated uncontained sea cell must drain');
   assert.strictEqual(matMap[seaIdx], MAT_GRASS, 'Drained cell at Z=5 must become MAT_GRASS');
   assert.strictEqual(waterDepth[seaIdx], 0);
+
+  // F. Encosta suave com degraus planos (> 18 degraus): nascente deve alcançar o mar sem parar no meio da montanha
+  hmap.fill(-6); matMap.fill(MAT_WATER); waterDepth.fill(0);
+  for (let my = 4; my <= 60; my++) {
+    for (let mx = 4; mx <= 60; mx++) {
+      const d = Math.hypot(mx - 32, my - 32);
+      if (d <= 28) {
+        const h = Math.round(28 * (1 - d / 28));
+        const idx = my * mw + mx;
+        hmap[idx] = h;
+        matMap[idx] = h <= -2 ? MAT_WATER : (h <= 2 ? MAT_SAND : MAT_GRASS);
+      }
+    }
+  }
+  placeSpringHydrology(32, 32);
+  let gentleTouchesSea = false;
+  for (let my = 1; my < mh - 1; my++) {
+    for (let mx = 1; mx < mw - 1; mx++) {
+      const i = my * mw + mx;
+      if (waterDepth[i] > 0) {
+        for (const nb of [i-1, i+1, i-mw, i+mw, i-mw-1, i-mw+1, i+mw-1, i+mw+1]) {
+          if (isWetMat(matMap[nb]) && hmap[nb] <= -2) gentleTouchesSea = true;
+        }
+      }
+    }
+  }
+  assert(gentleTouchesSea, 'Gentle terraced mountain spring (>18 steps) must reach sea level');
+
+  // G. Arrastar pincel de água sobre platô plano não deve perfurar o terreno repetidamente
+  hmap.fill(20); matMap.fill(MAT_GRASS); waterDepth.fill(0);
+  for (let step = 0; step < 8; step++) {
+    applyWaterBrushHydrology(28 + step, 32, 3, 'mat_water', null, step === 0);
+  }
+  for (let i = 0; i < hmap.length; i++) {
+    if (isWetMat(matMap[i])) {
+      assert.strictEqual(hmap[i], 19, 'Flat plateau pond surface must stay at 19');
+      assert(waterDepth[i] <= 3, 'Flat plateau pond must not drill deeper than depth 3');
+    }
+  }
+
+  // H. Lago raso (waterDepth=1) rompido deve escoar e MAT_SHALLOW no mar deve ter hmap=-2
+  hmap.fill(20); matMap.fill(MAT_GRASS); waterDepth.fill(0);
+  for (let my = 29; my <= 35; my++) {
+    for (let mx = 29; mx <= 35; mx++) {
+      if (Math.hypot(mx - 32, my - 32) <= 2.5) paintWetCell(my * mw + mx, 20, 19, MAT_SHALLOW);
+    }
+  }
+  for (let mx = 35; mx <= 48; mx++) hmap[32 * mw + mx] = 10 - (mx - 35);
+  const shallowBreach = drainBreachedLakesInRect(33, 30, 36, 34);
+  assert(shallowBreach.changed, 'Shallow breached pond must drain');
+  assert(!isWetMat(matMap[32 * mw + 32]), 'Shallow breached pond bed must become dry');
+  paintWetCell(6 * mw + 6, -2, -2, MAT_SHALLOW);
+  assert.strictEqual(hmap[6 * mw + 6], -2, 'Sea-level MAT_SHALLOW must have hmap=-2');
 
   console.log('HYDROLOGY_AND_ANTI_AQUARIUM_OK');
 }
