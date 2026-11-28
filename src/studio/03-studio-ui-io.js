@@ -790,4 +790,222 @@ ThreeDish.onKeyDown((code) => {
         document.getElementById('btnModeTest').click();
         window.dispatchEvent(new Event('resize'));
       }
+
+      // Firebase Auth (Google) + Firestore 3 Slots (users/{uid}/projects/slot1..slot3)
+      const FIREBASE_CONFIG = {
+        apiKey: 'AIzaSyDbpwPefMoOSplja9lr3y3IQXXgHt1wei0',
+        authDomain: 'studio-3dish.firebaseapp.com',
+        projectId: 'studio-3dish',
+        storageBucket: 'studio-3dish.firebasestorage.app',
+        messagingSenderId: '213287230738',
+        appId: '1:213287230738:web:cae71b9155c68c236167cb'
+      };
+      const SLOT_IDS = ['slot1', 'slot2', 'slot3'];
+      const authGate = document.getElementById('authGateOverlay');
+      const authMsg = document.getElementById('authGateMsg');
+      const userBadge = document.getElementById('authUserBadge');
+      const btnLogout = document.getElementById('btnAuthLogout');
+      const btnCloud = document.getElementById('btnCloudProjects');
+      const cloudModal = document.getElementById('cloudProjectsModal');
+      const cloudList = document.getElementById('cloudSlotsList');
+      const cloudMsg = document.getElementById('cloudModalMsg');
+
+      let fbAuth = null;
+      let fbDb = null;
+      let fbUser = null;
+      let fbSdk = null;
+      const cloudCache = { slot1: null, slot2: null, slot3: null };
+
+      function compactPayloadForCloud(payload) {
+        let json = JSON.stringify(payload);
+        if (json.length <= 580000) return json;
+        const trimmed = {
+          ...payload,
+          pinnedCells: (payload.pinnedCells || []).filter(([, h, m, wd]) => Math.abs(h) > 0.05 || m !== MAT_GRASS || (wd || 0) > 0)
+        };
+        json = JSON.stringify(trimmed);
+        if (json.length > 580000) {
+          throw new Error(`Projeto muito grande (${Math.round(json.length / 1024)} KB > 580 KB) para nuvem; use Exportar .json/.zip.`);
+        }
+        return json;
+      }
+
+      function renderCloudSlots() {
+        if (!cloudList) return;
+        cloudList.innerHTML = '';
+        SLOT_IDS.forEach((slotId, idx) => {
+          const docData = cloudCache[slotId];
+          const row = document.createElement('div');
+          row.className = 'cloud-slot-row';
+          const nameInput = document.createElement('input');
+          nameInput.type = 'text';
+          nameInput.className = 'mtxt';
+          nameInput.maxLength = 80;
+          nameInput.value = docData ? docData.name : `Projeto ${idx + 1}`;
+          nameInput.style.flex = '1';
+
+          const topRow = document.createElement('div');
+          topRow.className = 'mrow';
+          const tag = document.createElement('span');
+          tag.textContent = `Slot ${idx + 1}`;
+          tag.style.cssText = 'font-size:11px;font-weight:800;color:#FDE68A;min-width:44px;';
+          topRow.append(tag, nameInput);
+
+          const meta = document.createElement('div');
+          meta.className = 'cloud-slot-meta';
+          if (docData) {
+            const dt = new Date(docData.updatedAt || Date.now()).toLocaleString();
+            meta.textContent = `${docData.gridW}×${docData.gridW} • Seed ${docData.seed} • ${dt}`;
+          } else {
+            meta.textContent = 'Vazio';
+          }
+
+          const actions = document.createElement('div');
+          actions.className = 'mrow';
+          const bSave = document.createElement('button');
+          bSave.className = 'btn accent';
+          bSave.textContent = '☁️ Salvar aqui';
+          bSave.onclick = async () => {
+            if (!fbUser || !fbDb || !fbSdk) return;
+            try {
+              const name = (nameInput.value || `Projeto ${idx + 1}`).trim().slice(0, 80);
+              const payload = buildProjectPayload();
+              const payloadJson = compactPayloadForCloud(payload);
+              const record = {
+                uid: fbUser.uid,
+                name,
+                gridW: mw,
+                seed: WORLD_SEED,
+                updatedAt: Date.now(),
+                payloadJson
+              };
+              await fbSdk.setDoc(fbSdk.doc(fbDb, 'users', fbUser.uid, 'projects', slotId), record);
+              cloudCache[slotId] = record;
+              renderCloudSlots();
+              if (cloudMsg) { cloudMsg.style.color = '#86EFAC'; cloudMsg.textContent = `✅ Salvo no Slot ${idx + 1}!`; }
+            } catch (err) {
+              if (cloudMsg) { cloudMsg.style.color = '#FCA5A5'; cloudMsg.textContent = '❌ ' + err.message; }
+            }
+          };
+
+          const bLoad = document.createElement('button');
+          bLoad.className = 'btn pin';
+          bLoad.textContent = '📂 Carregar';
+          bLoad.disabled = !docData;
+          bLoad.onclick = () => {
+            if (!docData) return;
+            try {
+              const parsed = JSON.parse(docData.payloadJson);
+              if (parsed.gridW && parsed.gridW !== mw) {
+                alert(`Este projeto é ${parsed.gridW}×${parsed.gridW}. Troque o seletor "Mapa" para ${parsed.gridW} e carregue novamente.`);
+                return;
+              }
+              loadProject(parsed);
+              if (cloudModal) cloudModal.style.display = 'none';
+            } catch (err) {
+              if (cloudMsg) { cloudMsg.style.color = '#FCA5A5'; cloudMsg.textContent = '❌ ' + err.message; }
+            }
+          };
+
+          const bDel = document.createElement('button');
+          bDel.className = 'btn';
+          bDel.textContent = '🗑️ Apagar';
+          bDel.disabled = !docData;
+          bDel.onclick = async () => {
+            if (!fbUser || !fbDb || !fbSdk || !docData) return;
+            if (!confirm(`Apagar "${docData.name}" do Slot ${idx + 1}?`)) return;
+            try {
+              await fbSdk.deleteDoc(fbSdk.doc(fbDb, 'users', fbUser.uid, 'projects', slotId));
+              cloudCache[slotId] = null;
+              renderCloudSlots();
+              if (cloudMsg) { cloudMsg.style.color = '#FDE68A'; cloudMsg.textContent = `Slot ${idx + 1} apagado.`; }
+            } catch (err) {
+              if (cloudMsg) { cloudMsg.style.color = '#FCA5A5'; cloudMsg.textContent = '❌ ' + err.message; }
+            }
+          };
+
+          actions.append(bSave, bLoad, bDel);
+          row.append(topRow, meta, actions);
+          cloudList.appendChild(row);
+        });
+      }
+
+      async function refreshCloudSlots() {
+        if (!fbUser || !fbDb || !fbSdk) return;
+        for (const s of SLOT_IDS) cloudCache[s] = null;
+        const snap = await fbSdk.getDocs(fbSdk.collection(fbDb, 'users', fbUser.uid, 'projects'));
+        snap.forEach((d) => {
+          if (SLOT_IDS.includes(d.id)) cloudCache[d.id] = d.data();
+        });
+        renderCloudSlots();
+      }
+
+      btnCloud?.addEventListener('click', async () => {
+        if (!fbUser) {
+          if (authGate) authGate.style.display = 'flex';
+          return;
+        }
+        if (cloudMsg) cloudMsg.textContent = '';
+        if (cloudModal) cloudModal.style.display = 'flex';
+        try { await refreshCloudSlots(); } catch (err) {
+          if (cloudMsg) { cloudMsg.style.color = '#FCA5A5'; cloudMsg.textContent = '❌ ' + err.message; }
+        }
+      });
+      document.getElementById('btnCloseCloudModal')?.addEventListener('click', () => {
+        if (cloudModal) cloudModal.style.display = 'none';
+      });
+
+      const canUseFirebase = !window.__STUDIO_BOOT__ && typeof window.location === 'object' && /^https?:$/.test(window.location.protocol);
+      if (canUseFirebase && authGate) {
+        authGate.style.display = 'flex';
+        (async () => {
+          try {
+            const [appMod, authMod, fsMod] = await Promise.all([
+              import('https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js'),
+              import('https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js'),
+              import('https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js')
+            ]);
+            const fbApp = appMod.initializeApp(FIREBASE_CONFIG);
+            fbAuth = authMod.getAuth(fbApp);
+            fbDb = fsMod.getFirestore(fbApp);
+            fbSdk = { ...authMod, ...fsMod };
+            const provider = new authMod.GoogleAuthProvider();
+
+            authMod.onAuthStateChanged(fbAuth, async (user) => {
+              fbUser = user;
+              if (user) {
+                authGate.style.display = 'none';
+                if (userBadge) {
+                  userBadge.textContent = user.displayName || user.email || 'Conectado';
+                  userBadge.style.display = '';
+                }
+                if (btnLogout) btnLogout.style.display = '';
+                try { await refreshCloudSlots(); } catch (_) {}
+              } else {
+                authGate.style.display = 'flex';
+                if (userBadge) userBadge.style.display = 'none';
+                if (btnLogout) btnLogout.style.display = 'none';
+              }
+            });
+
+            document.getElementById('btnGoogleLogin')?.addEventListener('click', async () => {
+              if (authMsg) { authMsg.style.color = '#FDE68A'; authMsg.textContent = 'Abrindo login Google...'; }
+              try {
+                await authMod.signInWithPopup(fbAuth, provider);
+              } catch (err) {
+                const hint = err.code === 'auth/unauthorized-domain'
+                  ? ` Domínio "${window.location.hostname}" não autorizado em Firebase Auth > Settings > Authorized domains.`
+                  : '';
+                if (authMsg) { authMsg.style.color = '#FCA5A5'; authMsg.textContent = (err.message || err.code) + hint; }
+              }
+            });
+
+            btnLogout?.addEventListener('click', async () => {
+              await authMod.signOut(fbAuth);
+            });
+          } catch (err) {
+            if (authMsg) { authMsg.style.color = '#FCA5A5'; authMsg.textContent = 'Falha ao carregar Firebase: ' + err.message; }
+          }
+        })();
+      }
     })();

@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions for 3Dish Studio validation
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidSlotId(slotId) {
+      return slotId in ['slot1', 'slot2', 'slot3'];
+    }
+
+    function validateProjectData(userId) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['name', 'gridW', 'seed', 'updatedAt', 'payloadJson']) &&
+             data.keys().hasOnly(['name', 'gridW', 'seed', 'updatedAt', 'payloadJson', 'uid']) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.gridW is int && data.gridW >= 64 && data.gridW <= 2048 &&
+             data.seed is int &&
+             data.updatedAt is int &&
+             data.payloadJson is string && data.payloadJson.size() >= 2 && data.payloadJson.size() <= 600000 &&
+             (!('uid' in data) || data.uid == userId);
+    }
+
+    // User Projects Collection
+    match /users/{userId}/projects/{slotId} {
+      allow get, list: if isOwner(userId);
+      
+      allow create, update: if isOwner(userId) && 
+                              isValidSlotId(slotId) && 
+                              validateProjectData(userId);
+                              
+      allow delete: if isOwner(userId) && isValidSlotId(slotId);
+    }
+  }
+}

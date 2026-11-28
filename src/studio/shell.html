@@ -39,10 +39,13 @@
    <button id="btnRedo" class="btn" title="Refazer última ação (Ctrl+Y)">↪️</button>
   </div>
   <div class="top-group top-group-right">
+   <button id="btnCloudProjects" class="btn pin" title="Gerenciar seus 3 projetos salvos na nuvem (Firebase)">☁️ Projetos</button>
    <button id="btnExportJson" class="btn" title="Exportar cena e modelos (.json)">💾 Exportar</button>
    <button id="btnExportZip" class="btn accent" title="Baixar projeto completo (.zip) com index.html, pastas de assets separadas por tipo e scripts">📦 .zip</button>
    <button id="btnPublishHtml" class="btn accent" title="Gera um .html autocontido que abre direto em modo Testar">🚀 Publicar</button>
    <button id="btnImportJson" class="btn" title="Importar cena (.json)">📂 Importar</button>
+   <span id="authUserBadge" class="auth-badge" style="display:none;"></span>
+   <button id="btnAuthLogout" class="btn" style="display:none;" title="Sair da conta Google">🚪 Sair</button>
    <input id="fileImportInput" type="file" accept=".json" style="display:none" />
   </div>
  </header>
@@ -623,6 +626,27 @@
   <span id="statElev"></span>
   <span id="statObstacle"></span>
   <button id="btnTouchJump"></button>
+ </div>
+ <!-- Gate Obrigatório de Login Google -->
+ <div id="authGateOverlay" class="studio-modal-bg" style="display:none;">
+  <div class="studio-modal-card" style="max-width:390px;text-align:center;">
+   <div style="font-size:28px;margin-bottom:6px;">🍽️</div>
+   <h2 style="font-size:18px;color:#FDE68A;margin-bottom:8px;">3Dish Studio</h2>
+   <p style="font-size:12px;color:#D6D3D1;line-height:1.45;margin-bottom:14px;">Faça login com sua conta Google para entrar no editor e salvar até <strong>3 projetos na nuvem</strong>.</p>
+   <button id="btnGoogleLogin" class="btn accent" style="width:100%;padding:9px 14px;font-size:13px;">🔑 Entrar com Google</button>
+   <div id="authGateMsg" style="font-size:11px;color:#FCA5A5;margin-top:10px;min-height:16px;line-height:1.35;"></div>
+  </div>
+ </div>
+ <!-- Modal 3 Slots de Projetos na Nuvem (Firestore) -->
+ <div id="cloudProjectsModal" class="studio-modal-bg" style="display:none;">
+  <div class="studio-modal-card" style="max-width:460px;">
+   <div class="mrow" style="justify-content:space-between;margin-bottom:10px;">
+    <h3 style="font-size:15px;color:#FDE68A;">☁️ Meus Projetos na Nuvem (3 Slots)</h3>
+    <button id="btnCloseCloudModal" class="btn">✖ Fechar</button>
+   </div>
+   <div id="cloudSlotsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+   <div id="cloudModalMsg" style="font-size:11px;color:#86EFAC;margin-top:8px;min-height:16px;"></div>
+  </div>
  </div>
  <script>window.__IS_STUDIO__ = true;</script>
 __STUDIO_SCRIPTS__

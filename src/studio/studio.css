@@ -270,8 +270,22 @@ input[type="range"] { width: 100%; accent-color: #F59E0B; cursor: pointer; }
 }
 .biome-toast.show { opacity: 1; }
 .hidden-compat { display: none; }
-.play-only .topbar, .play-only .sidebar, .play-only .coord-pill, .play-only .modeler { display: none !important; }
+.play-only .topbar, .play-only .sidebar, .play-only .coord-pill, .play-only .modeler, .play-only .studio-modal-bg { display: none !important; }
 .play-only .workspace { display: flex !important; }
+.auth-badge { font-size: 11px; color: #FDE68A; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio-modal-bg {
+  position: fixed; inset: 0; background: rgba(12, 10, 9, 0.88); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px;
+}
+.studio-modal-card {
+  width: 100%; background: #292524; border: 1px solid #57534E; border-radius: 12px;
+  padding: 18px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); color: #F5F5F4;
+}
+.cloud-slot-row {
+  background: #1C1917; border: 1px solid #44403C; border-radius: 8px; padding: 9px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.cloud-slot-meta { font-size: 10px; color: #A8A29E; }
 
 /* Modelador Voxel — Layout 3 Colunas (Barra Esq. + Palco Central + Barra Dir.) */
 .modeler { flex: 1; display: none; min-height: 0; overflow: hidden; background: #1C1917; }
